@@ -22,3 +22,5 @@ Items found during stage 1 integration. Each is small and independent unless not
 - Real-CLI smoke script (`scripts/smoke.ts`) for Claude and Codex accounts, and README quick start with screenshots.
 - Visual regression: Playwright screenshots of main screens in CI (system Chrome channel locally).
 - Codex runtime enforcement: no pre-tool hook; evaluate Codex hooks when available (see `docs/research/cli-capability-matrix.md`).
+
+- `POST /schedules/:id/run-now` (and other body-less POSTs) return 400 when sent with `content-type: application/json` and an empty body; accept an empty body.
