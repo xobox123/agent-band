@@ -592,6 +592,7 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/events',
   'GET /api/v1/goals',
   'GET /api/v1/me',
+  'POST /api/v1/mcp',
   'GET /api/v1/organization',
   'PATCH /api/v1/organization',
   'PUT /api/v1/organization/policy',
