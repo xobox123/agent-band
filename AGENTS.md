@@ -20,6 +20,8 @@ Relative imports use the `.ts` extension. The server runs through `tsx`.
 - Layers inside a module: `domain/` (pure logic, no I/O), `app/` (use cases, transactions, events), `infra/` (database, processes), `http/` (routes).
 - Domain code is unit tested without a database.
 - Workers talk to the rest of the system only through use cases and the database queue.
+- Cross-module dependencies go through the interfaces in `apps/server/src/ports/`; tests use `ports/testing.ts` fakes.
+- No foreign keys across module boundaries; every org-owned table has `org_id` and every query filters by it.
 
 ## Before every commit
 
