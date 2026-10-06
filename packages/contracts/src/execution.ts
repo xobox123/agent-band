@@ -4,6 +4,7 @@ export const AuthorizeToolRequest = z.object({
   runId: z.uuid(),
   toolName: z.string().min(1),
   toolInput: z.unknown().optional(),
+  toolUseId: z.string().optional(),
 });
 export type AuthorizeToolRequest = z.infer<typeof AuthorizeToolRequest>;
 
