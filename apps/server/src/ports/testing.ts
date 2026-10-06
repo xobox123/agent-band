@@ -2,11 +2,15 @@ import { randomUUID } from 'node:crypto';
 import type { ActorContext } from '../platform/actor.ts';
 import { forbidden } from '../platform/errors.ts';
 import type { Action, ResourceRef } from '../modules/org/domain/rbac.ts';
+import type { EffectivePolicy } from '../modules/policy/domain/rules.ts';
 import type {
   AgentMembership,
   AuditEntry,
   AuditLog,
   Authorizer,
+  EffectivePolicySource,
+  EffectiveSkill,
+  EffectiveSkillsSource,
   ModuleDeps,
   OrgSettings,
   PolicyBindings,
@@ -65,6 +69,39 @@ export class FakeOrgSettings implements OrgSettings {
   constructor(public readonly settings = { taskKeyPrefix: 'AB', timezone: 'UTC' }) {}
   get(): ReturnType<OrgSettings['get']> {
     return Promise.resolve(this.settings);
+  }
+}
+
+export const openPolicy = (overrides: Partial<EffectivePolicy> = {}): EffectivePolicy => ({
+  workDirSets: [],
+  maxMode: 'full-auto',
+  deniedTools: [],
+  sources: [],
+  ...overrides,
+});
+
+export class FakeEffectivePolicySource implements EffectivePolicySource {
+  readonly byAgent = new Map<string, EffectivePolicy>();
+  constructor(public fallback: EffectivePolicy = openPolicy()) {}
+  forAgent(_db: unknown, _orgId: string, agentId: string): Promise<EffectivePolicy> {
+    return Promise.resolve(this.byAgent.get(agentId) ?? this.fallback);
+  }
+}
+
+export class FakeEffectiveSkillsSource implements EffectiveSkillsSource {
+  readonly byAgent = new Map<string, EffectiveSkill[]>();
+  readonly bundles = new Map<string, Record<string, Uint8Array>>();
+  constructor(public fallback: EffectiveSkill[] = []) {}
+  forAgent(_db: unknown, _orgId: string, agentId: string): Promise<EffectiveSkill[]> {
+    return Promise.resolve(this.byAgent.get(agentId) ?? this.fallback);
+  }
+  loadBundle(
+    _db: unknown,
+    _orgId: string,
+    skillId: string,
+    version: number,
+  ): Promise<Record<string, Uint8Array>> {
+    return Promise.resolve(this.bundles.get(`${skillId}@${version}`) ?? {});
   }
 }
 

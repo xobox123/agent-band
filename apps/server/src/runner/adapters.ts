@@ -5,6 +5,7 @@ import { readCodexRateLimits } from './rollout.ts';
 
 export function runEnv(s: RunSpec, provider: 'claude' | 'openai'): Record<string, string> {
   return {
+    ...s.env,
     [provider === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME']: s.configDir,
     GIT_AUTHOR_NAME: s.gitIdentity.name,
     GIT_AUTHOR_EMAIL: s.gitIdentity.email,

@@ -7,6 +7,7 @@ describe('loadConfig', () => {
     expect(c.port).toBe(4870);
     expect(c.role).toBe('all');
     expect(c.logLevel).toBe('info');
+    expect(c.workerSlots).toBe(4);
     expect(c.home.endsWith('.agent-band')).toBe(true);
     expect(c.databaseUrl).toBeUndefined();
   });
@@ -22,6 +23,11 @@ describe('loadConfig', () => {
 
   it('rejects an invalid role with a readable message', () => {
     expect(() => loadConfig({ AGENT_BAND_ROLE: 'boss' })).toThrow(/AGENT_BAND_ROLE/);
+  });
+
+  it('parses and validates worker slots', () => {
+    expect(loadConfig({ AGENT_BAND_WORKER_SLOTS: '2' }).workerSlots).toBe(2);
+    expect(() => loadConfig({ AGENT_BAND_WORKER_SLOTS: '0' })).toThrow(/AGENT_BAND_WORKER_SLOTS/);
   });
 
   it('rejects an invalid port', () => {

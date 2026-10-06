@@ -22,6 +22,7 @@ export const PolicyRules = z.strictObject({
   maxRunMinutes: z.number().int().positive().optional(),
   allowedAccountIds: z.array(z.string().min(1)).optional(),
   allowedSkillIds: z.array(z.string().min(1)).optional(),
+  allowAccountFailover: z.boolean().optional(),
 });
 export type PolicyRules = z.infer<typeof PolicyRules>;
 
@@ -36,6 +37,7 @@ export interface EffectivePolicy {
   maxRunMinutes?: number;
   allowedAccountIds?: string[];
   allowedSkillIds?: string[];
+  allowAccountFailover?: boolean;
   sources: { level: PolicyLevel; policyId: string; version: number }[];
 }
 
@@ -64,6 +66,7 @@ export function mergePolicies(
   let allowedSkillIds: string[] | undefined;
   let dailyTokenBudget: number | undefined;
   let maxRunMinutes: number | undefined;
+  let allowAccountFailover: boolean | undefined;
 
   for (const { level, policyId, version, rules } of levels) {
     sources.push({ level, policyId, version });
@@ -75,6 +78,10 @@ export function mergePolicies(
     allowedSkillIds = intersect(allowedSkillIds, rules.allowedSkillIds);
     dailyTokenBudget = minNumber(dailyTokenBudget, rules.dailyTokenBudget);
     maxRunMinutes = minNumber(maxRunMinutes, rules.maxRunMinutes);
+    // Failover is opt-in and any explicit false wins.
+    if (rules.allowAccountFailover === false) allowAccountFailover = false;
+    else if (rules.allowAccountFailover === true && allowAccountFailover === undefined)
+      allowAccountFailover = true;
   }
 
   // Unset limits stay absent so the stored snapshot has no undefined members.
@@ -87,6 +94,7 @@ export function mergePolicies(
     ...(maxRunMinutes !== undefined && { maxRunMinutes }),
     ...(allowedAccountIds && { allowedAccountIds }),
     ...(allowedSkillIds && { allowedSkillIds }),
+    ...(allowAccountFailover !== undefined && { allowAccountFailover }),
     sources,
   };
 }

@@ -200,6 +200,14 @@ describe('arguments and environment', () => {
   });
 });
 
+describe('run env', () => {
+  it('merges extra env without overriding reserved variables', () => {
+    const env = runEnv({ ...spec, env: { AGENT_BAND_RUN_TOKEN: 't', AGENT_BAND_RUN_ID: 'evil' } }, 'claude');
+    expect(env['AGENT_BAND_RUN_TOKEN']).toBe('t');
+    expect(env['AGENT_BAND_RUN_ID']).toBe('run');
+  });
+});
+
 describe('process runner', () => {
   const start = (script: string, onExit?: Parameters<typeof spawnJsonLines>[2]) =>
     spawnJsonLines(
@@ -257,6 +265,32 @@ describe('process runner', () => {
     }
     expect(await h.done).toEqual({ exitCode: null });
   }, 8000);
+  it('kills the whole process group, including grandchildren', async () => {
+    const h = start(
+      `const c = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); process.stdout.write(JSON.stringify({ type: 'error', message: String(c.pid) }) + '\\n'); setInterval(() => {}, 1000)`,
+    );
+    let grandchild = 0;
+    for await (const event of h.events) {
+      if (event.kind === 'error') {
+        grandchild = Number(event.message);
+        h.cancel();
+      }
+    }
+    await h.done;
+    expect(grandchild).toBeGreaterThan(0);
+    const alive = async () => {
+      for (let i = 0; i < 50; i++) {
+        try {
+          process.kill(grandchild, 0);
+        } catch {
+          return false;
+        }
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return true;
+    };
+    expect(await alive()).toBe(false);
+  });
   it('settles when the exit hook fails', async () => {
     const h = start('', () => Promise.reject(new Error('hook failed')));
     expect(await collect(h)).toEqual([{ kind: 'error', message: 'hook failed' }]);

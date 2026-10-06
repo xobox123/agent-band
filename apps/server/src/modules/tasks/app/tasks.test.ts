@@ -141,3 +141,20 @@ it('publishes changes, filters lists, and rejects terminal transitions', async (
     'task.updated',
   ]);
 });
+it('requests cancellation of active tasks and skips excluded tasks when claiming', async () => {
+  const a = await api.createTask(database.db, actor, input);
+  const b = await api.createTask(database.db, actor, input);
+  const claimed = await database.db.transaction((tx) =>
+    api.claimNextTask(tx, system, 'w', { excludeTaskIds: [a.id] }),
+  );
+  expect(claimed?.id).toBe(b.id);
+  await api.cancelTask(database.db, actor, a.id);
+  expect((await database.db.select().from(outboxEvents)).map((e) => e.type)).not.toContain(
+    'task.cancel_requested',
+  );
+  await api.cancelTask(database.db, actor, b.id);
+  const event = (await database.db.select().from(outboxEvents)).find(
+    (e) => e.type === 'task.cancel_requested',
+  );
+  expect(event?.payload).toEqual({ orgId: actor.orgId, taskId: b.id });
+});
