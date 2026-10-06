@@ -480,6 +480,31 @@ From `docs/research/2026-10-06-market-research.md`:
 - Form validation limits proposed in `docs/ui/screens.md` are accepted as the
   starting point; the zod contracts in `packages/contracts` are authoritative.
 
+## Decisions from UI review 2 (ChatGPT report 002)
+
+- **Secure default mode**: policy merging stays monotonic (unset `maxMode`
+  means unrestricted), and organisation bootstrap creates an org baseline
+  policy "Default" with `maxMode: "edit"`. Full-auto needs an owner to change
+  the baseline explicitly (audited).
+- **Skill pin conflicts**: the most specific assignment wins (agent > group >
+  org). If two groups pin different versions of the same skill, the higher
+  version wins and the effective skills view shows a conflict warning.
+- **SSE snapshot and replay**: list endpoints return `cursor` (latest outbox
+  id at read time). The client opens SSE with `Last-Event-ID: <cursor>`.
+  Outbox rows are kept for 24 h; when the requested id is older, the server
+  sends a `reset` event and the client refetches its snapshot.
+- **Payloads** for rule provenance, provider capabilities and tool decision
+  correlation are defined in `packages/contracts` in T10; tool decisions carry
+  the `RunEvent` id of the tool call they belong to.
+- **RBAC**: operators may change priority and rank of tasks in their scope
+  (`task.write`). `owner` exists only with org scope; group and agent scoped
+  bindings are at most `admin`. The last active org owner cannot be removed.
+- **Skills import**: 5 MB = 5 x 1024 x 1024 bytes of uncompressed content;
+  the bundle root is the directory containing `SKILL.md`; git import in
+  stage 1 supports public HTTPS URLs only (private repos via local path).
+  Each membership add/remove is its own transaction; a bulk "set members"
+  replaces the membership in one transaction.
+
 ## Out of scope for stage 1
 
 Scheduler, leader orchestration, API adapters, multi-user auth, remote
