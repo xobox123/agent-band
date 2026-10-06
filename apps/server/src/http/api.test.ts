@@ -402,6 +402,7 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/runs',
   'GET /api/v1/runs/{id}',
   'GET /api/v1/runs/{id}/events',
+  'POST /api/v1/runs/{runId}/authorize-tool',
   'GET /api/v1/skill-assignments',
   'POST /api/v1/skill-assignments',
   'DELETE /api/v1/skill-assignments/{id}',

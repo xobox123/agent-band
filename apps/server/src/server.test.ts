@@ -5,6 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
+import { createComposition } from './composition.ts';
+import { fixedKeySource } from './modules/accounts/index.ts';
+import { openTestDatabase } from './platform/db.ts';
+import { startAll } from './roles/all.ts';
 import { loadConfig } from './platform/config.ts';
 import { start } from './server.ts';
 
@@ -50,6 +54,30 @@ it('boots with a temp AGENT_BAND_HOME, serves readyz, the API and the SPA, and s
     await server.stop();
   }
   await expect(fetch(`${base}/readyz`)).rejects.toThrow();
+});
+
+it('role all starts a worker with no active runs and stops it cleanly', async () => {
+  const database = await openTestDatabase();
+  const home = mkdtempSync(join(tmpdir(), 'ab-all-'));
+  const config = loadConfig({
+    AGENT_BAND_HOME: home,
+    AGENT_BAND_PORT: String(await freePort()),
+    AGENT_BAND_WORKER_ID: 'test-worker',
+    LOG_LEVEL: 'silent',
+  });
+  const composition = await createComposition({
+    database,
+    home,
+    secretKey: fixedKeySource(Buffer.alloc(32, 7)),
+  });
+  const all = await startAll(config, composition);
+  try {
+    expect(all.worker.worker.activeRuns).toBe(0);
+    expect((await fetch(`http://127.0.0.1:${all.api.port}/readyz`)).status).toBe(200);
+  } finally {
+    await all.stop();
+    await database.close();
+  }
 });
 
 it('runs as a real process via main.ts and exits 0 on SIGTERM', async () => {

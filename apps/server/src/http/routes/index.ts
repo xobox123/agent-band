@@ -3,6 +3,7 @@ import type { Composition } from '../../composition.ts';
 import { accountRoutes } from './accounts.ts';
 import { agentRoutes } from './agents.ts';
 import { auditRoutes } from './audit.ts';
+import { executionRoutes } from './execution.ts';
 import { eventRoutes, type SseOptions } from './events.ts';
 import { orgRoutes } from './org.ts';
 import { policyRoutes } from './policies.ts';
@@ -25,6 +26,7 @@ export async function registerApiRoutes(
       await api.register(auditRoutes(c));
       await api.register(eventRoutes(c, sse));
       await api.register(policyRoutes(c));
+      await api.register(executionRoutes(c));
     },
     { prefix: '/api/v1' },
   );

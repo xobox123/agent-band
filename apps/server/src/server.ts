@@ -40,8 +40,7 @@ export async function start(config: Config, opts: StartOptions = {}): Promise<Ru
       role = { stop: () => all.stop(), port: all.api.port };
     } else {
       await composition.events.start();
-      const worker = await startWorker(composition);
-      if (!worker) throw new Error('The worker role is not available yet');
+      const worker = await startWorker(composition, config);
       role = {
         async stop() {
           await worker.stop();
