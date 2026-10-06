@@ -395,6 +395,36 @@ docker-compose.yml Postgres for development
 - No test spawns a real `claude`/`codex` or spends tokens. One manual smoke
   script exercises the real CLIs.
 
+## Research-driven decisions (2026-10-06)
+
+From `docs/research/2026-10-06-market-research.md`:
+
+- **Runtime enforcement, not only admission.** `evaluate()` at `run.start` is
+  admission control. Stage 1 also enforces per tool call where the CLI allows
+  it: for Claude, the runner injects a `PreToolUse` hook (in the per-run
+  plugin directory) that asks the local API `POST /api/v1/runs/:id/authorize-tool`;
+  the decision (allow/deny + reason) is audited as `agent.tool_decision`.
+  Codex hook support is verified during implementation; where a CLI cannot
+  enforce a rule, the UI shows the rule as "not enforced on this provider"
+  instead of pretending.
+- **No silent account failover.** A label or group target never moves a
+  task to an agent on a different provider account because the first
+  account hit its limit. Failover across accounts is off by default and, when
+  enabled per policy, is explicit and audited. Rate-limit blocks apply to the
+  provider identity, not only to the local Account record.
+- **Account identity dedupe.** When the CLI exposes the signed-in identity
+  (email/org/workspace), it is stored on the Account; two Accounts with the
+  same identity share usage counters and blocks.
+- **No credential handling.** agent-band never reads, stores or proxies
+  provider session tokens; login always happens in the provider's own flow.
+- **Positioning:** "control plane for teams using Claude Code and Codex:
+  local execution, enforced permissions, and a record of every approved
+  change". First paying segment: teams of 5 to 30 developers and software
+  houses.
+- **Later:** signed audit checkpoints stored outside the database, evidence
+  bundle per task (initiator, agent, policy version, approvals, repo SHA,
+  tests, diff, cost), API-key adapters earlier than planned.
+
 ## Out of scope for stage 1
 
 Scheduler, leader orchestration, API adapters, multi-user auth, remote
