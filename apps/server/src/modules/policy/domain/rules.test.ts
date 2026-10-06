@@ -31,6 +31,7 @@ describe('PolicyRules schema', () => {
         maxRunMinutes: 30,
         allowedAccountIds: ['a'],
         allowedSkillIds: ['s'],
+        allowAccountFailover: true,
       }).success,
     ).toBe(true);
   });
@@ -109,6 +110,26 @@ describe('mergePolicies', () => {
       { level: 'group', policyId: 'group-2', version: 2 },
       { level: 'agent', policyId: 'agent-3', version: 3 },
     ]);
+  });
+
+  it('leaves failover unset by default and lets any false win', () => {
+    expect(mergePolicies([lvl('org', {})]).allowAccountFailover).toBeUndefined();
+    expect(mergePolicies([lvl('org', {}), lvl('agent', { allowAccountFailover: true })])).toMatchObject({
+      allowAccountFailover: true,
+    });
+    expect(
+      mergePolicies([
+        lvl('org', { allowAccountFailover: false }),
+        lvl('agent', { allowAccountFailover: true }),
+      ]).allowAccountFailover,
+    ).toBe(false);
+    expect(
+      mergePolicies([
+        lvl('org', { allowAccountFailover: true }),
+        lvl('group', { allowAccountFailover: false }),
+        lvl('agent', { allowAccountFailover: true }),
+      ]).allowAccountFailover,
+    ).toBe(false);
   });
 
   it('does not mutate its input', () => {

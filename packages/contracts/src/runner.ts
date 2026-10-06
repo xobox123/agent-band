@@ -40,6 +40,7 @@ export const RunSpec = z.object({
   skillsDir: z.string().optional(),
   gitIdentity: z.object({ name: z.string(), email: z.string() }),
   agentId: z.string(),
+  env: z.record(z.string(), z.string()).optional(),
 });
 export type RunSpec = z.infer<typeof RunSpec>;
 export interface RunHandle {

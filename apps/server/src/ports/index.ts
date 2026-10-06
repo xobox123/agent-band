@@ -4,6 +4,7 @@ import type { ActorContext } from '../platform/actor.ts';
 import type { Db } from '../platform/db.ts';
 import type { Tx } from '../platform/tx.ts';
 import type { Action, ResourceRef } from '../modules/org/domain/rbac.ts';
+import type { EffectivePolicy } from '../modules/policy/domain/rules.ts';
 
 export type DbOrTx = Db | Tx;
 
@@ -59,6 +60,29 @@ export interface PolicyBindings {
 /** Organisation settings needed by other modules, owned by the org module. */
 export interface OrgSettings {
   get(db: DbOrTx, orgId: string): Promise<{ taskKeyPrefix: string; timezone: string }>;
+}
+
+/** Effective policy of an agent (org + groups + agent merged), owned by the policy module. */
+export interface EffectivePolicySource {
+  forAgent(db: DbOrTx, orgId: string, agentId: string): Promise<EffectivePolicy>;
+}
+
+export interface EffectiveSkill {
+  skillId: string;
+  name: string;
+  version: number;
+  contentHash: string;
+}
+
+/** Effective skills of an agent and their file bundles, owned by the skills module. */
+export interface EffectiveSkillsSource {
+  forAgent(db: DbOrTx, orgId: string, agentId: string): Promise<EffectiveSkill[]>;
+  loadBundle(
+    db: DbOrTx,
+    orgId: string,
+    skillId: string,
+    version: number,
+  ): Promise<Record<string, Uint8Array>>;
 }
 
 export interface ModuleDeps {

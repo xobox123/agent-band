@@ -37,9 +37,20 @@ export function spawnJsonLines(
     cwd: spec.cwd,
     env: spec.env,
     stdio: ['ignore', 'pipe', 'pipe'],
+    // Own process group so cancel can stop the whole tree, not only the direct child.
+    detached: true,
   });
   let error: string | undefined;
   let closed = false;
+  let cancelled = false;
+  const killGroup = (signal: NodeJS.Signals) => {
+    try {
+      if (child.pid === undefined) child.kill(signal);
+      else process.kill(-child.pid, signal);
+    } catch {
+      // already gone
+    }
+  };
   let killTimer: ReturnType<typeof setTimeout> | undefined;
   const stdout = createInterface({ input: child.stdout });
   const stderr = createInterface({ input: child.stderr });
@@ -61,6 +72,7 @@ export function spawnJsonLines(
     child.on('close', (exitCode) => {
       closed = true;
       clearTimeout(killTimer);
+      if (cancelled) killGroup('SIGKILL');
       void (async () => {
         try {
           for (const event of (await onExit?.()) ?? []) queue.push(event);
@@ -81,9 +93,10 @@ export function spawnJsonLines(
     done,
     cancel() {
       if (closed || killTimer) return;
-      child.kill('SIGTERM');
+      cancelled = true;
+      killGroup('SIGTERM');
       killTimer = setTimeout(() => {
-        if (!closed) child.kill('SIGKILL');
+        if (!closed) killGroup('SIGKILL');
       }, 5000);
     },
   };

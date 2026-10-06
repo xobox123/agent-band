@@ -168,3 +168,12 @@ it('finishes a rate-limited run as rate_limited even when the process exits succ
   expect(finished.status).toBe('rate_limited');
   expect(finished.rateLimitResetsAt?.toISOString()).toBe('2026-10-07T00:00:00.000Z');
 });
+it('attributes tool use to the agent that ran it', async () => {
+  const run = await start();
+  await database.db.transaction((tx) =>
+    api.appendRunEvent(tx, system, run.id, { kind: 'tool', name: 'Read', input: { path: 'a' } }),
+  );
+  const entry = deps.audit.entries.find((e) => e.action === 'agent.tool_use');
+  expect(entry).toMatchObject({ actorId: run.agentId, targetId: run.id });
+  expect(deps.audit.entries.find((e) => e.action === 'run.start')?.actorId).toBe(system.principalId);
+});

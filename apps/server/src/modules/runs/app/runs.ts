@@ -24,10 +24,17 @@ export function createRuns(deps: ModuleDeps) {
     if (!run) throw notFound('run');
     return run;
   }
-  async function audit(tx: Tx, actor: ActorContext, action: string, run: Run, data?: unknown) {
+  async function audit(
+    tx: Tx,
+    actor: ActorContext,
+    action: string,
+    run: Run,
+    data?: unknown,
+    actorId = actor.principalId,
+  ) {
     await deps.audit.append(tx, {
       orgId: actor.orgId,
-      actorId: actor.principalId,
+      actorId,
       action,
       targetType: 'run',
       targetId: run.id,
@@ -139,6 +146,8 @@ export function createRuns(deps: ModuleDeps) {
             ? { name: event.name, input: JSON.stringify(event.input ?? null).slice(0, 2000) }
             : {}),
         },
+        // Tool use is attributed to the agent that performed it.
+        event.kind === 'tool' ? run.agentId : undefined,
       );
       await publish(tx, 'run.event', { orgId: actor.orgId, runId: id, eventId: stored.id });
       return stored;

@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, sql } from 'drizzle-orm';
+import { and, asc, eq, ilike, notInArray, sql } from 'drizzle-orm';
 import type { ActorContext } from '../../../platform/actor.ts';
 import type { Db } from '../../../platform/db.ts';
 import type { Tx } from '../../../platform/tx.ts';
@@ -129,7 +129,10 @@ export function createTasks(deps: TasksDeps) {
         await deps.authorizer.authorize(tx, actor, 'task.write', resource(task.target));
         if (!['queued', 'claimed', 'running'].includes(task.status))
           throw conflict('task_terminal', 'Task is already terminal');
-        return update(tx, actor, id, { status: 'cancelled' }, 'task.cancel');
+        const wasActive = task.status === 'claimed' || task.status === 'running';
+        const cancelled = await update(tx, actor, id, { status: 'cancelled' }, 'task.cancel');
+        if (wasActive) await publish(tx, 'task.cancel_requested', { orgId: actor.orgId, taskId: id });
+        return cancelled;
       });
     },
     listTasks(db: Db, actor: ActorContext, filter: TaskFilter = {}): Promise<Task[]> {
@@ -181,13 +184,24 @@ export function createTasks(deps: TasksDeps) {
         return get(tx, actor, id);
       });
     },
-    async claimNextTask(tx: Tx, actor: ActorContext, workerId: string): Promise<Task | null> {
+    async claimNextTask(
+      tx: Tx,
+      actor: ActorContext,
+      workerId: string,
+      opts: { excludeTaskIds?: string[] } = {},
+    ): Promise<Task | null> {
       system(actor);
       await deps.authorizer.authorize(tx, actor, 'task.write', {});
       const [task] = await tx
         .select()
         .from(tasks)
-        .where(and(eq(tasks.orgId, actor.orgId), eq(tasks.status, 'queued')))
+        .where(
+          and(
+            eq(tasks.orgId, actor.orgId),
+            eq(tasks.status, 'queued'),
+            opts.excludeTaskIds?.length ? notInArray(tasks.id, opts.excludeTaskIds) : undefined,
+          ),
+        )
         .orderBy(asc(tasks.priority), asc(tasks.rank), asc(tasks.createdAt), asc(tasks.id))
         .limit(1)
         .for('update', { skipLocked: true });
