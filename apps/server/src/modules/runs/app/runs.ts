@@ -170,6 +170,12 @@ export function createRuns(deps: ModuleDeps) {
         return result;
       });
     },
+    async getRun(db: Db, actor: ActorContext, id: string): Promise<Run> {
+      const [run] = await db.select().from(runs).where(where(actor, id));
+      if (!run) throw notFound('run');
+      await deps.authorizer.authorize(db, actor, 'read', { agentId: run.agentId });
+      return run;
+    },
     async listRunEvents(db: Db, actor: ActorContext, id: string, afterId = 0): Promise<RunEvent[]> {
       return db.transaction(async (tx) => {
         const run = await get(tx, actor, id);

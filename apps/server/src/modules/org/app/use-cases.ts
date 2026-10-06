@@ -256,7 +256,54 @@ async function deleteRoleBinding(db: Db, actor: ActorContext, input: unknown): P
   });
 }
 
+export interface PrincipalDto {
+  id: string;
+  kind: 'user' | 'agent' | 'system';
+  handle: string;
+  displayName: string;
+  avatar: string | null;
+  createdAt: string;
+}
+
+function principalToDto(r: typeof principals.$inferSelect): PrincipalDto {
+  return {
+    id: r.id,
+    kind: r.kind,
+    handle: r.handle,
+    displayName: r.displayName,
+    avatar: r.avatar,
+    createdAt: r.createdAt.toISOString(),
+  };
+}
+
+async function listPrincipals(
+  db: Db,
+  actor: ActorContext,
+  filter: { kind?: PrincipalDto['kind'] } = {},
+): Promise<PrincipalDto[]> {
+  await authorize(db, actor, 'read', {});
+  const rows = await db
+    .select()
+    .from(principals)
+    .where(and(eq(principals.orgId, actor.orgId), filter.kind ? eq(principals.kind, filter.kind) : undefined))
+    .orderBy(asc(principals.handle));
+  return rows.map(principalToDto);
+}
+
+async function getPrincipal(db: Db, actor: ActorContext, id: string): Promise<PrincipalDto> {
+  await authorize(db, actor, 'read', {});
+  const rows = await db
+    .select()
+    .from(principals)
+    .where(and(eq(principals.orgId, actor.orgId), eq(principals.id, id)));
+  const row = rows[0];
+  if (!row) throw notFound('principal');
+  return principalToDto(row);
+}
+
 export const orgUseCases = {
+  listPrincipals,
+  getPrincipal,
   listUsers,
   listTeams,
   createTeam,
