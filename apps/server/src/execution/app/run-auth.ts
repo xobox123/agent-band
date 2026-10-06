@@ -42,6 +42,17 @@ function tokenMatches(token: string, expectedHash: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/** Returns the run's identity when the token matches, otherwise null. */
+export async function verifyRunToken(
+  db: Db | Tx,
+  runId: string,
+  token: string,
+): Promise<{ runId: string; orgId: string; agentId: string; workDir: string } | null> {
+  const [row] = await db.select().from(runAuth).where(eq(runAuth.runId, runId));
+  if (!row || !token || !tokenMatches(token, row.tokenHash)) return null;
+  return { runId: row.runId, orgId: row.orgId, agentId: row.agentId, workDir: row.workDir };
+}
+
 export type ToolCall = Pick<AuthorizeToolRequest, 'toolName' | 'toolInput' | 'toolUseId'>;
 
 /**

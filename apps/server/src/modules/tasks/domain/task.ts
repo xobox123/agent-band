@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { GoalLimitsInput } from './goal.ts';
 export const taskStatuses = [
   'scheduled',
   'queued',
@@ -28,6 +29,8 @@ export const CreateTask = z.object({
   runAt: z.date().optional(),
   scheduleId: z.uuid().optional(),
   maxAttempts: z.number().int().min(1).max(20).default(3),
+  kind: z.enum(['task', 'goal']).default('task'),
+  goalLimits: GoalLimitsInput.optional(),
 });
 export type CreateTaskInput = z.input<typeof CreateTask>;
 export const boardColumns = [

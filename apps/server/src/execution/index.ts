@@ -3,6 +3,7 @@ export {
   newRunToken,
   registerRunAuth,
   revokeRunAuth,
+  verifyRunToken,
   type ToolCall,
 } from './app/run-auth.ts';
 export { createEffectivePolicySource, createEffectiveSkillsSource } from './app/sources.ts';

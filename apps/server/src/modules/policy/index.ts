@@ -9,5 +9,12 @@ export {
   type PolicyDto,
   type PolicyVersionDto,
 } from './app/policies.ts';
-export { PolicyRules, type EffectivePolicy, type Mode } from './domain/rules.ts';
+export {
+  PolicyRules,
+  minMode,
+  type DelegateTargets,
+  type EffectivePolicy,
+  type Mode,
+} from './domain/rules.ts';
 export { evaluateRunStart, type Decision, type RunStartRequest } from './domain/evaluate.ts';
+export { isPathWithin } from './domain/paths.ts';

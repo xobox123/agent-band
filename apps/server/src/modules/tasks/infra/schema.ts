@@ -13,6 +13,15 @@ import {
 } from 'drizzle-orm/pg-core';
 import type { TaskTarget } from '../domain/task.ts';
 import { taskStatuses } from '../domain/task.ts';
+import {
+  goalStatuses,
+  taskKinds,
+  type GoalLimits,
+  type GoalNote,
+  type Eligibility,
+  type TaskOutcome,
+  type TaskResult,
+} from '../domain/goal.ts';
 export const taskKeySeq = pgTable('task_key_seq', {
   orgId: uuid('org_id').primaryKey(),
   seq: integer('seq').notNull().default(0),
@@ -38,6 +47,13 @@ export const tasks = pgTable(
     resumeAt: timestamp('resume_at', { withTimezone: true }),
     workerId: text('worker_id'),
     error: text('error'),
+    kind: text('kind', { enum: taskKinds }).notNull().default('task'),
+    parentTaskId: uuid('parent_task_id'),
+    rootTaskId: uuid('root_task_id'),
+    depth: integer('depth').notNull().default(0),
+    dependsOn: uuid('depends_on').array().notNull().default([]),
+    result: jsonb('result').$type<TaskResult>(),
+    eligibility: jsonb('eligibility').$type<Eligibility>(),
     createdBy: uuid('created_by').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -47,8 +63,32 @@ export const tasks = pgTable(
     index('tasks_queue').on(t.orgId, t.status, t.priority, t.rank, t.createdAt),
     index('tasks_run_at').on(t.status, t.runAt),
     index('tasks_resume_at').on(t.status, t.resumeAt),
+    index('tasks_root').on(t.orgId, t.rootTaskId),
     index('tasks_schedule').on(t.orgId, t.scheduleId),
     check('tasks_priority', sql`${t.priority} between 0 and 3`),
   ],
 );
 export type Task = typeof tasks.$inferSelect;
+
+export const goalStates = pgTable(
+  'goal_states',
+  {
+    rootTaskId: uuid('root_task_id').primaryKey(),
+    orgId: uuid('org_id').notNull(),
+    round: integer('round').notNull().default(1),
+    leaderAgentId: uuid('leader_agent_id'),
+    leaderSessionId: text('leader_session_id'),
+    status: text('status', { enum: goalStatuses }).notNull().default('planning'),
+    treeTokensUsed: doublePrecision('tree_tokens_used').notNull().default(0),
+    limits: jsonb('limits').$type<GoalLimits>().notNull(),
+    goalPrompt: text('goal_prompt').notNull(),
+    summary: text('summary'),
+    outcome: text('outcome').$type<TaskOutcome>(),
+    reason: text('reason'),
+    notes: jsonb('notes').$type<GoalNote[]>().notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('goal_states_org_status').on(t.orgId, t.status)],
+);
+export type GoalState = typeof goalStates.$inferSelect;

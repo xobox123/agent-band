@@ -12,7 +12,12 @@ import { getProvider, type AccountForRun } from '../modules/accounts/index.ts';
 import type { AgentDto } from '../modules/agents/index.ts';
 import type { createAgentUseCases } from '../modules/agents/index.ts';
 import type { createRuns, Run } from '../modules/runs/index.ts';
-import type { createTasks, Task } from '../modules/tasks/index.ts';
+import {
+  RESULT_SUMMARY_MAX_BYTES,
+  truncateBytes,
+  type createTasks,
+  type Task,
+} from '../modules/tasks/index.ts';
 import type { createUsage } from '../modules/usage/index.ts';
 import { evaluateRunStart, type EffectivePolicy } from '../modules/policy/index.ts';
 import {
@@ -99,8 +104,8 @@ export function createWorker(deps: WorkerDeps): Worker {
   const log = deps.log ?? (() => undefined);
 
   const active = new Set<Promise<void>>();
+  const pending = new Set<Promise<void>>();
   const inFlight = new Map<string, InFlight>();
-  const backoff = new Map<string, number>();
   let stopping = false;
   let forceStop = false;
   let loopDone: Promise<void> = Promise.resolve();
@@ -150,6 +155,8 @@ export function createWorker(deps: WorkerDeps): Worker {
     const provider = getProvider(account.provider);
     const skillsLoadable = provider?.harness === 'claude-cli' && account.type === 'cli';
     const policy = await deps.policy.forAgent(deps.db, orgId, agent.id);
+    if (task.kind === 'goal' && agent.role !== 'leader')
+      return { reasons: [`agent ${agent.handle}: goals need an agent with role leader`] };
     const skills = skillsLoadable ? await deps.skills.forAgent(deps.db, orgId, agent.id) : [];
     const agentTokensToday = await deps.usage.tokensToday(deps.db, d, { agentId: agent.id });
     const decision = evaluateRunStart(policy, {
@@ -188,6 +195,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${'account-start:' + c.account.id}))`);
         const availability = await deps.usage.accountAvailability(tx, d, c.account.id, c.account.limits);
         if (!availability.ok) return { unavailable: availability };
+        await deps.tasks.recordClaim(tx, d, task);
         const run = await deps.runs.startRun(tx, d, {
           taskId: task.id,
           agentId: c.agent.id,
@@ -202,7 +210,7 @@ export function createWorker(deps: WorkerDeps): Worker {
           skills: c.skills.map(({ skillId, version, contentHash }) => ({ skillId, version, contentHash })),
         });
         await deps.tasks.setTaskStatus(tx, d, task.id, 'running');
-        if (c.skillsLoadable) {
+        if (c.skillsLoadable || task.kind === 'goal') {
           await registerRunAuth(tx, {
             runId: run.id,
             orgId,
@@ -228,7 +236,7 @@ export function createWorker(deps: WorkerDeps): Worker {
   async function dispatch(task: Task): Promise<void> {
     const candidates = await resolveCandidates(task);
     const denials: string[] = [];
-    let blocked: { c: Candidate; text: string } | undefined;
+    let blocked: { c: Candidate; text: string; retryAt?: Date } | undefined;
     const token = newRunToken();
 
     if (candidates.length === 0) {
@@ -265,10 +273,15 @@ export function createWorker(deps: WorkerDeps): Worker {
         await execute(task, c, started.run, token);
         return;
       }
-      blocked ??= { c, text: describeUnavailable(started.unavailable, c.account.id) };
+      const until = 'resetsAt' in started.unavailable ? started.unavailable.resetsAt : undefined;
+      blocked ??= {
+        c,
+        text: describeUnavailable(started.unavailable, c.account.id),
+        ...(until && { retryAt: until }),
+      };
     }
     if (blocked) {
-      await release(task, blocked.text);
+      await release(task, blocked.text, blocked.retryAt);
       return;
     }
     await deps.db.transaction((tx) =>
@@ -276,11 +289,14 @@ export function createWorker(deps: WorkerDeps): Worker {
     );
   }
 
-  async function release(task: Task, reason: string): Promise<void> {
-    backoff.set(task.id, Date.now() + retryMs);
+  async function release(task: Task, reason: string, retryAt?: Date): Promise<void> {
     try {
       await deps.db.transaction((tx) =>
-        deps.tasks.releaseTask(tx, d, task.id, `no eligible agent: ${reason}`),
+        deps.tasks.markIneligible(tx, d, task.id, reason, {
+          baseMs: retryMs,
+          maxMs: retryMs * 60,
+          ...(retryAt && { retryAt }),
+        }),
       );
     } catch (err) {
       if (!isConflict(err)) throw err;
@@ -380,6 +396,8 @@ export function createWorker(deps: WorkerDeps): Worker {
     } finally {
       clearTimeout(timer);
       await removeRunDir(dir).catch(() => undefined);
+      // A finished run frees account capacity for waiting tasks.
+      recheck();
     }
   }
 
@@ -458,11 +476,47 @@ export function createWorker(deps: WorkerDeps): Worker {
               }
             : {},
         );
+        if (taskStatus !== 'rate_limited') await recordTaskOutcome(tx, task, finished, r.error);
       } catch (err) {
         // The task was cancelled by a user while the run was ending.
         if (!isConflict(err)) throw err;
       }
     });
+  }
+
+  /** Stores a subtask's result summary, or hands a finished leader turn to the goal orchestrator. */
+  async function recordTaskOutcome(tx: Tx, task: Task, run: Run, error: string | undefined): Promise<void> {
+    if (task.kind === 'goal') {
+      const sessionId = await deps.runs.latestSessionId(tx, d, task.id);
+      await deps.tasks.endGoalTurn(tx, d, task.id, {
+        agentId: run.agentId,
+        ...(sessionId && { sessionId }),
+        ...(run.status === 'failed' && { failure: error ?? 'run failed' }),
+      });
+    } else if (task.parentTaskId) {
+      const text = await deps.runs.lastRunText(tx, d, run.id);
+      await deps.tasks.recordResult(tx, d, task.id, {
+        summary: truncateBytes(text ?? error ?? '', RESULT_SUMMARY_MAX_BYTES),
+        outcome: run.status === 'done' ? 'success' : 'failed',
+      });
+    }
+  }
+
+  /** Relevant state changed: waiting tasks get re-checked now instead of after their backoff. */
+  function recheck(): void {
+    if (stopping) return;
+    const p: Promise<void> = deps.db
+      .transaction((tx) => deps.tasks.clearEligibility(tx, d))
+      .then(() => {
+        wake();
+      })
+      .catch((err: unknown) => {
+        log('warn', 'could not clear task eligibility', err);
+      })
+      .finally(() => {
+        pending.delete(p);
+      });
+    pending.add(p);
   }
 
   async function process(task: Task): Promise<void> {
@@ -495,13 +549,9 @@ export function createWorker(deps: WorkerDeps): Worker {
         await waitSignal(pollMs);
         continue;
       }
-      const now = Date.now();
-      for (const [id, until] of backoff) if (until <= now) backoff.delete(id);
       let task: Task | null = null;
       try {
-        task = await deps.db.transaction((tx) =>
-          deps.tasks.claimNextTask(tx, d, deps.workerId, { excludeTaskIds: [...backoff.keys()] }),
-        );
+        task = await deps.db.transaction((tx) => deps.tasks.claimNextTask(tx, d, deps.workerId));
       } catch (err) {
         log('error', 'claim failed', err);
       }
@@ -545,6 +595,7 @@ export function createWorker(deps: WorkerDeps): Worker {
             entry.cancel?.();
           }
         } else if (event.type === 'task.updated') wake();
+        else if (/^(agent|agent_group|account|policy|skill)\.|^org\.changed$/.test(event.type)) recheck();
       });
       await deps.events.start();
       loopDone = loop();
@@ -558,6 +609,7 @@ export function createWorker(deps: WorkerDeps): Worker {
       wake();
       await loopDone;
       await Promise.all([...active]);
+      await Promise.all([...pending]);
       unsubscribe?.();
       unsubscribe = undefined;
     },

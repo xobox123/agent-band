@@ -8,7 +8,6 @@ import {
   jsonb,
   bigserial,
   index,
-  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import type { NormalizedEvent } from '@agent-band/contracts';
 import { runStatuses, type SkillSnapshot } from '../domain/run.ts';
@@ -36,7 +35,7 @@ export const runs = pgTable(
   },
   (t) => [
     index('runs_org_account_status').on(t.orgId, t.accountId, t.status),
-    uniqueIndex('runs_org_task').on(t.orgId, t.taskId),
+    index('runs_org_task').on(t.orgId, t.taskId),
   ],
 );
 export const runEvents = pgTable(

@@ -1,10 +1,11 @@
-import { and, asc, eq, ilike, isNotNull, lte, notInArray, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { and, asc, eq, ilike, inArray, isNotNull, lte, notInArray, sql } from 'drizzle-orm';
 import type { ActorContext } from '../../../platform/actor.ts';
 import type { Db } from '../../../platform/db.ts';
 import type { Tx } from '../../../platform/tx.ts';
 import { conflict, forbidden, invalid, notFound } from '../../../platform/errors.ts';
 import { publish } from '../../../platform/outbox.ts';
-import type { ModuleDeps, OrgSettings } from '../../../ports/index.ts';
+import type { DbOrTx, ModuleDeps, OrgSettings } from '../../../ports/index.ts';
 import { formatTaskKey } from '../domain/key.ts';
 import {
   CreateTask,
@@ -14,7 +15,16 @@ import {
   type CreateTaskInput,
   type TaskStatus,
 } from '../domain/task.ts';
-import { tasks, taskKeySeq, type Task } from '../infra/schema.ts';
+import {
+  resolveGoalLimits,
+  terminalStatuses,
+  type Eligibility,
+  type GoalNote,
+  type GoalStatus,
+  type TaskKind,
+  type TaskResult,
+} from '../domain/goal.ts';
+import { goalStates, tasks, taskKeySeq, type GoalState, type Task } from '../infra/schema.ts';
 export interface TaskFilter {
   status?: TaskStatus;
   agentId?: string;
@@ -23,6 +33,15 @@ export interface TaskFilter {
   text?: string;
   scheduleId?: string;
 }
+/** Tree placement of a subtask; only the delegation module supplies it, after its own checks. */
+export interface ChildPlacement {
+  kind: Exclude<TaskKind, 'goal'>;
+  rootTaskId: string;
+  parentTaskId: string;
+  depth: number;
+  dependsOn: string[];
+}
+
 export type TasksDeps = ModuleDeps & { orgSettings: OrgSettings; now?: () => Date };
 export function createTasks(deps: TasksDeps) {
   const where = (actor: ActorContext, id: string) => and(eq(tasks.orgId, actor.orgId), eq(tasks.id, id));
@@ -91,13 +110,20 @@ export function createTasks(deps: TasksDeps) {
       .orderBy(asc(tasks.priority), asc(tasks.rank), asc(tasks.createdAt), asc(tasks.id));
     return result;
   }
-  async function createIn(tx: Tx, actor: ActorContext, input: CreateTaskInput): Promise<Task> {
+  async function createIn(
+    tx: Tx,
+    actor: ActorContext,
+    input: CreateTaskInput,
+    child?: ChildPlacement,
+  ): Promise<Task> {
     const parsed = CreateTask.safeParse(input);
     if (!parsed.success) throw invalid(parsed.error.issues);
-    const { runAt, ...rest } = parsed.data;
+    const { runAt, goalLimits, ...rest } = parsed.data;
+    if (goalLimits && rest.kind !== 'goal')
+      throw invalid([{ path: 'goalLimits', message: 'only allowed for goals' }]);
     if (runAt && runAt.getTime() <= (deps.now?.() ?? new Date()).getTime())
       throw invalid([{ path: 'runAt', message: 'must be in the future' }]);
-    await deps.authorizer.authorize(tx, actor, 'task.write', resource(parsed.data.target));
+    if (!child) await deps.authorizer.authorize(tx, actor, 'task.write', resource(parsed.data.target));
     const settings = await deps.orgSettings.get(tx, actor.orgId);
     await tx.insert(taskKeySeq).values({ orgId: actor.orgId }).onConflictDoNothing();
     const [counter] = await tx
@@ -106,10 +132,14 @@ export function createTasks(deps: TasksDeps) {
       .where(eq(taskKeySeq.orgId, actor.orgId))
       .returning();
     if (!counter) throw new Error('Missing task counter');
+    const id = randomUUID();
     const [task] = await tx
       .insert(tasks)
       .values({
         ...rest,
+        ...(child ?? {}),
+        id,
+        ...(rest.kind === 'goal' ? { rootTaskId: id } : {}),
         ...(runAt ? { runAt, status: 'scheduled' as const } : {}),
         orgId: actor.orgId,
         key: formatTaskKey(settings.taskKeyPrefix, counter.seq),
@@ -117,13 +147,213 @@ export function createTasks(deps: TasksDeps) {
       })
       .returning();
     if (!task) throw new Error('Missing inserted task');
-    return changed(tx, actor, task, 'task.create');
+    if (task.kind === 'goal')
+      await tx.insert(goalStates).values({
+        rootTaskId: task.id,
+        orgId: actor.orgId,
+        limits: resolveGoalLimits(goalLimits),
+        goalPrompt: task.prompt,
+      });
+    return changed(tx, actor, task, child ? 'task.create_subtask' : 'task.create');
+  }
+
+  const openStatuses = ['scheduled', 'queued', 'claimed', 'running', 'rate_limited'] as const;
+  const isOpen = (status: Task['status']): boolean => (openStatuses as readonly string[]).includes(status);
+
+  async function treeOf(db: DbOrTx, orgId: string, rootTaskId: string): Promise<Task[]> {
+    return db
+      .select()
+      .from(tasks)
+      .where(and(eq(tasks.orgId, orgId), eq(tasks.rootTaskId, rootTaskId)))
+      .orderBy(asc(tasks.createdAt), asc(tasks.key), asc(tasks.id));
+  }
+
+  async function getGoal(db: DbOrTx, orgId: string, rootTaskId: string): Promise<GoalState | undefined> {
+    const [goal] = await db
+      .select()
+      .from(goalStates)
+      .where(and(eq(goalStates.orgId, orgId), eq(goalStates.rootTaskId, rootTaskId)));
+    return goal;
+  }
+
+  async function lockGoal(tx: Tx, orgId: string, rootTaskId: string): Promise<GoalState | undefined> {
+    const [goal] = await tx
+      .select()
+      .from(goalStates)
+      .where(and(eq(goalStates.orgId, orgId), eq(goalStates.rootTaskId, rootTaskId)))
+      .for('update');
+    return goal;
+  }
+
+  async function patchGoal(
+    tx: Tx,
+    orgId: string,
+    rootTaskId: string,
+    patch: Partial<typeof goalStates.$inferInsert>,
+  ): Promise<GoalState> {
+    const [goal] = await tx
+      .update(goalStates)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(and(eq(goalStates.orgId, orgId), eq(goalStates.rootTaskId, rootTaskId)))
+      .returning();
+    if (!goal) throw notFound('goal');
+    await publish(tx, 'task.updated', { orgId, taskId: rootTaskId });
+    return goal;
+  }
+
+  async function cancelOpen(
+    tx: Tx,
+    actor: ActorContext,
+    rootTaskId: string,
+    reason: string,
+    opts: { includeRoot?: boolean; only?: (t: Task) => boolean } = {},
+  ): Promise<Task[]> {
+    const open = (await treeOf(tx, actor.orgId, rootTaskId)).filter(
+      (t) => isOpen(t.status) && (opts.includeRoot || t.id !== rootTaskId) && (opts.only?.(t) ?? true),
+    );
+    const cancelled: Task[] = [];
+    for (const t of open) {
+      const wasActive = t.status === 'claimed' || t.status === 'running';
+      cancelled.push(
+        await update(
+          tx,
+          actor,
+          t.id,
+          { status: 'cancelled', runAt: null, resumeAt: null, error: reason },
+          'task.cancel',
+        ),
+      );
+      if (wasActive)
+        await publish(tx, 'task.cancel_requested', {
+          orgId: actor.orgId,
+          taskId: t.id,
+          previousStatus: t.status,
+        });
+    }
+    return cancelled;
   }
   return {
     createTask(db: Db, actor: ActorContext, input: CreateTaskInput): Promise<Task> {
       return db.transaction((tx) => createIn(tx, actor, input));
     },
-    createTaskIn: createIn,
+    createTaskIn: (tx: Tx, actor: ActorContext, input: CreateTaskInput) => createIn(tx, actor, input),
+    /** Creates a subtask inside a goal tree. Callers (the delegation module) enforce the rules first. */
+    createChildTask: (tx: Tx, actor: ActorContext, input: CreateTaskInput, placement: ChildPlacement) =>
+      createIn(tx, actor, input, placement),
+    getGoalState: getGoal,
+    lockGoalState: lockGoal,
+    updateGoalState: patchGoal,
+    async listGoalStates(db: DbOrTx, orgId: string, statuses?: GoalStatus[]): Promise<GoalState[]> {
+      return db
+        .select()
+        .from(goalStates)
+        .where(and(eq(goalStates.orgId, orgId), statuses ? inArray(goalStates.status, statuses) : undefined))
+        .orderBy(asc(goalStates.createdAt), asc(goalStates.rootTaskId));
+    },
+    async listGoals(db: Db, actor: ActorContext): Promise<{ goal: GoalState; task: Task }[]> {
+      await deps.authorizer.authorize(db, actor, 'read', {});
+      const rows = await db
+        .select()
+        .from(goalStates)
+        .innerJoin(tasks, eq(tasks.id, goalStates.rootTaskId))
+        .where(eq(goalStates.orgId, actor.orgId))
+        .orderBy(asc(goalStates.createdAt), asc(goalStates.rootTaskId));
+      return rows.map((r) => ({ goal: r.goal_states, task: r.tasks }));
+    },
+    listTree: treeOf,
+    async getTaskTree(db: Db, actor: ActorContext, id: string): Promise<{ goal: GoalState; tasks: Task[] }> {
+      const [task] = await db.select().from(tasks).where(where(actor, id));
+      if (!task) throw notFound('task');
+      const rootId = task.rootTaskId ?? task.id;
+      const [root] = await db.select().from(tasks).where(where(actor, rootId));
+      if (!root) throw notFound('task');
+      await deps.authorizer.authorize(db, actor, 'read', resource(root.target));
+      const goal = await getGoal(db, actor.orgId, rootId);
+      if (!goal) throw notFound('goal');
+      return { goal, tasks: await treeOf(db, actor.orgId, rootId) };
+    },
+    async recordResult(tx: Tx, actor: ActorContext, id: string, result: TaskResult): Promise<Task> {
+      const [task] = await tx
+        .update(tasks)
+        .set({ result, updatedAt: new Date() })
+        .where(where(actor, id))
+        .returning();
+      if (!task) throw notFound('task');
+      return changed(tx, actor, task, 'task.result');
+    },
+    cancelOpenTreeTasks: cancelOpen,
+    /** Cancels queued tasks whose dependencies ended without success; they could never be claimed. */
+    async cancelUnrunnable(tx: Tx, actor: ActorContext, rootTaskId: string): Promise<Task[]> {
+      system(actor);
+      const tree = await treeOf(tx, actor.orgId, rootTaskId);
+      const byId = new Map(tree.map((t) => [t.id, t]));
+      const broken = (t: Task): Task | undefined =>
+        t.dependsOn
+          .map((d) => byId.get(d))
+          .find(
+            (d) => d && (terminalStatuses as readonly string[]).includes(d.status) && d.status !== 'done',
+          );
+      const cancelled: Task[] = [];
+      for (const t of tree.filter((x) => x.status === 'queued' || x.status === 'scheduled')) {
+        const dep = broken(t);
+        if (dep)
+          cancelled.push(
+            await update(
+              tx,
+              actor,
+              t.id,
+              { status: 'cancelled', runAt: null, error: `dependency ${dep.key} ${dep.status}` },
+              'task.cancel',
+            ),
+          );
+      }
+      return cancelled;
+    },
+    /** Puts a finished goal task back in the queue for its next leader turn. */
+    async requeueGoalTask(tx: Tx, actor: ActorContext, id: string, prompt: string): Promise<Task> {
+      system(actor);
+      return update(
+        tx,
+        actor,
+        id,
+        { status: 'queued', prompt, attempt: 1, workerId: null, error: null, resumeAt: null, runAt: null },
+        'task.continue',
+      );
+    },
+    /** Forces the goal task into a terminal status when the goal ends outside a leader run. */
+    async finishGoalTask(
+      tx: Tx,
+      actor: ActorContext,
+      id: string,
+      status: 'failed' | 'cancelled',
+      error: string,
+    ): Promise<Task> {
+      system(actor);
+      return update(tx, actor, id, { status, error, resumeAt: null, runAt: null }, 'task.goal_finish');
+    },
+    /** Called by the worker when a leader run ends; moves the goal to waiting unless it was completed. */
+    async endGoalTurn(
+      tx: Tx,
+      actor: ActorContext,
+      rootTaskId: string,
+      turn: { agentId: string; sessionId?: string; failure?: string },
+    ): Promise<GoalState | undefined> {
+      system(actor);
+      const goal = await lockGoal(tx, actor.orgId, rootTaskId);
+      if (!goal || (goal.status !== 'planning' && goal.status !== 'continuing')) return goal;
+      return patchGoal(tx, actor.orgId, rootTaskId, {
+        leaderAgentId: turn.agentId,
+        leaderSessionId: turn.sessionId ?? goal.leaderSessionId,
+        ...(turn.failure
+          ? { status: 'failed' as const, reason: `leader run failed: ${turn.failure}` }
+          : { status: 'waiting' as const }),
+      });
+    },
+    async addGoalNote(tx: Tx, orgId: string, rootTaskId: string, note: GoalNote): Promise<GoalState> {
+      const goal = await lockGoal(tx, orgId, rootTaskId);
+      if (!goal) throw notFound('goal');
+      return patchGoal(tx, orgId, rootTaskId, { notes: [...goal.notes, note].slice(-200) });
+    },
     async hasOpenTaskOfSchedule(tx: Tx, actor: ActorContext, scheduleId: string): Promise<boolean> {
       await deps.authorizer.authorize(tx, actor, 'read', {});
       const [row] = await tx
@@ -221,6 +451,12 @@ export function createTasks(deps: TasksDeps) {
             taskId: id,
             previousStatus: task.status,
           });
+        if (task.kind === 'goal') {
+          const goal = await lockGoal(tx, actor.orgId, task.id);
+          if (goal && goal.status !== 'completed' && goal.status !== 'failed')
+            await patchGoal(tx, actor.orgId, task.id, { status: 'failed', reason: 'cancelled by user' });
+          await cancelOpen(tx, actor, task.id, 'goal cancelled');
+        }
         return cancelled;
       });
     },
@@ -306,13 +542,77 @@ export function createTasks(deps: TasksDeps) {
           and(
             eq(tasks.orgId, actor.orgId),
             eq(tasks.status, 'queued'),
+            sql`(${tasks.eligibility} is null or (${tasks.eligibility}->>'nextCheckAt')::timestamptz <= ${(deps.now?.() ?? new Date()).toISOString()}::timestamptz)`,
+            sql`not exists (select 1 from unnest(${tasks.dependsOn}) as dep(id) where not exists (select 1 from tasks dt where dt.id = dep.id and dt.status = 'done'))`,
             opts.excludeTaskIds?.length ? notInArray(tasks.id, opts.excludeTaskIds) : undefined,
           ),
         )
         .orderBy(asc(tasks.priority), asc(tasks.rank), asc(tasks.createdAt), asc(tasks.id))
         .limit(1)
         .for('update', { skipLocked: true });
-      return task ? update(tx, actor, task.id, { status: 'claimed', workerId }, 'task.claim') : null;
+      if (!task) return null;
+      // Claiming is silent: the worker audits it once it starts a run (recordClaim), so tasks that
+      // keep going back to the queue do not flood the audit log.
+      const [claimed] = await tx
+        .update(tasks)
+        .set({ status: 'claimed', workerId, updatedAt: new Date() })
+        .where(where(actor, task.id))
+        .returning();
+      return claimed ?? null;
+    },
+    async recordClaim(tx: Tx, actor: ActorContext, task: Task): Promise<void> {
+      system(actor);
+      await audit(tx, actor, 'task.claim', task);
+    },
+    /**
+     * Returns a claimed task to the queue because no agent can take it now. Records the reason, schedules
+     * the next check with exponential backoff and audits only when the reason changes.
+     */
+    async markIneligible(
+      tx: Tx,
+      actor: ActorContext,
+      id: string,
+      reason: string,
+      opts: { baseMs: number; maxMs: number; retryAt?: Date },
+    ): Promise<Task> {
+      system(actor);
+      const task = await get(tx, actor, id);
+      if (task.status !== 'claimed') throw conflict('task_not_claimed', 'Only claimed tasks can be released');
+      const now = deps.now?.() ?? new Date();
+      const prev = task.eligibility;
+      const same = prev?.reason === reason;
+      const checks = prev && same ? prev.checks + 1 : 0;
+      let next = now.getTime() + Math.min(opts.baseMs * 2 ** checks, opts.maxMs);
+      if (opts.retryAt && opts.retryAt.getTime() > now.getTime())
+        next = Math.min(next, opts.retryAt.getTime());
+      const eligibility: Eligibility = {
+        reason,
+        checkedAt: now.toISOString(),
+        nextCheckAt: new Date(next).toISOString(),
+        checks,
+      };
+      const values = {
+        status: 'queued' as const,
+        workerId: null,
+        error: `no eligible agent: ${reason}`,
+        eligibility,
+        updatedAt: new Date(),
+      };
+      if (!same) return update(tx, actor, id, values, 'task.ineligible');
+      const [updated] = await tx.update(tasks).set(values).where(where(actor, id)).returning();
+      if (!updated) throw notFound('task');
+      return updated;
+    },
+    /** Makes every waiting task eligible for an immediate re-check after relevant state changed. */
+    async clearEligibility(tx: Tx, actor: ActorContext): Promise<number> {
+      system(actor);
+      const rows = await tx
+        .update(tasks)
+        .set({ eligibility: null })
+        .where(and(eq(tasks.orgId, actor.orgId), eq(tasks.status, 'queued'), isNotNull(tasks.eligibility)))
+        .returning({ id: tasks.id });
+      if (rows.length > 0) await publish(tx, 'task.updated', { orgId: actor.orgId });
+      return rows.length;
     },
     async releaseTask(tx: Tx, actor: ActorContext, id: string, reason?: string): Promise<Task> {
       system(actor);
@@ -352,6 +652,7 @@ export function createTasks(deps: TasksDeps) {
         {
           status,
           error: error ?? null,
+          eligibility: null,
           ...(status === 'rate_limited' ? { resumeAt: opts.resumeAt ?? null } : {}),
         },
         'task.status',

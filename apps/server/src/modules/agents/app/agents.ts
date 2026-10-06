@@ -177,7 +177,7 @@ export function createAgentUseCases(deps: AgentsDeps) {
   }
 
   async function listAgents(
-    db: Db,
+    db: DbOrTx,
     actor: ActorContext,
     filter: { label?: string; groupId?: string; enabled?: boolean } = {},
   ): Promise<AgentDto[]> {
@@ -207,7 +207,7 @@ export function createAgentUseCases(deps: AgentsDeps) {
       );
   }
 
-  async function getAgent(db: Db, actor: ActorContext, id: string): Promise<AgentDto> {
+  async function getAgent(db: DbOrTx, actor: ActorContext, id: string): Promise<AgentDto> {
     const row = await loadAgent(db, actor.orgId, id);
     const groupIds = await groupIdsOfAgent(db, id);
     await deps.authorizer.authorize(db, actor, 'read', { agentId: id, agentGroupIds: groupIds });

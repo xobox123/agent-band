@@ -131,6 +131,53 @@ describe('agents and groups', () => {
   });
 });
 
+describe('goals', () => {
+  it('creates a goal for a leader and serves its tree and the goal list', async () => {
+    const account = (
+      await call('POST', '/accounts', { name: 'acc', provider: 'claude', type: 'cli', configDir: '/tmp/x' })
+    ).json();
+    const leader = (
+      await call('POST', '/agents', { slug: 'boss', name: 'boss', accountId: account.id, role: 'leader' })
+    ).json();
+    const worker = (await call('POST', '/agents', { slug: 'wk', name: 'wk', accountId: account.id })).json();
+    const body = { title: 'Goal', prompt: 'Ship', workDir: '/work', target: { agentId: leader.id } };
+
+    const bad = await call('POST', '/tasks', { ...body, target: { agentId: worker.id }, kind: 'goal' });
+    expect(bad.status).toBe(400);
+    const limitsOnTask = await call('POST', '/tasks', { ...body, goalLimits: { maxRounds: 2 } });
+    expect(limitsOnTask.status).toBe(400);
+
+    const created = await call('POST', '/tasks', {
+      ...body,
+      kind: 'goal',
+      goalLimits: { maxRounds: 2, maxSubtasks: 3, treeTokenBudget: 5000 },
+    });
+    expect(created.status).toBe(201);
+    const goal = created.json();
+    expect(goal).toMatchObject({ kind: 'goal', rootTaskId: goal.id, depth: 0, dependsOn: [], result: null });
+
+    const tree = (await call('GET', `/tasks/${goal.id}/tree`)).json();
+    expect(tree.goal).toMatchObject({
+      rootTaskId: goal.id,
+      status: 'planning',
+      round: 1,
+      treeTokensUsed: 0,
+      limits: { maxRounds: 2, maxSubtasks: 3, treeTokenBudget: 5000 },
+    });
+    expect(tree.tasks.map((t: { id: string; tokens: number }) => [t.id, t.tokens])).toEqual([[goal.id, 0]]);
+    expect(JSON.stringify(tree)).not.toContain('leaderSessionId');
+
+    const goals = (await call('GET', '/goals')).json();
+    expect(goals.items).toHaveLength(1);
+    expect(goals.items[0].task.id).toBe(goal.id);
+    expect((await call('GET', `/tasks/${crypto.randomUUID()}/tree`)).status).toBe(404);
+
+    const plain = (await call('POST', '/tasks', { ...body, target: { agentId: worker.id } })).json();
+    expect((await call('GET', `/tasks/${plain.id}/tree`)).status).toBe(404);
+    expect(plain).toMatchObject({ kind: 'task', rootTaskId: null, eligibilityReason: null });
+  });
+});
+
 describe('policies and skills', () => {
   it('versions policies, binds them and resolves the effective policy', async () => {
     const { agent } = await seedAgent();
@@ -543,6 +590,7 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/board',
   'GET /api/v1/dashboard',
   'GET /api/v1/events',
+  'GET /api/v1/goals',
   'GET /api/v1/me',
   'GET /api/v1/organization',
   'PATCH /api/v1/organization',
@@ -582,6 +630,7 @@ const EXPECTED_ROUTES = [
   'PATCH /api/v1/tasks/{id}',
   'POST /api/v1/tasks/{id}/cancel',
   'POST /api/v1/tasks/{id}/reorder',
+  'GET /api/v1/tasks/{id}/tree',
   'GET /api/v1/teams',
   'POST /api/v1/teams',
   'POST /api/v1/teams/{teamId}/members',

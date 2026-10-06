@@ -44,6 +44,9 @@ import {
   newSkillVersion,
   unassignSkill,
 } from './modules/skills/index.ts';
+import { createDelegation, createOrchestrator } from './modules/delegation/index.ts';
+import { verifyRunToken } from './execution/app/run-auth.ts';
+import { createEffectivePolicySource } from './execution/app/sources.ts';
 import { createRuns } from './modules/runs/index.ts';
 import { createScheduler } from './modules/scheduler/index.ts';
 import { createTasks } from './modules/tasks/index.ts';
@@ -100,6 +103,13 @@ export async function createComposition(opts: CompositionOptions) {
     orgSettings: settings,
     usageOnDay: (db, actor, scope, tz, now, kind) => runs.usageOnDay(db, actor, scope, tz, now, kind),
     runningCount: (db, actor, accountId) => runs.runningCount(db, actor, accountId),
+  });
+  const delegation = createDelegation({ ...deps, tasks, runs, agents, verifyRunToken });
+  const orchestrator = createOrchestrator({
+    ...deps,
+    tasks,
+    runs,
+    policy: createEffectivePolicySource({ bindings: policyBindings }),
   });
   const audit = createAudit(authorizer);
   const events = new EventStream(database);
@@ -180,6 +190,8 @@ export async function createComposition(opts: CompositionOptions) {
     scheduler,
     runs,
     usage,
+    delegation,
+    orchestrator,
     audit,
   };
 }

@@ -46,11 +46,22 @@ export async function startApi(
     },
   );
 
+  const orchestrator = startSchedulerLoop(
+    () => composition.orchestrator.tick(composition.database.db, composition.dispatcher),
+    {
+      ...(config.schedulerIntervalMs ? { intervalMs: config.schedulerIntervalMs } : {}),
+      onError: (err) => {
+        app.log.error({ err }, 'goal orchestrator tick failed');
+      },
+    },
+  );
+
   try {
     await app.listen({ host: '127.0.0.1', port: config.port });
   } catch (err) {
     clearInterval(timer);
     await scheduler.stop();
+    await orchestrator.stop();
     await composition.events.stop();
     await app.close();
     throw err;
@@ -64,6 +75,7 @@ export async function startApi(
     async stop() {
       clearInterval(timer);
       await scheduler.stop();
+      await orchestrator.stop();
       await app.close();
       await composition.events.stop();
     },
