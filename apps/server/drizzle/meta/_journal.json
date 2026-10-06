@@ -50,6 +50,13 @@
       "when": 1791316657470,
       "tag": "0006_t9",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791320576360,
+      "tag": "0007_s2_scheduler",
+      "breakpoints": true
     }
   ]
 }

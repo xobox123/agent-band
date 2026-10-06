@@ -30,6 +30,14 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ AGENT_BAND_WORKER_SLOTS: '0' })).toThrow(/AGENT_BAND_WORKER_SLOTS/);
   });
 
+  it('parses the scheduler interval', () => {
+    expect(loadConfig({}).schedulerIntervalMs).toBe(15_000);
+    expect(loadConfig({ AGENT_BAND_SCHEDULER_INTERVAL_MS: '500' }).schedulerIntervalMs).toBe(500);
+    expect(() => loadConfig({ AGENT_BAND_SCHEDULER_INTERVAL_MS: '5' })).toThrow(
+      /AGENT_BAND_SCHEDULER_INTERVAL_MS/,
+    );
+  });
+
   it('rejects an invalid port', () => {
     expect(() => loadConfig({ AGENT_BAND_PORT: 'abc' })).toThrow(/AGENT_BAND_PORT/);
   });

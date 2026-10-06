@@ -5,6 +5,7 @@ import type { Db } from '../platform/db.ts';
 import type { Tx } from '../platform/tx.ts';
 import type { Action, ResourceRef } from '../modules/org/domain/rbac.ts';
 import type { EffectivePolicy } from '../modules/policy/domain/rules.ts';
+import type { CreateTaskInput } from '../modules/tasks/index.ts';
 
 export type DbOrTx = Db | Tx;
 
@@ -83,6 +84,18 @@ export interface EffectiveSkillsSource {
     skillId: string,
     version: number,
   ): Promise<Record<string, Uint8Array>>;
+}
+
+/** Task operations the scheduler needs, owned by the tasks module. */
+export interface TaskPlanner {
+  createTask(tx: Tx, actor: ActorContext, input: CreateTaskInput): Promise<{ id: string; status: string }>;
+  hasOpenTaskOfSchedule(tx: Tx, actor: ActorContext, scheduleId: string): Promise<boolean>;
+  releaseDueScheduled(tx: Tx, actor: ActorContext, now: Date): Promise<{ id: string }[]>;
+  resumeDueRateLimited(
+    tx: Tx,
+    actor: ActorContext,
+    now: Date,
+  ): Promise<{ resumed: { id: string }[]; exhausted: { id: string }[] }>;
 }
 
 export interface ModuleDeps {

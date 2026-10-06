@@ -9,6 +9,7 @@ import { createComposition } from './composition.ts';
 import { fixedKeySource } from './modules/accounts/index.ts';
 import { openTestDatabase } from './platform/db.ts';
 import { startAll } from './roles/all.ts';
+import { startApi } from './roles/api.ts';
 import { loadConfig } from './platform/config.ts';
 import { start } from './server.ts';
 
@@ -76,6 +77,42 @@ it('role all starts a worker with no active runs and stops it cleanly', async ()
     expect((await fetch(`http://127.0.0.1:${all.api.port}/readyz`)).status).toBe(200);
   } finally {
     await all.stop();
+    await database.close();
+  }
+});
+
+it('role api runs the scheduler loop and stops it with the role', async () => {
+  const database = await openTestDatabase();
+  const home = mkdtempSync(join(tmpdir(), 'ab-sched-'));
+  const config = loadConfig({
+    AGENT_BAND_HOME: home,
+    AGENT_BAND_PORT: String(await freePort()),
+    AGENT_BAND_SCHEDULER_INTERVAL_MS: '100',
+    LOG_LEVEL: 'silent',
+  });
+  const composition = await createComposition({
+    database,
+    home,
+    secretKey: fixedKeySource(Buffer.alloc(32, 7)),
+  });
+  const api = await startApi(config, composition);
+  try {
+    const future = new Date(Date.now() + 400);
+    await composition.tasks.createTask(database.db, composition.localUser, {
+      title: 't',
+      prompt: 'p',
+      workDir: '/w',
+      target: { label: 'x' },
+      runAt: future,
+    });
+    let status = 'scheduled';
+    for (let i = 0; i < 60 && status === 'scheduled'; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      status = (await composition.tasks.listTasks(database.db, composition.localUser))[0]?.status ?? status;
+    }
+    expect(status).toBe('queued');
+  } finally {
+    await api.stop();
     await database.close();
   }
 });

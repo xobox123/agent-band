@@ -1,5 +1,6 @@
 import { z } from 'zod';
 export const taskStatuses = [
+  'scheduled',
   'queued',
   'claimed',
   'running',
@@ -24,9 +25,20 @@ export const CreateTask = z.object({
   priority: z.number().int().min(0).max(3).default(2),
   rank: z.number().default(0),
   mode: z.enum(['read-only', 'edit', 'full-auto']).optional(),
+  runAt: z.date().optional(),
+  scheduleId: z.uuid().optional(),
+  maxAttempts: z.number().int().min(1).max(20).default(3),
 });
 export type CreateTaskInput = z.input<typeof CreateTask>;
-export const boardColumns = ['queued', 'running', 'rate_limited', 'done', 'failed', 'cancelled'] as const;
+export const boardColumns = [
+  'scheduled',
+  'queued',
+  'running',
+  'rate_limited',
+  'done',
+  'failed',
+  'cancelled',
+] as const;
 export function boardColumn(status: TaskStatus): (typeof boardColumns)[number] {
   return status === 'claimed' ? 'running' : status === 'denied' ? 'failed' : status;
 }

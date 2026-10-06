@@ -11,7 +11,7 @@ export interface AllHandle extends RoleHandle {
 
 /** API and worker in one process (local mode). */
 export async function startAll(
-  config: Pick<Config, 'port' | 'logLevel' | 'workerSlots' | 'workerId'>,
+  config: Pick<Config, 'port' | 'logLevel' | 'workerSlots' | 'workerId'> & { schedulerIntervalMs?: number },
   composition: Composition,
   opts: { webDist?: string } = {},
 ): Promise<AllHandle> {

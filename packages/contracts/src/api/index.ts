@@ -9,3 +9,4 @@ export * from './audit.ts';
 export * from './events.ts';
 export * from './policies.ts';
 export * from './skills.ts';
+export * from './schedules.ts';

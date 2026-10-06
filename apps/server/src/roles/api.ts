@@ -4,6 +4,7 @@ import { buildApp } from '../http/app.ts';
 import type { Composition } from '../composition.ts';
 import type { Config } from '../platform/config.ts';
 import { pruneOutbox } from '../platform/outbox.ts';
+import { startSchedulerLoop } from '../modules/scheduler/index.ts';
 import type { RoleHandle } from './types.ts';
 
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
@@ -15,7 +16,7 @@ export interface ApiHandle extends RoleHandle {
 }
 
 export async function startApi(
-  config: Pick<Config, 'port' | 'logLevel'>,
+  config: Pick<Config, 'port' | 'logLevel'> & { schedulerIntervalMs?: number },
   composition: Composition,
   opts: { webDist?: string } = {},
 ): Promise<ApiHandle> {
@@ -35,10 +36,21 @@ export async function startApi(
   const timer = setInterval(prune, PRUNE_INTERVAL_MS);
   timer.unref();
 
+  const scheduler = startSchedulerLoop(
+    () => composition.scheduler.tick(composition.database.db, composition.schedulerActor),
+    {
+      ...(config.schedulerIntervalMs ? { intervalMs: config.schedulerIntervalMs } : {}),
+      onError: (err) => {
+        app.log.error({ err }, 'scheduler tick failed');
+      },
+    },
+  );
+
   try {
     await app.listen({ host: '127.0.0.1', port: config.port });
   } catch (err) {
     clearInterval(timer);
+    await scheduler.stop();
     await composition.events.stop();
     await app.close();
     throw err;
@@ -51,6 +63,7 @@ export async function startApi(
     port,
     async stop() {
       clearInterval(timer);
+      await scheduler.stop();
       await app.close();
       await composition.events.stop();
     },

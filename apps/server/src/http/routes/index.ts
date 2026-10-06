@@ -7,6 +7,7 @@ import { executionRoutes } from './execution.ts';
 import { eventRoutes, type SseOptions } from './events.ts';
 import { orgRoutes } from './org.ts';
 import { policyRoutes } from './policies.ts';
+import { scheduleRoutes } from './schedules.ts';
 import { taskRoutes } from './tasks.ts';
 import { usageRoutes } from './usage.ts';
 
@@ -22,6 +23,7 @@ export async function registerApiRoutes(
       await api.register(accountRoutes(c));
       await api.register(agentRoutes(c));
       await api.register(taskRoutes(c));
+      await api.register(scheduleRoutes(c));
       await api.register(usageRoutes(c));
       await api.register(auditRoutes(c));
       await api.register(eventRoutes(c, sse));

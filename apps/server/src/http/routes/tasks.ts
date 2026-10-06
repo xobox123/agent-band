@@ -48,7 +48,11 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
         },
       },
       async (req, reply) => {
-        const task = await c.tasks.createTask(db, await c.resolveActor(req), req.body);
+        const { runAt, ...body } = req.body;
+        const task = await c.tasks.createTask(db, await c.resolveActor(req), {
+          ...body,
+          ...(runAt ? { runAt: new Date(runAt) } : {}),
+        });
         return reply.code(201).send(taskDto(task));
       },
     );
@@ -122,6 +126,7 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
         return {
           cursor,
           columns: {
+            scheduled: columns.scheduled.map(taskDto),
             queued: columns.queued.map(taskDto),
             running: columns.running.map(taskDto),
             rate_limited: columns.rate_limited.map(taskDto),

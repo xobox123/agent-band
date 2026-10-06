@@ -1,5 +1,6 @@
-import type { RunDto, RunEventDto, TaskDto } from '@agent-band/contracts';
+import type { RunDto, RunEventDto, ScheduleDto, TaskDto } from '@agent-band/contracts';
 import type { Run, RunEvent } from '../modules/runs/index.ts';
+import type { Schedule } from '../modules/scheduler/index.ts';
 import type { Task } from '../modules/tasks/index.ts';
 
 export function taskDto(t: Task): TaskDto {
@@ -15,6 +16,11 @@ export function taskDto(t: Task): TaskDto {
     rank: t.rank,
     mode: t.mode,
     status: t.status,
+    runAt: t.runAt?.toISOString() ?? null,
+    scheduleId: t.scheduleId,
+    attempt: t.attempt,
+    maxAttempts: t.maxAttempts,
+    resumeAt: t.resumeAt?.toISOString() ?? null,
     workerId: t.workerId,
     error: t.error,
     createdBy: t.createdBy,
@@ -48,4 +54,23 @@ export function runDto(r: Run): RunDto {
 
 export function runEventDto(e: RunEvent): RunEventDto {
   return { id: e.id, runId: e.runId, ts: e.ts.toISOString(), kind: e.kind, payload: e.payload };
+}
+
+export function scheduleDto(s: Schedule): ScheduleDto {
+  return {
+    id: s.id,
+    orgId: s.orgId,
+    name: s.name,
+    enabled: s.enabled,
+    cron: s.cron,
+    timezone: s.timezone,
+    template: s.template,
+    overlap: s.overlap,
+    lastFiredAt: s.lastFiredAt?.toISOString() ?? null,
+    lastTaskId: s.lastTaskId,
+    nextFireAt: s.nextFireAt.toISOString(),
+    createdBy: s.createdBy,
+    createdAt: s.createdAt.toISOString(),
+    updatedAt: s.updatedAt.toISOString(),
+  };
 }

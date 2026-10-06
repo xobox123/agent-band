@@ -10,6 +10,7 @@ import { createPrincipal } from './principals.ts';
 
 const LOCAL_HANDLE = 'user:local';
 const DISPATCHER_HANDLE = 'system:dispatcher';
+const SCHEDULER_HANDLE = 'system:scheduler';
 
 async function ensurePrincipal(
   tx: Tx,
@@ -27,9 +28,12 @@ async function ensurePrincipal(
   return (await createPrincipal(tx, { orgId, kind, handle, displayName })).id;
 }
 
-export async function bootstrapLocalOrg(
-  db: Db,
-): Promise<{ orgId: string; localUser: ActorContext; dispatcher: ActorContext }> {
+export async function bootstrapLocalOrg(db: Db): Promise<{
+  orgId: string;
+  localUser: ActorContext;
+  dispatcher: ActorContext;
+  scheduler: ActorContext;
+}> {
   return withTx(db, async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext('org:bootstrap'))`);
     const orgs = await tx.select().from(organizations).orderBy(asc(organizations.createdAt)).limit(1);
@@ -43,6 +47,7 @@ export async function bootstrapLocalOrg(
     const orgId = org.id;
 
     const dispatcherId = await ensurePrincipal(tx, orgId, 'system', DISPATCHER_HANDLE, 'Dispatcher');
+    const schedulerId = await ensurePrincipal(tx, orgId, 'system', SCHEDULER_HANDLE, 'Scheduler');
     const localId = await ensurePrincipal(tx, orgId, 'user', LOCAL_HANDLE, 'Local user');
 
     const owner = await tx
@@ -95,6 +100,7 @@ export async function bootstrapLocalOrg(
       orgId,
       localUser: { orgId, principalId: localId, kind: 'user', requestId: randomUUID() },
       dispatcher: { orgId, principalId: dispatcherId, kind: 'system', requestId: randomUUID() },
+      scheduler: { orgId, principalId: schedulerId, kind: 'system', requestId: randomUUID() },
     };
   });
 }
