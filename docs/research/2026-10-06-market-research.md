@@ -1,0 +1,236 @@
+# Agent Band — research rynku i krytyczny przegląd specyfikacji
+
+Data researchu: **6 października 2026**. Przedmiot: [specyfikacja stage 1, rev 2](../superpowers/specs/2026-10-06-agent-band-design.md).
+
+## 0. Wnioski do decyzji produktowej
+
+- **Warto rozwijać produkt, ale samo „Lens dla wielu agentów” nie wystarczy do sprzedaży.** Równoległe sesje, worktrees, diff i kilka dostawców są już dostępne za darmo. Najbardziej obiecujący kierunek: bezpieczna delegacja pracy Claude Code i Codex, lokalne wykonanie, wspólne reguły i dowód, kto zezwolił na konkretną zmianę.
+- **Największa sprzeczność speca:** obietnica polityki dla każdej akcji, podczas gdy `evaluate()` kontroluje tylko `run.start`, a runner przekazuje flagi CLI. To kontrola dopuszczenia zadania, jeszcze nie egzekwowanie polityki podczas wykonania.
+- **Hash chain jest przydatny, ale nie daje samodzielnie niezależnego dowodu integralności.** Administrator bazy może odtworzyć cały łańcuch; złośliwy lub niekompletny reporter może pominąć zdarzenie. Potrzebne są granice zaufania i zewnętrznie przechowywane punkty kontrolne.
+- **Nie opierać przychodów na agregowaniu konsumenckich subskrypcji.** Rozdzielić opłatę za control plane od rozliczeń dostawców. Użytkownik powinien mieć własną autoryzowaną relację z dostawcą; dla automatyzacji zespołowej wcześnie dodać ścieżkę API/enterprise.
+- **Pierwszy płacący segment: zespoły 5–30 programistów i software house’y**, które używają obu CLI i potrzebują przypisania zmian/kosztów do projektu. Solo developerzy mogą być kanałem adopcji. Duże firmy regulowane wymagają znacznie więcej niż stage 1.
+
+### Metoda i ograniczenia
+
+- Fakty o funkcjach i cenach pochodzą z dokumentacji producentów, repozytoriów oraz publicznych cenników; linki są przy odpowiednich twierdzeniach. Research nie obejmował płatnych testów produktów ani rozmów z klientami.
+- Ceny to publiczne kwoty w USD, zwykle miesięczne; nie należy zakładać, że obejmują podatki, modele i nadwyżki zużycia. „Nie potwierdzono” oznacza brak dowodu w przejrzanych materiałach, nie pewność braku funkcji.
+- Dokumentacja jest aktualizowana dynamicznie. To odczyt dostępnych stron w dniu researchu, nie archiwalna rekonstrukcja ich treści. Niektóre strony dokumentacji Codex przekierowują do ChatGPT Learn.
+- Oceny techniczne i zalecenia są analizą specyfikacji. Interpretacje regulaminów to identyfikacja ryzyk do weryfikacji kontraktowej, nie opinia prawna. Proponowane ceny własnego produktu są hipotezami, nie dowodem gotowości do zapłaty.
+
+## 1. Krytyczny review speca
+
+### 1.1. Regulaminy, automatyzacja i konta
+
+#### Anthropic — rozróżnienia kluczowe dla projektu
+
+Oficjalna strona rozróżnia dwa modele integracji:
+
+- Produkt może uruchamiać niezmodyfikowane Claude Code na warunkach Commercial Terms; nie wolno blokować wbudowanych metod uwierzytelniania. Każdy użytkownik uwierzytelnia się własnymi danymi, a użycie rozlicza bezpośrednio dostawca.
+- Nie wolno zbierać, przechowywać ani pośredniczyć w przekazywaniu danych logowania/session tokens Claude.ai. Logowanie ma odbywać się przez przepływ Anthropic. Strona dopuszcza logowanie użytkownika do oryginalnego Claude Code także na hostowanej platformie, ale odróżnia je od własnej aplikacji kierującej żądania przez subskrypcję użytkownika.
+- Dla produktów wykorzystujących możliwości Claude, w tym Agent SDK, dokumentacja wskazuje uwierzytelnianie API/cloud. Limity Pro/Max zakładają zwykłe, indywidualne użycie. **Nie wynika z tego ani zakaz każdego wrappera, ani zgoda na dowolną farmę agentów.** [Anthropic: legal and compliance](https://code.claude.com/docs/en/legal-and-compliance).
+
+Consumer Terms zabraniają udostępniania konta innym, odsprzedaży usług i obchodzenia zabezpieczeń. Automatyczny dostęp jest ograniczony, z wyjątkiem API lub wyraźnie dozwolonego użycia. Jednocześnie Anthropic dokumentuje programowe `claude -p`; samego trybu headless nie należy utożsamiać z niedozwolonym scrapingiem. [Consumer Terms, §§2–3](https://www.anthropic.com/legal/consumer-terms), [programowe Claude Code](https://code.claude.com/docs/en/headless).
+
+**Rekomendacja dla `Accounts`, `Runner and provider adapters`, `Goal`:** rejestrować powiązanie z instalacją i właścicielem, nie budować magazynu przejętych sesji. Przed płatną dystrybucją uzgodnić konkretny przepływ logowania, uruchamiania i hostowania; wcześnie umożliwić API. Uwzględnić właściwy wariant [Commercial Terms](https://www.anthropic.com/legal/commercial-terms). Warunki CLI i Agent SDK nie powinny być traktowane jako automatycznie identyczne.
+
+#### OpenAI — oficjalna automatyzacja nie jest zgodą na odsprzedaż subskrypcji
+
+- Codex wspiera logowanie ChatGPT oraz API key; dokumentacja wskazuje API key dla programowych workflow CLI, np. CI/CD. Rodzaj logowania wpływa na zasady workspace i przetwarzania danych. [Uwierzytelnianie Codex](https://developers.openai.com/codex/auth).
+- Istnieje oficjalna ścieżka **Sign in with ChatGPT / ChatGPT plan usage** dla aplikacji open source uruchamianych lokalnie. Dokumentacja odsyła aplikacje płatne lub zdalnie hostowane do formularza zainteresowania. To nie jest bezwarunkowe uprawnienie komercyjnego SaaS do korzystania z subskrypcji. Dotyczy tej konkretnej ścieżki integracji; nie dowodzi zakazu każdego lokalnego launchera CLI. [Opis programu](https://developers.openai.com/siwc/token-sharing-open-source).
+- Jest także dokumentowany wariant integracji przez app-server i autoryzowany OAuth, co warto ocenić zamiast kopiowania istniejących plików sesji. [Codex app-server w programie SIWC](https://developers.openai.com/siwc/token-sharing-open-source/codex-app-server).
+- Dla klienta z Polski właściwe są europejskie warunki konsumenckie. Ograniczenia obejmują udostępnianie konta, obchodzenie limitów i automatyczne pozyskiwanie danych/outputu. Trzeba czytać je łącznie z dokumentacją oficjalnego trybu programowego, nie wyprowadzać z nich zakazu `codex exec`. Relacja biznesowa/API podlega odrębnym warunkom. [Europe Terms of Use](https://openai.com/policies/eu-terms-of-use/), [tryb nieinteraktywny](https://developers.openai.com/codex/noninteractive).
+
+**Rekomendacja:** osobno ocenić trzy warianty: uruchamianie CLI użytkownika, własny klient SIWC i API. W specu zapisać wybraną podstawę integracji dla wersji płatnej; nie uznawać technicznie działającego OAuth za licencję na komercjalizację.
+
+#### Wiele kont — model produktu i czerwone linie
+
+| Scenariusz | Ocena ryzyka / decyzja dla speca |
+|---|---|
+| Jeden użytkownik, kilka agentów korzystających z jego uprawnionego konta | Nie utożsamiać liczby agentów z liczbą licencji; respektować współdzielone limity i warunki danego planu. Nie obiecywać „dowolnej” równoległości. |
+| Prywatne i służbowe konto jednej osoby | Uzasadniony przypadek rozdzielenia pracy. Dodać właściciela, organizację, dozwolone repozytoria i zakaz przenoszenia kontekstu między nimi bez jawnej decyzji. |
+| Wiele osób korzysta z jednego konta konsumenckiego | Ryzyko naruszenia zasad udostępniania kont; tego modelu nie oferować. Team/Enterprise też wymaga respektowania przydziału użytkowników i kontraktu. |
+| Automatyczna rotacja kont po wyczerpaniu limitu | Wysokie ryzyko obchodzenia ograniczeń. `target: label` nie może niejawnie stać się takim mechanizmem. Blokada powinna obejmować właściwy limit dostawcy, nie tylko lokalny rekord. |
+| Dwa `Account` wskazują tę samą subskrypcję | `configDir` nie dowodzi odrębności uprawnienia. Deduplikować identyfikator konta/workspace i współdzielić licznik oraz blokadę. |
+| Klient kupuje „pakiet tokenów Claude Max” od Agent Band | Odrzucić model odsprzedaży subskrypcji. Sprzedawać własne zarządzanie, integracje i wsparcie. |
+
+**Granica ustaleń:** w przejrzanych źródłach nie ustalono ogólnego zakazu posiadania kilku kont przez jedną osobę. Istotne są cel, właściciel, sharing, obchodzenie ograniczeń i konkretna umowa. Podstawa oceny: przywołane warunki Anthropic i OpenAI; powyższe mechanizmy produktu są rekomendacjami autora.
+
+### 1.2. Najważniejsze ryzyka techniczne
+
+Priorytety: **P0** — blokuje wiarygodną obietnicę bezpieczeństwa lub bezpieczną betę; **P1** — przed płatnym pilotem; **P2** — przed zespołami/SaaS. Ocena dotyczy projektu, nie potwierdzonych błędów implementacji.
+
+| Priorytet | Sekcja speca | Luka / przykład awarii | Konkretny kierunek poprawki |
+|---|---|---|---|
+| P0 | `Product principles`, `Policy engine` | `run.start` sprawdza katalog startowy, ale proces może odczytać sekret poza nim albo wysłać dane przez shell/MCP. | Oddzielić decyzję polityki od punktu jej egzekwowania. Kontrolować filesystem, sieć, narzędzia i sekrety; określić zakres gwarancji per adapter. |
+| P0 | `Runner and provider adapters` | Claude `bypassPermissions` i Codex `--full-auto` nie reprezentują tej samej polityki. Jedno `mode` zaciera różnice. | Osobne pola dla sandboxa i zatwierdzeń; domyślnie najmniejsze uprawnienia. Brak obsługi wymaganej reguły ma zatrzymywać start, nie pomijać regułę. |
+| P0 | `Policy engine`, `Domain model` | Normalizacja tekstu ścieżki nie zatrzymuje symlinków ani zmiany celu między sprawdzeniem i użyciem. | `realpath` przy walidacji plus egzekwowanie w systemie operacyjnym/sandboxie; testy symlinków i wyścigów. Jasno rozdzielić katalog pracy, dozwolony odczyt i zapis. |
+| P0 | `HTTP API (localhost only)` | Każdy request ma rolę `user:local`. Agent uruchomiony na tym samym hoście może wywołać API i rozszerzyć własną politykę. Loopback nie uwierzytelnia. | Sesja/token UI, kontrola `Host` i `Origin`, CSRF, wąskie CORS; odizolować token i port administracyjny od runnera. Testować także DNS rebinding i dostęp innego lokalnego użytkownika. |
+| P0 | `Domain model: Account`, `Runner` | Proces z dziedziczonym środowiskiem może dostać klucz bazy, klucz szyfrujący albo dane innego konta. Sam oddzielny katalog konfiguracji nie jest sandboxem. | Allowlista zmiennych środowiska; odrębne przestrzenie sekretów. Runner bez uprawnień administracyjnych bazy. Klucz systemowego magazynu poza środowiskiem agenta. |
+| P0 | `Audit`, `Domain model: AuditEvent` | Trigger przeciw UPDATE/DELETE nie zatrzyma administratora, wymiany bazy ani obcięcia końcówki logu. | Nazwać model zagrożeń. Ograniczyć rolę zapisującą; okresowo podpisywać checkpoint i przechowywać go poza modyfikowalną bazą. Opisać, co weryfikacja wykrywa. |
+| P0 | `Audit`, `Product principles` | Stream CLI nie jest dowodem wszystkich operacji systemowych; wejście obcięte do fragmentu nie wystarcza do rekonstrukcji. | Oddzielić „zaobserwowane zdarzenia CLI” od „egzekwowanych decyzji”. Rejestrować luki, utratę streamu i stan kompletności. Nie reklamować pełnego audytu każdej akcji bez instrumentacji. |
+| P1 | `Data and messaging`, `Testing` | Test na PGlite może przejść, mimo że wyścig dwóch prawdziwych połączeń Postgres nadal istnieje. | PGlite do szybkich testów; PostgreSQL 17 w CI dla claimów, blokad, outboxa, limitów i migracji. |
+| P1 | `Process roles`, `Task`, `Run` | `SKIP LOCKED` rozwiązuje pobranie z kolejki, nie awarię po claimie, utratę workera ani podwójny efekt po retry. | Lease, heartbeat, fencing token, idempotency key i reconciler; jawny model co najmniej jednokrotnego wykonania. Stan „wynik nieznany” zamiast ślepego powtórzenia push/deploy. |
+| P1 | `Usage and limits`, `Policy engine` | Dwa workery równocześnie widzą wolny slot i budżet; oba rozpoczynają pracę. | Atomowo rezerwować slot i przewidywany budżet razem z claimem, potem rozliczać. Zdefiniować dopuszczalne przekroczenie. |
+| P1 | `Usage and limits` | Końcowy `result` może nie nadejść po crashu; brak danych nie oznacza zera. Budżet sprawdzany przed startem nie zatrzyma dużego runu. | Rozróżnić pomiar częściowy, końcowy i estymację; deduplikować usage, kontrolować podczas pracy. Twardy cap tylko tam, gdzie istnieje rzeczywisty punkt odcięcia. |
+| P1 | `Data and messaging`, SSE | Outbox + `pg_notify` nie gwarantuje, że rozłączony klient/API dostanie historyczne zdarzenia. | NOTIFY jako sygnał do odczytu trwałych rekordów; `Last-Event-ID`, replay, deduplikacja, retencja i backpressure. |
+| P1 | `AuditEvent` | Równoległe zapisy mogą odczytać ten sam `prevHash`. `bigserial` nie jest gwarancją porządku commitów ani braku luk. | Serializować dopisywanie przez blokowany rekord głowy łańcucha; append i zmiana stanu w jednej transakcji. Kanonizacja i wersja formatu jawnie określone. |
+| P1 | `Task.workDir`, `UI` | Kilka agentów edytuje ten sam checkout; kolizje Git, testów, portów i plików tymczasowych. | Workspace/worktree per run lub jawna blokada współdzielonego katalogu; cykl branch → diff → testy → review → merge. Worktree nie zastępuje izolacji bezpieczeństwa. |
+| P1 | `RunHandle.cancel()`, shutdown | Zabicie procesu nadrzędnego może zostawić procesy potomne; limit czasu nie uwzględnia uśpienia laptopa. | Kontrakt anulowania z potwierdzeniem; grupa procesów, timeout i eskalacja; recovery po restarcie/wybudzeniu. |
+| P1 | `PolicyVersion`, `Run` | Wersjonowane są reguły, ale nie wszystkie parametry wykonania. Nie wiadomo, czy cofnięcie zgody wpływa na aktywny run. | Snapshot efektywnej konfiguracji: reguły, model, wersja CLI, prompt/config digest, repo SHA. Zdefiniować revoke dla runów aktywnych i kolejki. |
+| P2 | `Modular monolith`, `Process roles` | Worker korzystający dziś z use cases i DB nie staje się bezkosztowo bezpiecznym zdalnym runnerem. | Od razu kontrakt dispatch/report/heartbeat, wersjonowanie protokołu i idempotencja; później rejestracja runnera, krótkożyjące credentials, autoryzacja tenantów i tryb offline. |
+| P2 | `Goal`, `Domain model` | Brak tenant/project, właściciela konta, członkostwa i zakresu widoczności audytu. | Ustalić granice organizacji i projektu przed trwałym schematem SaaS; unikatowość slugów w odpowiednim zakresie, izolacja danych i sekretów. |
+| P2 | `Goal: macOS`, `Data and messaging` | Tauri jest wrapperem; nie rozwiązuje cyklu życia Node sidecara, aktualizacji bazy i odzyskiwania danych. | Spike instalatora bez Dockera: sidecar, podpis/notaryzacja, migracja i backup PGlite, odzyskanie po crashu, aktualizacje kompatybilne z CLI. |
+
+Podstawy z dokumentacji dla istotnych korekt:
+
+- Claude zaleca `bypassPermissions` tylko w izolowanym środowisku; `plan` jest trybem pracy narzędzia, a nie uniwersalnym sandboxem systemowym. Sandbox ma osobną konfigurację. [Permissions](https://code.claude.com/docs/en/permissions), [sandboxing](https://code.claude.com/docs/en/sandboxing).
+- Dokumentacja Codex oznacza `--full-auto` jako przestarzałą flagę kompatybilności i wskazuje jawne `--sandbox workspace-write`; szerszy dostęp wymaga kontrolowanego środowiska. **Zmienić spec przed utrwaleniem mapowania trybów.** [Non-interactive mode](https://developers.openai.com/codex/noninteractive).
+- PGlite jest bazą z pojedynczym połączeniem; multiplexer nie daje pełnej równoważności zwykłemu PostgreSQL. Sformułowanie „Real Postgres semantics” w `Testing` jest zbyt szeroką podstawą testu współbieżności. [PGlite Socket — ograniczenia](https://pglite.dev/docs/pglite-socket).
+- PostgreSQL `NOTIFY` dostarcza powiadomienia aktualnie nasłuchującym sesjom, po commit; standardowy payload musi mieć mniej niż 8000 bajtów. Wysyłać identyfikator, nie pełny event. [PostgreSQL 17 NOTIFY](https://www.postgresql.org/docs/17/sql-notify.html).
+
+### 1.3. Telemetria, tożsamość i niejednoznaczności modelu
+
+| Sekcja | Pytanie wymagające decyzji | Propozycja |
+|---|---|---|
+| `Runner`, `UsageSnapshot` | Dlaczego czytać prywatne rollout JSONL dopiero po wykonaniu? Dlaczego okna tylko `5h` i `weekly`? | Codex app-server dokumentuje `account/rateLimits/read`, powiadomienia o zmianach i różne długości/buckety okien. Preferować kontrakt publiczny; fallback JSONL oznaczać jako zależny od wersji. Modelować `limitId`, zakres, długość, reset, źródło i świeżość. [App-server](https://developers.openai.com/codex/app-server). |
+| `Goal`, `Usage and limits` | „Ile limitu zostało” — limit dostawcy czy budżet aplikacji? | Osobne wskaźniki: quota dostawcy, zmierzone tokeny naszych runów, lokalny budżet. Zużycie w innych aplikacjach może zmienić quota; brak snapshotu to „nieznane”. |
+| `Run.cachedTokens`, `costUsd` | Czy cache jest podzbiorem inputu? Czy koszt to faktura czy wycena API? | Osobne pola input/output/cache-read/cache-write, zgodnie z dostawcą; surowy usage. Estymację API i koszt subskrypcji pokazywać odrębnie. Nie sumować ponownie cache zawartego w input. |
+| `Principal`, Git identity | Czy `agent:<slug>` jest poświadczeniem? | To identyfikator logiczny. Zmienne Git można nadpisać; autor commita nie jest dowodem autentyczności. Powiązać agent → inicjujący człowiek → run → decyzja → commit/PR; dla silniejszego dowodu podpisać manifest wykonania. |
+| `Policy engine` | Budżet agenta jest polityką, konta już nie — kto podejmuje ostateczną decyzję? | Wspólny wynik admission z wersją polityki, stanem quota i rezerwacją zasobów. Każdy powód odmowy widoczny i audytowany. Moduły mogą pozostać oddzielne. |
+| `Task.target` | Brak kandydatów to `denied`? Co, jeśli wszyscy są zajęci? | Oddzielić brak uprawnienia, brak zasobu i chwilową niedostępność; deterministyczny wybór, fairness i zapobieganie starvation. Nie przełączać kont bez jawnej reguły. |
+| `Task`, `Run` | Czy task ma wiele prób? Co znaczy `done`? | Dodać attempt, parent/resume session i stan review. Zakończenie procesu nie dowodzi poprawności zadania: osobno testy, diff, zaakceptowanie i merge. |
+| `Agent.role`, `Out of scope` | Czy `leader` i `reviewer` już mają specjalne uprawnienia? | W stage 1 jawnie traktować jako metadane; delegacja później z zakazem rozszerzania uprawnień dziecka ponad zgodę rodzica. |
+| `Accounts`, `Out of scope` | Po co pozwalać tworzyć API account, który zawsze zawiedzie? | Ukryć niedostępny typ albo dodać działający adapter wcześniej. API jest ważne dla produktu płatnego, a nie wyłącznie rozszerzeniem UX. |
+| `Goal: scheduler` | Resume po resecie to nowy run, ponowienie czy dalszy ciąg sesji? | Idempotencja, zachowanie kontekstu, ponowna ocena polityki, timezone/DST, catch-up i brak równoległych wykonań tego samego harmonogramu. |
+
+### 1.4. Dane, licencje i odpowiedzialność
+
+- **`Audit`, `RunEvent`, `Logging`:** argumenty narzędzi, stderr i prompty mogą zawierać hasła, dane klientów oraz dane osobowe. Obcięcie tekstu nie jest redakcją sekretów. Redagować przed utrwaleniem i hashowaniem; surowe artefakty trzymać osobno, z szyfrowaniem i krótszą retencją.
+- **Append-only a RODO:** ustalić podstawę, minimalizację, retencję, uprawnienia do wglądu i procedurę usuwania danych. Hash powiązany z osobą nie jest automatycznie anonimowy. Dla SaaS określić role administratora/podmiotu przetwarzającego, umowy powierzenia i transfery. To wynika z charakteru gromadzonych danych, nie z samej etykiety „agent”. [RODO: art. 5, 17, 25, 28, 32 i rozdział V](https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng).
+- **`Product principles: no telemetry`:** brak własnej telemetrii nie oznacza działania offline ani braku transferu kodu do dostawców modeli. UI powinno pokazywać, które konto/workspace i zasady danych obowiązują. Wybór auth wpływa na tę relację. [Codex authentication](https://developers.openai.com/codex/auth).
+- **Licencje zależności:** nie kopiować implementacji konkurenta bez przeglądu licencji. Claude Squad jest AGPL-3.0; Emdash Apache-2.0. Obowiązki zależą od sposobu wykorzystania, modyfikacji i dystrybucji. [Claude Squad](https://github.com/smtg-ai/claude-squad), [Emdash](https://github.com/generalaction/emdash).
+- **`UI`:** inspiracja układem Lens nie powinna oznaczać kopiowania logo, ikon, materiałów lub kodu. Własna identyfikacja i komponenty. Hash chain nie uprawnia do obietnic „SOC 2 compliant” ani „pełna niezaprzeczalność”.
+- **`Audit`, review kodu:** eksport dowodów powinien pokazywać także błędy, brakujące zdarzenia i niewykonane testy. Przed automatycznym merge/push potrzebna jest jawna polityka ryzyka i odpowiedzialności; samo zakończenie CLI kodem 0 nie jest akceptacją biznesową.
+
+### 1.5. Minimalne warunki gotowości do płatnego pilota
+
+1. Zatwierdzony model integracji dostawców: właściciel konta, autoryzacja, brak pooling/odsprzedaży; działająca ścieżka API lub uzgodniona komercyjna integracja.
+2. Testy egzekwowania: agent nie czyta sekretu innego konta, nie rozszerza polityki przez lokalne API i nie zapisuje poza zakresem; nieobsługiwane ograniczenie kończy start odmową.
+3. Workspace per run, diff i decyzja człowieka przed merge; wyraźne oddzielenie completion od acceptance.
+4. Testy dwóch rzeczywistych połączeń Postgres: claim, slot konta, rezerwacja budżetu, append audytu. Recovery po zabiciu workera między claimem a startem i po efekcie zewnętrznym.
+5. Audyt z udokumentowaną kompletnością, redakcją, eksportem i weryfikatorem; niezależny checkpoint dla płatnej obietnicy dowodowej.
+6. Adaptery z wersjami i macierzą capabilities; fixtures dla błędów, limitów, przerwania i wznowienia. Kontrolowany smoke test obu prawdziwych CLI przed wydaniem — fixtures same nie wykryją driftu dostawcy.
+7. Dashboard rozróżnia quota, lokalny budżet i niepełne pomiary; alarm/odcięcie ma opisany margines przekroczenia.
+
+## 2. Konkurencja
+
+### 2.1. Orkiestracja agentów kodujących
+
+Kolumna „luka” oznacza potencjalny obszar różnicowania Agent Band na podstawie publicznej oferty, nie wynik audytu bezpieczeństwa konkurenta. Koszt modeli zwykle jest dodatkowy.
+
+| Produkt / źródło | Co robi | Publiczna cena | Model wykonania | Luka względem planowanego produktu |
+|---|---|---|---|---|
+| **Conductor** — [cennik](https://www.conductor.build/pricing) | Równoległe agenty; lokalne workspace’y, własne subskrypcje/klucze; płatne cloud, multiplayer i API. | Free $0; Pro $50/mies.; Teams $60/użytk./mies.; Enterprise indywidualnie. | Mac lokalnie + cloud/SaaS. | Enterprise już obejmuje DPA, SAML/SCIM i ustawienia bezpieczeństwa: nie zakładać, że „zespoły” są pustą niszą. W cenniku nie potwierdzono wersjonowanych reguł per agent z kryptograficznym eksportem dowodów. |
+| **Claude Squad** — [repo](https://github.com/smtg-ai/claude-squad) | TUI, tmux, worktrees, wiele CLI, podgląd zmian i zarządzanie sesjami. | $0, OSS AGPL-3.0; modele osobno. | Lokalny. | Publiczny README skupia się na sesjach, nie centralnym egzekwowaniu polityk i wieloużytkownikowym audycie. Mocny darmowy substytut dla solo. |
+| **Vibe Kanban** — [produkt](https://www.vibekanban.com/), [cennik](https://www.vibekanban.com/pricing) | Tablica zadań, praca wielu agentów, review i integracje workflow. | Strona nadal pokazuje Free $0, Pro $30/użytk./mies., Enterprise custom. **Równocześnie ogłasza wygaszanie komercyjnego produktu i utrzymanie społecznościowe OSS.** Nie traktować Pro jako potwierdzonej przyszłej oferty. | Lokalny/OSS; dotychczas także oferta zespołowa. | Ryzyko utrzymania tworzy przestrzeń na wsparcie i migrację. Nie jest dowodem, że samo governance sprzeda się dobrze. |
+| **Sculptor (Imbue)** — [opis producenta, aktualizacja 30.04.2026](https://imbue.com/blog/sculptor-announce) | Agenty w kontenerach, Pairing Mode, synchronizacja z IDE, merge, historia sesji; Claude Code i Codex. | Brak potwierdzonego aktualnego cennika w przejrzanym źródle producenta; nie przyjmować katalogowego „free beta” jako gwarancji. | Desktop Mac/Linux, kontenery. | Izolacja już jest elementem produktu konkurenta. Nie potwierdzono centralnych wersji polityk i zewnętrznie weryfikowalnego audytu; instrukcyjne review kodu to inna warstwa kontroli. |
+| **Terragon** — [produkt i cennik](https://terragon.devdocs.ai/) | Zdalne sandboksy, równoległe zadania, harmonogramy/wyzwalacze, GitHub, Slack, lokalne przejęcie pracy przez CLI. | Core $25/mies.: 3 zadania równolegle, 5 automatyzacji; Pro $50: 10 zadań, automatyzacje bez limitu; Enterprise custom. | SaaS/cloud; Enterprise oferuje własne sandboksy. | Harmonogram nie jest unikalnym wyróżnikiem. Szansa: lokalne egzekwowanie i dowód polityki; deklarowane BYO subskrypcje nie stanowią wykładni regulaminów dostawców. |
+| **Emdash** — [repo](https://github.com/generalaction/emdash) | Desktop, wiele CLI, worktree per task, diff/PR/CI, integracje ticketów i zdalne projekty przez SSH. | $0 za OSS Apache-2.0; własna infrastruktura i modele osobno. | Local-first, macOS/Windows/Linux + własne hosty SSH. | Lokalność, multi-provider i remote execution już dostępne. W README nie potwierdzono wspólnej egzekwowanej polityki i audytu z hash chain. |
+
+**Uwaga identyfikacyjna:** Conductor w tej tabeli to `conductor.build`; wyniki wyszukiwania zwracają również inne produkty o tej nazwie i odmiennych cennikach. Nie mieszać ich ofert.
+
+### 2.2. Governance, obserwowalność i substytuty
+
+| Produkt / źródło | Co robi | Cena | Model | Luka / implikacja dla Agent Band |
+|---|---|---|---|---|
+| **StrongDM / StrongDM ID** — [agent identity](https://discover.strongdm.com/press-staging/strongdm-makes-identity-for-ai-agents-simple-and-scalable?hs_amp=true), [IAM](https://www.strongdm.com/team/iam), [cennik](https://discover.strongdm.com/pricing) | Tożsamość agentów związana ze sponsorem, autoryzacja dostępu do infrastruktury/MCP, JIT i audit. | Wycena sprzedażowa, model per user według strony; bez publicznej kwoty. | Warstwa zarządzania dostępem do infrastruktury klienta. | Silna konkurencja o budżet security. Nie jest przede wszystkim UI task → worktree → diff → merge dla dwóch CLI. Rozważyć integrację zamiast budowy pełnego IAM. |
+| **LiteLLM** — [cennik](https://www.litellm.ai/pricing), [dokumentacja](https://docs.litellm.ai/) | Gateway do modeli, virtual keys, budżety, limity, rozliczenie per user/team; Enterprise dodaje governance. | OSS $0 self-hosted; Enterprise custom wg skali requestów/architektury/wsparcia. | Self-hosted gateway; Enterprise także air-gap. | Sam licznik tokenów i budżety nie są przewagą. Gateway nie zastępuje nadzoru nad filesystemem, procesem i zmianami Git agenta. |
+| **Langfuse** — [cennik](https://langfuse.com/pricing), [model OSS](https://langfuse.com/handbook/chapters/monetization) | Traces, sesje, evals, tokeny/koszty; wyższe plany z funkcjami organizacyjnymi. | Hobby $0; Core $29/mies.; Pro $199; Teams add-on $300; Enterprise $2499/mies.; dodatkowe jednostki płatne. OSS można hostować samodzielnie. | SaaS lub self-hosted. | Historia obserwacji nie jest egzekwowaniem uprawnień. Eksportować tracing do istniejącego narzędzia, nie budować całej platformy evals. |
+| **Natywne CLI i narzędzia dostawców** — [Claude permissions](https://code.claude.com/docs/en/permissions), [Codex app-server](https://developers.openai.com/codex/app-server) | Własne zabezpieczenia, sesje, narzędzia i integracje; gotowe podstawy do programowej obsługi. | W ramach właściwego planu/rozliczenia dostawcy; brak jednej porównywalnej ceny „control plane”. | Lokalne CLI plus ekosystem usług dostawcy. | Najważniejszy substytut: klient może pozostać przy jednym dostawcy. Wartość Agent Band musi wynikać ze wspólnych reguł i dowodów między dostawcami. |
+
+**Dodatkowy sygnał do obserwacji:** HyperTeams Connect reklamuje role, polityki folderów/komend, zatwierdzenia i koszty per osoba/zespół — to bliskie pozycjonowanie. Dostępny materiał to porównanie napisane przez producenta; brak zweryfikowanej ceny i niezależnej walidacji, dlatego nie traktuję go jako równorzędnego dowodu dojrzałości produktu. [Porównanie producenta](https://hyperteams.net/compare/orchestrators).
+
+### 2.3. Co wynika z porównania
+
+- „Wiele agentów”, „lokalnie”, „worktrees”, „harmonogram” i „token dashboard” są już kategoriami funkcji, nie samodzielną przewagą.
+- „Tożsamość + polityka + audyt” również ma konkurencję. Przewaga musi dotyczyć **konkretnej pracy kodującego agenta**, od zlecenia przez wywołanie narzędzia po zaakceptowany commit.
+- Konkurencja pochodzi z dwóch stron: narzędzia developerskie poprawiają bezpieczeństwo, a IAM/gateway dodają obsługę agentów. Samo połączenie ekranów z obu kategorii może być łatwe do skopiowania.
+- Publiczne cenniki dowodzą istnienia ofert płatnych, nie ich sprzedaży ani retencji. W tym researchu nie ustalono wielkości rynku, przychodów konkurentów ani TAM.
+
+## 3. Nisza, klient i powód do zapłaty
+
+### 3.1. Rekomendowane pozycjonowanie
+
+**„Control plane dla zespołów używających Claude Code i Codex: lokalne wykonanie, egzekwowane uprawnienia i dowód każdej zatwierdzonej zmiany.”**
+
+Dopóki instrumentacja jest niepełna, ostatnią część zastąpić uczciwszym: **„wspólna historia wykonania i decyzji”**. Nie reklamować „każdej akcji” na podstawie samego streamu CLI.
+
+| Segment | Użytkownik / płatnik | Konkretny problem | Co kupi | Priorytet i bariera |
+|---|---|---|---|---|
+| Solo power user | Ta sama osoba | Kilka repo, gubienie sesji, konflikty zmian i niewidoczne limity | Wygodna aplikacja Mac, wznowienia, workspaces, przejrzysty koszt i odzyskiwanie pracy | Kanał wejścia; niska skłonność do płacenia za sam audyt wobec darmowej konkurencji. |
+| Zespół 5–30 devów | Dev/tech lead; płatnik CTO/engineering manager | Różne CLI, niejasna odpowiedzialność, ryzyko sekretów i pracy na złym koncie | Wspólne profile polityk, approvals, lokalni runnerzy, historia decyzji, koszty projektowe | **Pierwszy ICP.** Krótsza ścieżka zakupu niż enterprise, mierzalny problem operacyjny. |
+| Software house / agencja | Lead projektu; właściciel/CTO | Mieszanie kont i repo klientów, rozliczenie pracy, przekazanie dowodów | Izolacja klienta/projektu, raport kosztów i zmian, eksport historii do odbioru | Dobry podsegment, jeśli integracja providerów respektuje własność kont. |
+| Firma z compliance | Platform/security engineering; CISO/procurement | Kto upoważnił agenta, co mógł zrobić i czy dowód jest wiarygodny | SSO/SCIM, SIEM, retencja, podpisane checkpoints, odwołanie uprawnień, self-hosting, DPA | Etap późniejszy; długi zakup, wymóg operacyjnego bezpieczeństwa i wsparcia. Sam stage 1 nie wystarczy. |
+
+Powyższa segmentacja jest hipotezą na podstawie luk ofertowych, nie wynikiem wywiadów.
+
+### 3.2. Wyróżniki, które warto budować
+
+1. **Przenośna polityka z jawnym zakresem egzekwowania.** Użytkownik widzi, które reguły runner gwarantuje i które są niedostępne. Nieobsługiwany zakaz nie znika po zmianie Claude → Codex.
+2. **Paczka dowodowa zadania.** Inicjator, agent, konto/workspace, wersja polityki, zatwierdzenia, repo SHA, wynik testów, diff, commit/PR, pomiar kosztu, kompletność i podpisany checkpoint; niezależny weryfikator eksportu.
+3. **Lokalni runnerzy bez centralizowania sekretów konsumenckich.** Do płatnego panelu zespołowego domyślnie trafiają metadane i wybrane dowody; kod/prompty tylko zgodnie z polityką klienta.
+4. **Bezpieczne rozdzielenie projektów i klientów.** Konto, repo, sekrety, ruch sieciowy i uprawnienia są przypisane do projektu, nie zależą od ostatnio użytego terminala.
+5. **Niezawodność i odzyskiwanie.** Uśpienie Maca, restart, utrata streamu i rate limit nie prowadzą do podwójnego push ani fikcyjnego „done”. To bardziej odczuwalna wartość niż sam ekran hashy.
+6. **Powiązanie uprawnień z review.** Osobne role zlecającego i zatwierdzającego; agent nie zatwierdza własnego rozszerzenia zakresu. Łatwy eksport do istniejących SIEM/tracing/IAM zamiast ich zastępowania.
+
+**Co może stać się trwałą przewagą:** utrzymywana macierz zgodności CLI, sprawdzone profile bezpieczeństwa, testy prób obejścia, niezawodny protokół runnera i integracje dowodów z procesem firmy. Algorytm SHA-256 i wygląd Lens takiej przewagi nie tworzą.
+
+### 3.3. Proponowana kolejność produktu
+
+| Etap | Zakres do sprzedania / walidacji | Czego się nauczyć |
+|---|---|---|
+| Localhost, zamknięty pilot | Dwa adaptery, działająca izolacja, workspaces, polityki, redakcja audytu, rzetelne usage, recovery | Czy użytkownik rzeczywiście wraca do panelu i ufa odmowom/raportom? |
+| Aplikacja Mac | Instalacja bez Dockera, Keychain, aktualizacje, backup, powiadomienia; harmonogram z kontrolą uprawnień | Czy wygoda i oszczędność czasu wystarczają do płatności? |
+| Płatny zespół | Wspólne polityki, sponsor/approver, projekty, outbound remote runners, RBAC i eksport | Czy CTO kupuje standaryzację i dowody, a nie tylko kolejne UI? |
+| SaaS / compliance | Tenancy, SSO/SCIM, regiony/retencja, DPA, SIEM, podpisane dowody i kontrakt wsparcia | Czy ekonomika wdrożenia i utrzymania uzasadnia większe kontrakty? |
+
+**Zmiana wobec speca:** API, izolacja i recovery wcześniej; leader agent później. Elementy kontraktu zdalnego runnera projektować teraz, ale nie rozbijać modularnego monolitu na mikroserwisy przed potrzebą.
+
+### 3.4. Hipotezy cenowe i walidacja
+
+Kwoty poniżej są propozycjami testów; nie należy ich przedstawiać jako wyników researchu klientów.
+
+| Pakiet | Hipoteza ceny | Uzasadnienie testu |
+|---|---|---|
+| Personal | Bezpłatny rdzeń; Mac Pro $12–19/mies. albo $99–149/rok | Niska bariera, ale cena wymaga realnej wartości recovery/scheduling wobec darmowych alternatyw. |
+| Team | $25–39 za aktywnego człowieka/mies., minimum $149 za workspace | Płatność za wspólne polityki, approvals, widoczność i dowody. Nie naliczać per chwilowy agent, co zniechęca do głównego workflow. |
+| Enterprise | Płatny pilot z ustalonym zakresem; umowa roczna wyceniana indywidualnie | Koszt integracji, self-hostingu, retencji i wsparcia powinien być jawny; nie obiecywać nieograniczonego przechowywania logów. |
+
+Modele i infrastruktura wykonawcza rozliczane osobno i transparentnie. Testować cenę przez konkretną ofertę pilota, nie pytanie „czy zapłaciłbyś?”.
+
+**Plan weryfikacji przed większą inwestycją:**
+
+- 15 rozmów: 5 solo, 7 leadów małych zespołów/software house’ów, 3 platform/security. Pytać o ostatni rzeczywisty incydent, obecne obejście, koszt i osobę zatwierdzającą zakup.
+- 3 płatne pilotaże po 4 tygodnie, przynajmniej dwa z równoczesnym Claude Code i Codex. Wspólnie określić repozytoria, zakres polityki i oczekiwane raporty.
+- Mierzyć: czas od zadania do zaakceptowanej zmiany, czas review, konflikty, skuteczność recovery, kompletność audytu i różnicę pomiaru usage. Liczba uruchomionych agentów nie jest sama w sobie sukcesem.
+- Proponowany próg kontynuacji: co najmniej 2 z 3 zespołów płacą za kolejny okres, regularnie używają polityk/raportów i wskazują konkretną oszczędność lub redukcję ryzyka. To kryterium eksperymentu, nie prognoza.
+- Jeśli kupują wyłącznie wygodę desktopu, uprościć produkt dla solo. Jeśli kupują dowody i kontrolę, przyspieszyć wersję zespołową. Jeśli nie płacą mimo używania obu CLI, zweryfikować problem przed budową SaaS.
+
+## 4. Dziesięć propozycji nazwy
+
+Nazwy robocze; **nie sprawdzono dostępności domen, znaków towarowych ani konfliktów nazw**. Nie używają znaków Claude/Codex jako własnej marki. Każde pozycjonowanie poniżej opisuje docelowy produkt, nie deklarację gotowych funkcji.
+
+| # | Nazwa | Jednozdaniowe pozycjonowanie |
+|---|---|---|
+| 1 | **Agent Band** | Jedno miejsce do prowadzenia zespołu agentów kodujących, z przypisanymi uprawnieniami i historią pracy. |
+| 2 | **Runward** | Nadzoruj wykonanie zadań AI od pierwszej zgody do zaakceptowanego commita. |
+| 3 | **Fleetmark** | Każdy agent ma właściciela, zakres działania i ślad w historii Twojej floty. |
+| 4 | **CodeSteward** | Deleguj kodowanie agentom z kontrolą dostępu i odpowiedzialnością za wynik. |
+| 5 | **Proofdeck** | Zamieniaj pracę agentów w przeglądalne zmiany i weryfikowalne dowody wykonania. |
+| 6 | **Scopeyard** | Uruchamiaj wielu agentów w jasno wyznaczonych granicach projektu, danych i budżetu. |
+| 7 | **Agent Berth** | Bezpieczne miejsce pracy dla każdego agenta, konta i repozytorium. |
+| 8 | **RunLedger** | Łącz zadania, decyzje o uprawnieniach i koszty agentów w jednej historii wykonania. |
+| 9 | **PermitForge** | Buduj oprogramowanie z agentami, których uprawnienia są jawne, wersjonowane i egzekwowane. |
+| 10 | **CrewTrace** | Koordynuj agentów kodujących i zachowuj czytelny ślad tego, kto zlecił oraz zatwierdził ich pracę. |
+
+**Rekomendacja nazewnicza:** do testów z zespołami wybrać Runward, Fleetmark i Agent Band; dla kierunku compliance sprawdzić Proofdeck. Najpierw zrozumiałość i zapamiętywalność w rozmowach, następnie badanie znaków oraz domen przed inwestycją w markę.
