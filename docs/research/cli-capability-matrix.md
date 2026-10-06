@@ -4,11 +4,11 @@ Research date: 2026-10-06. Scope: the agent-band runner, provider, skills and ru
 
 ## Evidence and version boundaries
 
-| CLI | Baseline | Evidence |
-|---|---|---|
-| Claude Code | [2.1.292](https://github.com/anthropics/claude-code/releases/tag/v2.1.292) | Official documentation read on the research date and published release notes. The CLI implementation is not available in the public repository; exact binary behavior is **unverified**. |
-| OpenAI Codex | [0.160.1](https://github.com/openai/codex/releases/tag/rust-v0.160.1) | Official docs plus source pinned to `rust-v0.160.1`. |
-| Google Gemini | [0.62.0](https://github.com/google-gemini/gemini-cli/releases/tag/v0.62.0) | Official docs plus source pinned to `v0.62.0`. |
+| CLI           | Baseline                                                                   | Evidence                                                                                                                                                                                 |
+| ------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code   | [2.1.292](https://github.com/anthropics/claude-code/releases/tag/v2.1.292) | Official documentation read on the research date and published release notes. The CLI implementation is not available in the public repository; exact binary behavior is **unverified**. |
+| OpenAI Codex  | [0.160.1](https://github.com/openai/codex/releases/tag/rust-v0.160.1)      | Official docs plus source pinned to `rust-v0.160.1`.                                                                                                                                     |
+| Google Gemini | [0.62.0](https://github.com/google-gemini/gemini-cli/releases/tag/v0.62.0) | Official docs plus source pinned to `v0.62.0`.                                                                                                                                           |
 
 Unless a narrower version is stated, each CLI section uses this baseline. **Source-verified** means inspected implementation at the pinned tag; **docs-verified** means a documented contract, not an executed test. **Inference** identifies adapter recommendations. **Unverified** identifies missing evidence, conflicting documentation or runtime behavior not exercised. Live documentation can move independently of a release.
 
@@ -53,7 +53,13 @@ For shell subprocesses, the native sandbox supplies filesystem/network restricti
 `PreToolUse` can deny a call with exit code 2 and a reason on stderr, or a successful JSON response:
 
 ```json
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Policy service unavailable"}}
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "Policy service unavailable"
+  }
+}
 ```
 
 Inject `hooks/hooks.json` in a generated plugin loaded with `--plugin-dir`, or use per-session `--settings`. No write to the user's settings is required. Hook coverage excludes `EndConversation`; other customization mechanisms must also be controlled. Sources: [hook protocol](https://code.claude.com/docs/en/hooks), [plugin layout](https://code.claude.com/docs/en/plugins-reference).
@@ -238,31 +244,48 @@ Cells describe the strongest verified native mechanism for the stated scope, not
 
 “Not possible” for a duration limit means no verified native whole-run wall-clock deadline in the examined interfaces; a comprehensive absence claim is **unverified**, and the external runner can enforce it. “Enforceable via hook” requires a functioning hook and covered tool; it does not promise fail-closed infrastructure failures.
 
-| Policy rule | Claude Code 2.1.292 | Codex 0.160.1 | Gemini 0.62.0 |
-|---|---|---|---|
-| workDirs | admission only [^c-dir] | admission only [^o-dir] | admission only [^g-dir] |
-| maxMode | enforced by CLI [^c-mode] | enforced by CLI [^o-mode] | enforced by CLI [^g-mode] |
-| allowedTools | enforced by CLI [^c-tools] | enforceable via hook [^o-tools] | enforced by CLI [^g-tools] |
-| deniedTools | enforced by CLI [^c-tools] | enforceable via hook [^o-tools] | enforced by CLI [^g-tools] |
-| maxRunMinutes | not possible [^c-time] | not possible [^o-time] | not possible [^g-time] |
-| allowedSkillIds | admission only [^c-skills] | admission only [^o-skills] | admission only [^g-skills] |
-| network | enforced by CLI [^c-net] | enforced by CLI [^o-net] | enforced by CLI [^g-net] |
+| Policy rule     | Claude Code 2.1.292        | Codex 0.160.1                   | Gemini 0.62.0              |
+| --------------- | -------------------------- | ------------------------------- | -------------------------- |
+| workDirs        | admission only [^c-dir]    | admission only [^o-dir]         | admission only [^g-dir]    |
+| maxMode         | enforced by CLI [^c-mode]  | enforced by CLI [^o-mode]       | enforced by CLI [^g-mode]  |
+| allowedTools    | enforced by CLI [^c-tools] | enforceable via hook [^o-tools] | enforced by CLI [^g-tools] |
+| deniedTools     | enforced by CLI [^c-tools] | enforceable via hook [^o-tools] | enforced by CLI [^g-tools] |
+| maxRunMinutes   | not possible [^c-time]     | not possible [^o-time]          | not possible [^g-time]     |
+| allowedSkillIds | admission only [^c-skills] | admission only [^o-skills]      | admission only [^g-skills] |
+| network         | enforced by CLI [^c-net]   | enforced by CLI [^o-net]        | enforced by CLI [^g-net]   |
 
 [^c-dir]: [CLI working-directory/tool controls](https://code.claude.com/docs/en/cli-reference) and [sandbox read/write policy](https://code.claude.com/docs/en/sandboxing). Admission checks belong to agent-band; restricted built-in file tools and shell sandboxing have different coverage.
+
 [^o-dir]: [Shared cwd/add-dir options](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/utils/cli/src/shared_options.rs) and [filesystem policy](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/protocol/src/permissions.rs). Write roots do not imply equivalent read roots.
+
 [^g-dir]: [Sandbox profiles](https://github.com/google-gemini/gemini-cli/blob/v0.62.0/docs/cli/sandbox.md). Default permissive-open is not a complete root jail.
+
 [^c-mode]: [Permission modes](https://code.claude.com/docs/en/permissions). Plan/acceptEdits alone do not prove OS read-only/edit confinement; apply restricted tools and sandbox settings.
+
 [^o-mode]: [Sandbox and approval options](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/utils/cli/src/shared_options.rs). Requires supported sandbox and no escape escalation.
+
 [^g-mode]: [Approval modes](https://github.com/google-gemini/gemini-cli/blob/v0.62.0/packages/cli/src/config/config.ts) and [policy resolution](https://github.com/google-gemini/gemini-cli/blob/v0.62.0/docs/reference/policy-engine.md). Explicit deny rules/sandbox supplement plan.
+
 [^c-tools]: [Tool flags](https://code.claude.com/docs/en/cli-reference). Use `--tools` for built-ins and explicit MCP denial; `--allowedTools` alone is autoapproval, not an allowlist. EndConversation/customization exceptions remain.
+
 [^o-tools]: [Hook coverage and configuration](https://developers.openai.com/codex/hooks) and [deny processing](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/hooks/src/events/pre_tool_use.rs). Hosted web search and write_stdin are not universally gated; errors can fail open.
+
 [^g-tools]: [Native TOML policy engine](https://github.com/google-gemini/gemini-cli/blob/v0.62.0/docs/reference/policy-engine.md). Compile deny/default rules at a controlled priority; an allowed shell retains its subprocess capabilities.
+
 [^c-time]: [CLI option reference](https://code.claude.com/docs/en/cli-reference). Turn/spend limits are not a verified elapsed-time deadline.
+
 [^o-time]: [Exec options](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/exec/src/cli.rs). Cancellation must come from the runner; hook timeouts do not bound run duration.
+
 [^g-time]: [Headless limits](https://github.com/google-gemini/gemini-cli/blob/v0.62.0/docs/cli/headless.md). Max-turn failure is not a wall-clock deadline.
+
 [^c-skills]: [Skill discovery and permissions](https://code.claude.com/docs/en/skills), [session plugin loading](https://code.claude.com/docs/en/plugins-reference). Agent-band filters IDs/hashes before materialization; native discovery must then be constrained.
+
 [^o-skills]: [Discovery](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/ext/skills/src/loader/discovery.rs), [enable/disable config](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/config/src/skills_config.rs). Native paths/names do not enforce library IDs or immutable hashes.
+
 [^g-skills]: [Skill roots/activation](https://github.com/google-gemini/gemini-cli/blob/v0.62.0/docs/cli/skills.md). Admission filters library IDs; exclusive effective discovery remains unverified.
+
 [^c-net]: [Shell sandbox network controls](https://code.claude.com/docs/en/sandboxing). Only supported sandboxed subprocesses; hook/model/MCP traffic needs separate consideration.
+
 [^o-net]: [Sandbox config](https://developers.openai.com/codex/config-advanced), [Linux backend](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/linux-sandbox/README.md). Applies to the configured executor boundary, not every model/MCP connection.
+
 [^g-net]: [Sandbox profiles/backends](https://github.com/google-gemini/gemini-cli/blob/v0.62.0/docs/cli/sandbox.md). Requires a restrictive/proxied or controlled-container network configuration; default sandboxing leaves network available.

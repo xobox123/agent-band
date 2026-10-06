@@ -505,6 +505,31 @@ From `docs/research/2026-10-06-market-research.md`:
   Each membership add/remove is its own transaction; a bulk "set members"
   replaces the membership in one transaction.
 
+## Decisions from CLI research (ChatGPT report 003)
+
+See `docs/research/cli-capability-matrix.md`.
+
+- **workDirs** is enforced in three layers and the UI says which apply per
+  provider: admission (task workDir), CLI sandbox where available (Codex
+  `workspace-write` limits writes to the workspace), and our pre-tool hook
+  for path-bearing tools (Claude Read/Edit/Write/Glob/Grep paths checked
+  against the effective workDirs). Reads outside workDirs through shell
+  commands are not enforced in stage 1 and are shown as such.
+- **Fail closed**: the hook script is ours. If the agent-band API is
+  unreachable, times out (5 s) or returns invalid data, the hook denies the
+  tool call. A crash of the CLI's own hook runner is outside our control and
+  is documented as a known limitation.
+- **Deadline**: the runner enforces `maxRunMinutes` and cancels the whole
+  process group, not only the direct child.
+- **Codex custom providers**: Codex 0.160 accepts only the Responses wire
+  API, so the `openai_compatible` account form accepts `wireApi: "responses"`
+  only in stage 1; a chat-completions proxy is a later option.
+- **Accounts without a detectable identity** are not deduplicated
+  automatically; the account page shows a warning and an admin can set the
+  provider identity manually (audited).
+- **Codex usage pool**: Codex web (ChatGPT) and Codex CLI share one usage
+  pool per ChatGPT account; the dashboard shows them as one account.
+
 ## Out of scope for stage 1
 
 Scheduler, leader orchestration, API adapters, multi-user auth, remote
