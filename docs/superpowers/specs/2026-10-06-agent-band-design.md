@@ -425,6 +425,28 @@ From `docs/research/2026-10-06-market-research.md`:
   bundle per task (initiator, agent, policy version, approvals, repo SHA,
   tests, diff, cost), API-key adapters earlier than planned.
 
+## Decisions from UI review (ChatGPT report 001)
+
+- Task priority is `P0`..`P3` (stored 0..3, P0 highest, default P2) plus a
+  `rank` (double precision) for manual order inside a priority. Dragging a
+  card inside Queued changes only `rank`; priority is changed from the card
+  menu or the details panel. Only queued tasks can be reordered.
+- Budget days use `Organization.timezone` (IANA name, default the host's
+  timezone).
+- A label or group task with no eligible agent stays `queued` and the card
+  shows "no eligible agent" with the reason; it becomes `denied` only when
+  every candidate is denied by policy.
+- SSE supports replay: every event carries `id` = outbox id and the server
+  honours `Last-Event-ID`.
+- Audit verify accepts an optional `fromSeq`/`toSeq` range and returns the
+  range checked; export accepts the same filters as the list plus a `toSeq`
+  bound so an export is a consistent snapshot.
+- Policy name and description are editable in place; rules changes always
+  create a new version.
+- For API accounts the UI shows only `hasSecret` and `secretUpdatedAt`.
+- Form validation limits proposed in `docs/ui/screens.md` are accepted as the
+  starting point; the zod contracts in `packages/contracts` are authoritative.
+
 ## Out of scope for stage 1
 
 Scheduler, leader orchestration, API adapters, multi-user auth, remote
