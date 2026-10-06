@@ -24,6 +24,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     requestIdHeader: 'x-request-id',
     genReqId: () => randomUUID(),
     forceCloseConnections: true,
+    bodyLimit: 16 * 1024 * 1024,
   });
 
   registerPlatform(app, { database: options.database ?? options.composition?.database });

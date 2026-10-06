@@ -5,6 +5,7 @@ import { agentRoutes } from './agents.ts';
 import { auditRoutes } from './audit.ts';
 import { eventRoutes, type SseOptions } from './events.ts';
 import { orgRoutes } from './org.ts';
+import { policyRoutes } from './policies.ts';
 import { taskRoutes } from './tasks.ts';
 import { usageRoutes } from './usage.ts';
 
@@ -23,7 +24,7 @@ export async function registerApiRoutes(
       await api.register(usageRoutes(c));
       await api.register(auditRoutes(c));
       await api.register(eventRoutes(c, sse));
-      // T7 (policy, skills): register the policy and skills route plugins here.
+      await api.register(policyRoutes(c));
     },
     { prefix: '/api/v1' },
   );

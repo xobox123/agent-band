@@ -139,5 +139,6 @@ it('publishes changes, filters lists, and rejects terminal transitions', async (
   expect((await database.db.select().from(outboxEvents)).map((e) => e.type)).toEqual([
     'task.updated',
     'task.updated',
+    'task.cancel_requested',
   ]);
 });

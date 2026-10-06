@@ -19,6 +19,7 @@ import {
   UserList,
 } from '@agent-band/contracts';
 import type { Composition } from '../../composition.ts';
+import { requirePolicy } from '../guards.ts';
 import { getOrganization, setOrgPolicy, updateOrganization } from '../../modules/org/index.ts';
 
 export function orgRoutes(c: Composition): FastifyPluginCallbackZod {
@@ -57,7 +58,11 @@ export function orgRoutes(c: Composition): FastifyPluginCallbackZod {
           response: { 200: OrganizationDto },
         },
       },
-      async (req) => setOrgPolicy(db, await c.resolveActor(req), req.body),
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        await requirePolicy(c, actor.orgId, req.body.policyId);
+        return setOrgPolicy(db, actor, req.body);
+      },
     );
 
     app.get(

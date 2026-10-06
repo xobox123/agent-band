@@ -14,6 +14,7 @@ import {
   UpdateGroupBody,
 } from '@agent-band/contracts';
 import type { Composition } from '../../composition.ts';
+import { requirePolicy } from '../guards.ts';
 
 export function agentRoutes(c: Composition): FastifyPluginCallbackZod {
   const db = c.database.db;
@@ -45,7 +46,9 @@ export function agentRoutes(c: Composition): FastifyPluginCallbackZod {
         },
       },
       async (req, reply) => {
-        const agent = await c.agents.createAgent(db, await c.resolveActor(req), req.body);
+        const actor = await c.resolveActor(req);
+        await requirePolicy(c, actor.orgId, req.body.policyId);
+        const agent = await c.agents.createAgent(db, actor, req.body);
         return reply.code(201).send(agent);
       },
     );
@@ -69,7 +72,11 @@ export function agentRoutes(c: Composition): FastifyPluginCallbackZod {
           response: { 200: AgentDto },
         },
       },
-      async (req) => c.agents.updateAgent(db, await c.resolveActor(req), req.params.id, req.body),
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        await requirePolicy(c, actor.orgId, req.body.policyId);
+        return c.agents.updateAgent(db, actor, req.params.id, req.body);
+      },
     );
 
     app.delete(
@@ -110,7 +117,9 @@ export function agentRoutes(c: Composition): FastifyPluginCallbackZod {
         },
       },
       async (req, reply) => {
-        const group = await c.groups.createGroup(db, await c.resolveActor(req), req.body);
+        const actor = await c.resolveActor(req);
+        await requirePolicy(c, actor.orgId, req.body.policyId);
+        const group = await c.groups.createGroup(db, actor, req.body);
         return reply.code(201).send(group);
       },
     );
@@ -126,7 +135,11 @@ export function agentRoutes(c: Composition): FastifyPluginCallbackZod {
           response: { 200: AgentGroupDto },
         },
       },
-      async (req) => c.groups.updateGroup(db, await c.resolveActor(req), req.params.id, req.body),
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        await requirePolicy(c, actor.orgId, req.body.policyId);
+        return c.groups.updateGroup(db, actor, req.params.id, req.body);
+      },
     );
 
     app.delete(

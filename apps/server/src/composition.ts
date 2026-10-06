@@ -21,13 +21,34 @@ import {
   authorizer,
   bootstrapLocalOrg,
   getOrganization,
+  setOrgPolicy,
   orgSettings,
   orgUseCases,
   principalRegistry,
 } from './modules/org/index.ts';
+import {
+  createPolicy,
+  getEffectivePolicy,
+  getPolicy,
+  listPolicies,
+  policyExists,
+  updatePolicy,
+} from './modules/policy/index.ts';
+import {
+  assignSkill,
+  getEffectiveSkills,
+  getSkill,
+  importSkill,
+  listSkillAssignments,
+  listSkills,
+  newSkillVersion,
+  unassignSkill,
+} from './modules/skills/index.ts';
 import { createRuns } from './modules/runs/index.ts';
 import { createTasks } from './modules/tasks/index.ts';
 import { createUsage } from './modules/usage/index.ts';
+
+const BASELINE_POLICY_NAME = 'Default';
 
 export type ResolveActor = (request: FastifyRequest) => ActorContext | Promise<ActorContext>;
 
@@ -43,6 +64,7 @@ export interface CompositionOptions {
 /** All use cases wired to real port implementations. Routes and roles depend only on this. */
 export async function createComposition(opts: CompositionOptions) {
   const { database } = opts;
+  const db = database.db;
   const boot = await bootstrapLocalOrg(database.db);
 
   const secretKey = opts.secretKey ?? envOrFileKeySource({ home: opts.home });
@@ -71,8 +93,46 @@ export async function createComposition(opts: CompositionOptions) {
   const audit = createAudit(authorizer);
   const events = new EventStream(database);
 
-  // T7 (policy, skills): build the policy and skills use cases here, with `policyBindings`,
-  // `agentMembership` and the authorizer, and expose them on the returned object.
+  const policies = {
+    create: (actor: ActorContext, input: Parameters<typeof createPolicy>[3]) =>
+      createPolicy(db, deps, actor, input),
+    update: (actor: ActorContext, id: string, input: Parameters<typeof updatePolicy>[4]) =>
+      updatePolicy(db, deps, actor, id, input),
+    get: (actor: ActorContext, id: string) => getPolicy(db, deps, actor, id),
+    list: (actor: ActorContext) => listPolicies(db, deps, actor),
+    exists: (orgId: string, id: string) => policyExists(db, orgId, id),
+    effectiveFor: (orgId: string, agentId: string) =>
+      getEffectivePolicy(db, agentId, { orgId, bindings: policyBindings }),
+  };
+  const skills = {
+    import: (actor: ActorContext, input: Parameters<typeof importSkill>[3]) =>
+      importSkill(db, deps, actor, input),
+    newVersion: (actor: ActorContext, id: string, input: Parameters<typeof newSkillVersion>[4]) =>
+      newSkillVersion(db, deps, actor, id, input),
+    get: (actor: ActorContext, id: string) => getSkill(db, deps, actor, id),
+    list: (actor: ActorContext) => listSkills(db, deps, actor),
+    assign: (actor: ActorContext, input: Parameters<typeof assignSkill>[3]) =>
+      assignSkill(db, deps, actor, input),
+    unassign: (actor: ActorContext, id: string) => unassignSkill(db, deps, actor, id),
+    listAssignments: (actor: ActorContext, filter?: { skillId?: string }) =>
+      listSkillAssignments(db, deps, actor, filter),
+    effectiveFor: (orgId: string, agentId: string) =>
+      getEffectiveSkills(db, agentId, { orgId, membership: agentMembership }),
+  };
+
+  // Secure default: the org gets a baseline policy capping the mode at "edit" (once, audited).
+  const org = await getOrganization(db, boot.orgId);
+  if (org.policyId === null) {
+    const existing = await policies.list(boot.dispatcher);
+    if (!existing.some((p) => p.name === BASELINE_POLICY_NAME)) {
+      const baseline = await policies.create(boot.dispatcher, {
+        name: BASELINE_POLICY_NAME,
+        description: 'Organization baseline',
+        rules: { maxMode: 'edit' },
+      });
+      await setOrgPolicy(db, boot.dispatcher, { policyId: baseline.id });
+    }
+  }
 
   const resolveActor: ResolveActor = (request) => {
     const local: ActorContext = { ...boot.localUser, requestId: request.id };
@@ -97,6 +157,9 @@ export async function createComposition(opts: CompositionOptions) {
       policyBindings,
     },
     listProviders,
+    deps,
+    policies,
+    skills,
     org: orgUseCases,
     accounts,
     agents,
