@@ -8,8 +8,13 @@ interface Props {
 export function LimitBar({ value, label, title }: Props) {
   if (value === null) {
     return (
-      <span className="limit-bar dim" title={title}>
-        {label}: No snapshot
+      <span
+        role="img"
+        className="limit-bar dim"
+        title={title ?? `${label}: no snapshot`}
+        aria-label={`${label}: No snapshot`}
+      >
+        No data
       </span>
     );
   }

@@ -1,3 +1,4 @@
+import type { DashboardDto } from '@agent-band/contracts';
 import { useState } from 'react';
 import { useApi } from '../../api/context.tsx';
 import { AgentHoverCard } from '../../components/AgentHoverCard.tsx';
@@ -5,12 +6,79 @@ import { EmptyState } from '../../components/EmptyState.tsx';
 import { LimitBar } from '../../components/LimitBar.tsx';
 import { Resource } from '../../components/Resource.tsx';
 import { StatusDot } from '../../components/StatusDot.tsx';
+import { Table } from '../../components/Table.tsx';
+import type { Column } from '../../components/Table.tsx';
 import { Toolbar } from '../../components/Toolbar.tsx';
 import { useResource } from '../../hooks/useResource.ts';
 import { useItemCount } from '../../layout/WorkspaceContext.tsx';
 import { formatTime } from '../../lib/format.ts';
 import { exactCount } from '../board/format.ts';
 import { AgentDetails } from '../agents/AgentDetails.tsx';
+
+type AgentRow = DashboardDto['agents'][number];
+
+function agentColumns(
+  d: DashboardDto,
+  accountOf: (id: string) => DashboardDto['accounts'][number]['account'] | undefined,
+  open: (id: string) => void,
+): Column<AgentRow>[] {
+  return [
+    {
+      id: 'name',
+      header: 'Agent',
+      sortValue: (r) => r.agent.name,
+      cell: ({ agent, status, runningRunId }) => (
+        <AgentHoverCard
+          agent={{
+            ...agent,
+            status,
+            provider: accountOf(agent.accountId)?.provider,
+            accountName: accountOf(agent.accountId)?.name,
+            runningRunId,
+          }}
+          onOpen={open}
+        />
+      ),
+    },
+    { id: 'role', header: 'Role', sortValue: (r) => r.agent.role, cell: (r) => r.agent.role },
+    {
+      id: 'model',
+      header: 'Model',
+      sortValue: (r) => r.agent.model ?? '',
+      cell: (r) => r.agent.model ?? 'Provider default',
+    },
+    {
+      id: 'account',
+      header: 'Account',
+      sortValue: (r) => accountOf(r.agent.accountId)?.name ?? '',
+      cell: (r) => accountOf(r.agent.accountId)?.name ?? 'Deleted account',
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (r) => r.status,
+      cell: (r) => <StatusDot kind="agent" value={r.status} />,
+    },
+    {
+      id: 'tokens',
+      header: 'Tokens today',
+      sortValue: (r) => r.tokensToday,
+      cell: (r) => exactCount(r.tokensToday),
+    },
+    {
+      id: 'run',
+      header: 'Current run',
+      cell: (r) => {
+        const run = d.runningRuns.find((x) => x.id === r.runningRunId);
+        return run ? (
+          <span className="mono">{`${run.id.slice(0, 8)} since ${formatTime(run.startedAt)}`}</span>
+        ) : (
+          <span className="dim">None</span>
+        );
+      },
+    },
+  ];
+}
 
 export function DashboardScreen() {
   const api = useApi();
@@ -46,75 +114,75 @@ export function DashboardScreen() {
                   <div className="panel">
                     <h3>Tokens today</h3>
                     <strong>{exactCount(d.tokensToday)}</strong>
+                    {d.cachedTokensToday > 0 ? (
+                      <span className="dim">{`+ ${exactCount(d.cachedTokensToday)} cached`}</span>
+                    ) : null}
                     <span className="dim">Usage may update during a run</span>
                   </div>
                 </div>
                 <h2 className="section-title section-pad">Accounts</h2>
                 <div className="cards" aria-label="Accounts">
-                  {d.accounts.map(({ account, windows, tokensToday, runningRuns, blockedUntil }) => {
-                    const budget = account.limits.dailyTokenBudget;
-                    return (
-                      <article key={account.id} className="panel" aria-label={`Account ${account.name}`}>
-                        <div className="panel-row">
-                          <strong>{account.name}</strong>
-                          <span className="chip">{`${account.provider} / ${account.type}`}</span>
-                        </div>
-                        {(['5h', 'weekly'] as const).map((w) => {
-                          const win = windows.find((x) => x.window === w);
-                          return (
-                            <div key={w} className="panel-row">
-                              <span>{w === '5h' ? '5h window' : 'Weekly window'}</span>
-                              <LimitBar
-                                value={win ? win.usedPercent : null}
-                                label={`${account.name} ${w}`}
-                                title={win?.resetsAt ? `Resets ${formatTime(win.resetsAt)}` : undefined}
-                              />
-                            </div>
-                          );
-                        })}
-                        <div className="panel-row">
-                          <span>Tokens today</span>
-                          <span>
-                            {budget
-                              ? `${exactCount(tokensToday)} / ${exactCount(budget)}`
-                              : `${exactCount(tokensToday)} (no budget set)`}
-                          </span>
-                        </div>
-                        <div className="panel-row">
-                          <span>Active runs</span>
-                          <span>{`${String(runningRuns)} / ${String(account.limits.maxConcurrentRuns)}`}</span>
-                        </div>
-                        <div className="panel-row">
-                          <span>Block</span>
-                          {blockedUntil ? (
-                            <StatusDot kind="indicator" value="rate_limited" />
-                          ) : (
-                            <span className="dim">Not blocked</span>
-                          )}
-                          {blockedUntil ? <span>{`until ${formatTime(blockedUntil)}`}</span> : null}
-                        </div>
-                      </article>
-                    );
-                  })}
+                  {d.accounts.map(
+                    ({ account, windows, tokensToday, cachedTokensToday, runningRuns, blockedUntil }) => {
+                      const budget = account.limits.dailyTokenBudget;
+                      return (
+                        <article key={account.id} className="panel" aria-label={`Account ${account.name}`}>
+                          <div className="panel-row">
+                            <strong>{account.name}</strong>
+                            <span className="chip">{`${account.provider} / ${account.type}`}</span>
+                          </div>
+                          {(['5h', 'weekly'] as const).map((w) => {
+                            const win = windows.find((x) => x.window === w);
+                            return (
+                              <div key={w} className="panel-row">
+                                <span>{w === '5h' ? '5h window' : 'Weekly window'}</span>
+                                <LimitBar
+                                  value={win ? win.usedPercent : null}
+                                  label={`${account.name} ${w}`}
+                                  title={win?.resetsAt ? `Resets ${formatTime(win.resetsAt)}` : undefined}
+                                />
+                              </div>
+                            );
+                          })}
+                          <div className="panel-row">
+                            <span>Tokens today</span>
+                            <span className="tokens-cell">
+                              {budget
+                                ? `${exactCount(tokensToday)} / ${exactCount(budget)}`
+                                : `${exactCount(tokensToday)} (no budget set)`}
+                              {cachedTokensToday > 0 ? (
+                                <span className="dim">{`+ ${exactCount(cachedTokensToday)} cached`}</span>
+                              ) : null}
+                            </span>
+                          </div>
+                          <div className="panel-row">
+                            <span>Active runs</span>
+                            <span>{`${String(runningRuns)} / ${String(account.limits.maxConcurrentRuns)}`}</span>
+                          </div>
+                          <div className="panel-row">
+                            <span>Block</span>
+                            {blockedUntil ? (
+                              <StatusDot kind="indicator" value="rate_limited" />
+                            ) : (
+                              <span className="dim">Not blocked</span>
+                            )}
+                            {blockedUntil ? <span>{`until ${formatTime(blockedUntil)}`}</span> : null}
+                          </div>
+                        </article>
+                      );
+                    },
+                  )}
                 </div>
                 <h2 className="section-title section-pad">Agents</h2>
-                <ul className="plain-list section-pad" aria-label="Agents">
-                  {d.agents.map(({ agent, status, runningRunId }) => (
-                    <li key={agent.id} className="panel-row">
-                      <AgentHoverCard
-                        agent={{
-                          ...agent,
-                          status,
-                          provider: accountOf(agent.accountId)?.provider,
-                          accountName: accountOf(agent.accountId)?.name,
-                          runningRunId,
-                        }}
-                        onOpen={setAgentId}
-                      />
-                      <StatusDot kind="agent" value={status} />
-                    </li>
-                  ))}
-                </ul>
+                <div className="section-pad">
+                  <Table
+                    label="Agents"
+                    columns={agentColumns(d, accountOf, setAgentId)}
+                    rows={d.agents}
+                    getRowId={(row) => row.agent.id}
+                    defaultSort={{ columnId: 'name', direction: 'asc' }}
+                  />
+                </div>
               </>
             );
           }}

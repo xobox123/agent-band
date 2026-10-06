@@ -31,12 +31,20 @@ function setup(events?: EventsClient) {
     'GET /dashboard': {
       cursor: 12,
       accounts: [
-        { account: accountDto(), windows: [], tokensToday: 4200, runningRuns: 1, blockedUntil: null },
+        {
+          account: accountDto(),
+          windows: [],
+          tokensToday: 4200,
+          cachedTokensToday: 0,
+          runningRuns: 1,
+          blockedUntil: null,
+        },
       ],
-      agents: [{ agent: agentDto(), status: 'running', runningRunId: ID(41) }],
+      agents: [{ agent: agentDto(), status: 'running', runningRunId: ID(41), tokensToday: 0 }],
       runningRuns: [],
       queuedCount: 2,
       tokensToday: 4200,
+      cachedTokensToday: 0,
     },
     'POST /tasks': taskDto(),
     'POST /tasks/00000000-0000-4000-8000-000000000030/cancel': taskDto({ status: 'cancelled' }),

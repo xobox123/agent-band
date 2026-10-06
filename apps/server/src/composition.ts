@@ -87,7 +87,7 @@ export async function createComposition(opts: CompositionOptions) {
   const usage = createUsage({
     ...deps,
     orgSettings: settings,
-    usageOnDay: (db, actor, scope, tz, now) => runs.usageOnDay(db, actor, scope, tz, now),
+    usageOnDay: (db, actor, scope, tz, now, kind) => runs.usageOnDay(db, actor, scope, tz, now, kind),
     runningCount: (db, actor, accountId) => runs.runningCount(db, actor, accountId),
   });
   const audit = createAudit(authorizer);

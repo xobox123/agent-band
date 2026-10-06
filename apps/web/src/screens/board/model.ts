@@ -87,9 +87,14 @@ export function viewOf(task: Task, lookup: Lookup): TaskView {
   } else assignee = `Deleted agent ${task.target.agentId}`;
 
   const labels: TaskView['labels'] = [];
-  if (task.target.type === 'label') labels.push({ text: task.target.label, tip: 'Target label' });
+  const addLabel = (text: string, tip: string) => {
+    const existing = labels.find((l) => l.text === text);
+    if (existing) existing.tip = `${existing.tip}, ${tip.toLowerCase()}`;
+    else labels.push({ text, tip });
+  };
+  if (task.target.type === 'label') addLabel(task.target.label, 'Target label');
   for (const label of run ? (agent?.labels ?? []) : []) {
-    labels.push({ text: label, tip: `Agent label (${agent?.name ?? ''})` });
+    addLabel(label, `Agent label (${agent?.name ?? ''})`);
   }
 
   const account = run

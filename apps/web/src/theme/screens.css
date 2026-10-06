@@ -134,6 +134,19 @@
   padding: 0 16px 16px;
 }
 
+.section-pad .table-wrap {
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.tokens-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
 .table-plain {
   width: 100%;
   border-collapse: collapse;
@@ -201,4 +214,16 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.section-title.section-pad {
+  padding-bottom: 0;
+}
+
+.section-title + .cards {
+  padding-top: 8px;
+}
+
+.section-title + .section-pad {
+  padding-top: 8px;
 }

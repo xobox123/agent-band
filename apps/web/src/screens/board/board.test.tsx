@@ -5,6 +5,7 @@ import { createMockDataSource } from '../../data/mock.ts';
 import type { BoardDataSource } from '../../data/source.ts';
 import type { NewTask, Priority } from '../../data/types.ts';
 import { evaluateDrop } from './dnd.ts';
+import { buildLookup, viewOf } from './model.ts';
 import { BoardScreen } from './BoardScreen.tsx';
 
 function setup() {
@@ -227,5 +228,31 @@ describe('evaluateDrop', () => {
     expect(
       evaluateDrop(mk({ status: 'failed' }), 'l', { kind: 'column', column: 'queued', laneKey: 'l' }).kind,
     ).toBe('reject');
+  });
+});
+
+describe('label dedupe and column strip', () => {
+  it('merges a target label equal to an agent label into one chip', async () => {
+    const snapshot = await createMockDataSource({ live: false, latencyMs: 0 }).load({
+      text: '',
+      agentId: null,
+      label: null,
+      accountId: null,
+    });
+    const lookup = buildLookup(snapshot);
+    const task = snapshot.tasks.find((t) => t.runId && snapshot.agents.some((a) => a.labels.length > 0));
+    const agent = snapshot.agents.find((a) => a.labels.length > 0);
+    if (!task || !agent) throw new Error('fixture missing');
+    const label = agent.labels[0] ?? '';
+    const view = viewOf({ ...task, target: { type: 'label', label } }, lookup);
+    expect(view.labels.filter((l) => l.text === label)).toHaveLength(1);
+  });
+
+  it('shows per-column counts in a strip and expands Cancelled from it', async () => {
+    setup();
+    await ready();
+    const strip = screen.getByRole('navigation', { name: 'Board columns' });
+    fireEvent.click(within(strip).getByRole('button', { name: /^Cancelled/ }));
+    expect(within(column('Cancelled')).getByRole('article', { name: /^AB-20 / })).toBeInTheDocument();
   });
 });

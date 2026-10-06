@@ -135,6 +135,6 @@ describe('Avatar and LimitBar', () => {
     const { rerender } = render(<LimitBar value={42} label="5h" />);
     expect(screen.getByRole('progressbar', { name: '5h' })).toHaveAttribute('aria-valuenow', '42');
     rerender(<LimitBar value={null} label="5h" />);
-    expect(screen.getByText('5h: No snapshot')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '5h: No snapshot' })).toBeInTheDocument();
   });
 });

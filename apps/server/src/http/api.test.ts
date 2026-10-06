@@ -245,7 +245,7 @@ describe('tasks, runs and dashboard', () => {
         kind: 'usage',
         inputTokens: 10,
         outputTokens: 5,
-        cachedTokens: 0,
+        cachedTokens: 7,
       }),
     );
 
@@ -257,10 +257,16 @@ describe('tasks, runs and dashboard', () => {
 
     const dash = (await call('GET', '/dashboard')).json();
     expect(dash.tokensToday).toBe(15);
+    expect(dash.cachedTokensToday).toBe(7);
     expect(dash.queuedCount).toBe(0);
     expect(dash.runningRuns.length).toBe(1);
     expect(dash.agents[0]).toMatchObject({ status: 'running', runningRunId: run.id });
-    expect(dash.accounts[0]).toMatchObject({ runningRuns: 1, tokensToday: 15, blockedUntil: null });
+    expect(dash.accounts[0]).toMatchObject({
+      runningRuns: 1,
+      tokensToday: 15,
+      cachedTokensToday: 7,
+      blockedUntil: null,
+    });
   });
 });
 

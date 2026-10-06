@@ -20,6 +20,7 @@ export interface UsageDeps extends ModuleDeps {
     scope: UsageScope,
     timezone: string,
     now: Date,
+    kind?: 'billable' | 'cached',
   ): Promise<number>;
   runningCount(db: DbOrTx, actor: ActorContext, accountId: string): Promise<number>;
 }
@@ -54,9 +55,17 @@ export function createUsage(deps: UsageDeps) {
       .where(and(eq(accountBlocks.orgId, actor.orgId), eq(accountBlocks.accountId, accountId)));
     return blockingReset(await latest(tx, actor, accountId), explicit?.until ?? null, now);
   }
-  async function tokens(tx: Tx, actor: ActorContext, scope: UsageScope, now: Date) {
+  async function tokens(
+    tx: Tx,
+    actor: ActorContext,
+    scope: UsageScope,
+    now: Date,
+    kind: 'billable' | 'cached' = 'billable',
+  ) {
     const { timezone } = await deps.orgSettings.get(tx, actor.orgId);
-    return deps.usageOnDay(tx, actor, scope, timezone, now);
+    return kind === 'cached'
+      ? deps.usageOnDay(tx, actor, scope, timezone, now, kind)
+      : deps.usageOnDay(tx, actor, scope, timezone, now);
   }
   return {
     async recordWindows(
@@ -94,6 +103,17 @@ export function createUsage(deps: UsageDeps) {
       return db.transaction(async (tx) => {
         await authorize(tx, actor, 'read', scope);
         return tokens(tx, actor, scope, now);
+      });
+    },
+    async cachedTokensToday(
+      db: Db,
+      actor: ActorContext,
+      scope: UsageScope,
+      now = new Date(),
+    ): Promise<number> {
+      return db.transaction(async (tx) => {
+        await authorize(tx, actor, 'read', scope);
+        return tokens(tx, actor, scope, now, 'cached');
       });
     },
     async blockAccount(tx: Tx, actor: ActorContext, accountId: string, until: Date): Promise<void> {
