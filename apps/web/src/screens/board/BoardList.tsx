@@ -1,8 +1,9 @@
-import { Avatar } from '../../components/Avatar.tsx';
+import { AgentHoverCard } from '../../components/AgentHoverCard.tsx';
 import { StatusDot } from '../../components/StatusDot.tsx';
 import { Table } from '../../components/Table.tsx';
 import type { Column } from '../../components/Table.tsx';
 import { compactCount, exactCount } from './format.ts';
+import { hoverInfoOf } from './model.ts';
 import type { TaskView } from './model.ts';
 
 interface Props {
@@ -10,9 +11,10 @@ interface Props {
   now: number;
   selectedId: string | null;
   onOpen: (taskId: string) => void;
+  onOpenAgent: (agentId: string) => void;
 }
 
-export function BoardList({ views, now, selectedId, onOpen }: Props) {
+export function BoardList({ views, now, selectedId, onOpen, onOpenAgent }: Props) {
   const columns: Column<TaskView>[] = [
     {
       id: 'key',
@@ -34,8 +36,13 @@ export function BoardList({ views, now, selectedId, onOpen }: Props) {
       header: 'Assignee / target',
       cell: (v) => (
         <span className="card-assignee">
-          {v.agent ? <Avatar name={v.agent.name} avatar={v.agent.avatar} size={18} /> : null}
-          {v.assignee}
+          {v.agent ? (
+            <AgentHoverCard agent={hoverInfoOf(v.agent, v.agentAccount)} onOpen={onOpenAgent} size={18}>
+              <span>{v.assignee}</span>
+            </AgentHoverCard>
+          ) : (
+            v.assignee
+          )}
         </span>
       ),
     },

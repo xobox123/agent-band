@@ -1,9 +1,7 @@
-// Local mirror of the domain types. T10 replaces these with @agent-band/contracts.
+// Board view models. Status enums and DTOs come from @agent-band/contracts; src/data/adapt.ts maps DTOs here.
+import type { AgentStatus, RunStatus, TaskStatus } from '@agent-band/contracts';
 
-export type TaskStatus =
-  'queued' | 'claimed' | 'running' | 'done' | 'failed' | 'rate_limited' | 'cancelled' | 'denied';
-
-export type RunStatus = 'running' | 'done' | 'failed' | 'rate_limited' | 'cancelled';
+export type { AgentStatus, RunStatus, TaskStatus };
 
 /** 0 is highest (P0), 3 is lowest (P3). Default is 2. */
 export type Priority = 0 | 1 | 2 | 3;
@@ -66,12 +64,15 @@ export interface Agent {
   labels: string[];
   groupIds: string[];
   avatar: AvatarSpec | null;
+  /** Dashboard status; derived from enabled when the dashboard is unavailable. */
+  status: AgentStatus;
+  runningRunId: string | null;
 }
 
 export interface Account {
   id: string;
   name: string;
-  provider: 'claude' | 'codex' | 'api';
+  provider: string;
   dailyTokenBudget: number | null;
   tokensToday: number;
 }
@@ -103,4 +104,13 @@ export interface BoardSnapshot {
 
 export interface BoardEvent {
   cursor: string;
+}
+
+export interface NewTask {
+  title: string;
+  prompt: string;
+  workDir: string;
+  target: TaskTarget;
+  priority: Priority;
+  mode?: 'read-only' | 'edit' | 'full-auto';
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { parseAvatar } from '../data/adapt.ts';
 import type { AvatarSpec } from '../data/types.ts';
 
 const COLORS = ['av-1', 'av-2', 'av-3', 'av-4', 'av-5', 'av-6', 'av-7', 'av-8'];
@@ -20,12 +21,13 @@ export function colorOf(name: string): string {
 
 interface Props {
   name: string;
-  avatar?: AvatarSpec | null;
+  avatar?: AvatarSpec | string | null;
   size?: number;
 }
 
-export function Avatar({ name, avatar, size = 22 }: Props) {
+export function Avatar({ name, avatar: avatarProp, size = 22 }: Props) {
   const [broken, setBroken] = useState(false);
+  const avatar = typeof avatarProp === 'string' ? parseAvatar(avatarProp) : avatarProp;
   const url = avatar?.url && /^https?:\/\//.test(avatar.url) && !broken ? avatar.url : null;
   const color = avatar?.color && COLORS.includes(avatar.color) ? avatar.color : colorOf(name);
   const initials = avatar?.initials ?? initialsOf(name);

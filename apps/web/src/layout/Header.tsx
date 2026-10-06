@@ -3,7 +3,7 @@ import { StatusDot } from '../components/StatusDot.tsx';
 interface Props {
   title: string;
   count: number | null;
-  connection: 'connected' | 'reconnecting';
+  connection: 'connecting' | 'connected' | 'reconnecting';
 }
 
 export function Header({ title, count, connection }: Props) {

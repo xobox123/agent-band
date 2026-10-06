@@ -15,6 +15,7 @@ interface Props {
   onOpen: (taskId: string) => void;
   onSetPriority: (taskId: string, priority: Priority) => void;
   onCancel: (taskId: string) => void;
+  onOpenAgent: (agentId: string) => void;
 }
 
 export const NO_LANE = '__all';

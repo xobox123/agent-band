@@ -1,4 +1,5 @@
 import type { Account, Agent, AgentGroup, BoardSnapshot, Priority, Run, Task } from '../../data/types.ts';
+import type { AgentHoverInfo } from '../../components/AgentHoverCard.tsx';
 import { formatDuration } from './format.ts';
 
 export type ColumnId = 'queued' | 'running' | 'rate_limited' | 'done' | 'failed' | 'cancelled';
@@ -61,6 +62,8 @@ export interface TaskView {
   run: Run | undefined;
   agent: Agent | undefined;
   account: Account | undefined;
+  /** Account the assignee agent is bound to. */
+  agentAccount: Account | undefined;
   /** Assignee name or target description. */
   assignee: string;
   /** True when assignee is an actual or explicit agent (avatar applies). */
@@ -102,6 +105,7 @@ export function viewOf(task: Task, lookup: Lookup): TaskView {
     run,
     agent,
     account,
+    agentAccount: agent ? lookup.accounts.get(agent.accountId) : undefined,
     assignee,
     hasAgent: agent !== undefined,
     labels,
@@ -119,4 +123,19 @@ export function laneOf(view: TaskView): { key: string; name: string } {
   return view.agent
     ? { key: view.agent.id, name: view.agent.name }
     : { key: '__unassigned', name: 'Unassigned targets' };
+}
+
+export function hoverInfoOf(agent: Agent, account: Account | undefined): AgentHoverInfo {
+  return {
+    id: agent.id,
+    name: agent.name,
+    handle: agent.handle,
+    avatar: agent.avatar,
+    model: agent.model,
+    role: agent.role,
+    status: agent.status,
+    provider: account?.provider,
+    accountName: account?.name,
+    runningRunId: agent.runningRunId,
+  };
 }

@@ -13,6 +13,9 @@ import { useNow } from '../../hooks/useNow.ts';
 import { useItemCount, useWorkspace } from '../../layout/WorkspaceContext.tsx';
 import { BoardColumns } from './BoardColumns.tsx';
 import { BoardList } from './BoardList.tsx';
+import { AgentDetails } from '../agents/AgentDetails.tsx';
+import { RunLog } from '../runs/RunLog.tsx';
+import { NewTaskForm } from './NewTaskForm.tsx';
 import { TaskDetails } from './TaskDetails.tsx';
 import { evaluateDrop } from './dnd.ts';
 import type { DropTarget } from './dnd.ts';
@@ -39,6 +42,8 @@ export function BoardScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [agentDetailsId, setAgentDetailsId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -194,11 +199,7 @@ export function BoardScreen() {
     if (!v.run) return;
     openDock({
       title: `Run log: ${v.task.key}`,
-      body: (
-        <p className="dim">
-          {`Run ${v.run.id} (${v.run.status}). Log streaming is not available on mock data.`}
-        </p>
-      ),
+      body: <RunLog key={v.run.id} runId={v.run.id} />,
     });
   };
 
@@ -227,7 +228,15 @@ export function BoardScreen() {
       <EmptyState title="No tasks yet. Create your first task." />
     );
   } else if (view === 'list') {
-    content = <BoardList views={views} now={now} selectedId={selectedId} onOpen={setSelectedId} />;
+    content = (
+      <BoardList
+        views={views}
+        now={now}
+        selectedId={selectedId}
+        onOpen={setSelectedId}
+        onOpenAgent={setAgentDetailsId}
+      />
+    );
   } else {
     content = (
       <BoardColumns
@@ -240,6 +249,7 @@ export function BoardScreen() {
         onOpen={setSelectedId}
         onSetPriority={onSetPriority}
         onCancel={onCancel}
+        onOpenAgent={setAgentDetailsId}
       />
     );
   }
@@ -247,7 +257,13 @@ export function BoardScreen() {
   return (
     <div className="board">
       <Toolbar label="Board toolbar">
-        <button type="button" className="btn btn-primary" disabled title="Task creation is not available yet">
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => {
+            setCreating(true);
+          }}
+        >
           New task
         </button>
         <FilterInput
@@ -335,7 +351,15 @@ export function BoardScreen() {
         </div>
       ) : null}
       <div className="board-content">{content}</div>
-      {selectedView ? (
+      {agentDetailsId ? (
+        <AgentDetails
+          agentId={agentDetailsId}
+          onClose={() => {
+            setAgentDetailsId(null);
+          }}
+        />
+      ) : null}
+      {selectedView && !agentDetailsId ? (
         <TaskDetails
           view={selectedView}
           now={now}
@@ -346,6 +370,20 @@ export function BoardScreen() {
           onCancel={onCancel}
           onSetPriority={onSetPriority}
           onOpenLogs={openLogs}
+        />
+      ) : null}
+      {creating ? (
+        <NewTaskForm
+          agents={snapshot?.agents ?? []}
+          groups={snapshot?.groups ?? []}
+          onCancel={() => {
+            setCreating(false);
+          }}
+          onSubmit={async (task) => {
+            await source.createTask(task);
+            setCreating(false);
+            reload();
+          }}
         />
       ) : null}
       {confirmView ? (

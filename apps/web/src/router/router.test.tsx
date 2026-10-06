@@ -2,6 +2,7 @@ import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App.tsx';
 import { createMockDataSource } from '../data/mock.ts';
+import { list, testApi } from '../test-utils.tsx';
 import { ALL_ITEMS, parseHash } from './routes.ts';
 
 const source = () => createMockDataSource({ live: false, latencyMs: 0 });
@@ -38,11 +39,19 @@ describe('router', () => {
     expect(ALL_ITEMS).toHaveLength(11);
   });
 
-  it('renders a placeholder for unimplemented screens and follows hash changes', async () => {
+  it('renders the selected screen and follows hash changes', async () => {
     window.location.hash = '#/agents';
-    render(<App dataSource={source()} />);
+    const { api } = testApi({
+      'GET /agents': list([]),
+      'GET /accounts': list([]),
+      'GET /agent-groups': list([]),
+      'GET /policies': list([]),
+      'GET /runs': list([]),
+      'GET /audit': { items: [], nextCursor: null, cursor: 0 },
+    });
+    render(<App dataSource={source()} api={api} />);
     expect(screen.getByRole('heading', { level: 1, name: 'Agents' })).toBeInTheDocument();
-    expect(screen.getByText('The Agents screen is not implemented yet.')).toBeInTheDocument();
+    expect(await screen.findByText('No agents yet. Create an agent.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Agents' })).toHaveAttribute('aria-current', 'page');
 
     await act(async () => {
@@ -54,7 +63,14 @@ describe('router', () => {
   });
 
   it('navigates with Alt+digit shortcuts', async () => {
-    render(<App dataSource={source()} />);
+    const { api } = testApi({
+      'GET /agents': list([]),
+      'GET /accounts': list([]),
+      'GET /agent-groups': list([]),
+      'GET /policies': list([]),
+      'GET /runs': list([]),
+    });
+    render(<App dataSource={source()} api={api} />);
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit3', altKey: true, bubbles: true }));
       await Promise.resolve();

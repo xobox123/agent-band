@@ -3,7 +3,7 @@ import type { Agent, BoardFilter, Run, Task } from './types.ts';
 export function matchesFilter(
   task: Task,
   run: Run | undefined,
-  agents: Map<string, Agent>,
+  agents: Map<string, Pick<Agent, 'id' | 'labels' | 'accountId'>>,
   filter: BoardFilter,
 ): boolean {
   const text = filter.text.trim().toLowerCase();

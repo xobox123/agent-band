@@ -5,6 +5,7 @@ import './theme/theme.css';
 import './theme/layout.css';
 import './theme/components.css';
 import './theme/board.css';
+import './theme/screens.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root element');

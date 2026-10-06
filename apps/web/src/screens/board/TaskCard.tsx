@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Avatar } from '../../components/Avatar.tsx';
+import { AgentHoverCard } from '../../components/AgentHoverCard.tsx';
 import { Badge } from '../../components/Badge.tsx';
 import { StatusDot } from '../../components/StatusDot.tsx';
 import type { Priority } from '../../data/types.ts';
-import { CANCELLABLE, PRIORITIES } from './model.ts';
+import { CANCELLABLE, PRIORITIES, hoverInfoOf } from './model.ts';
 import type { TaskView } from './model.ts';
 import { compactCount, exactCount } from './format.ts';
 import { targetKey } from './dndApi.ts';
@@ -19,6 +19,7 @@ interface Props {
   onOpen: (taskId: string) => void;
   onSetPriority: (taskId: string, priority: Priority) => void;
   onCancel: (taskId: string) => void;
+  onOpenAgent: (agentId: string) => void;
 }
 
 export function TaskCard({
@@ -31,6 +32,7 @@ export function TaskCard({
   onOpen,
   onSetPriority,
   onCancel,
+  onOpenAgent,
 }: Props) {
   const { task, run } = view;
   const [menu, setMenu] = useState(false);
@@ -167,8 +169,13 @@ export function TaskCard({
         </div>
       ) : null}
       <div className="card-assignee">
-        {view.agent ? <Avatar name={view.agent.name} avatar={view.agent.avatar} /> : null}
-        <span>{view.assignee}</span>
+        {view.agent ? (
+          <AgentHoverCard agent={hoverInfoOf(view.agent, view.agentAccount)} onOpen={onOpenAgent}>
+            <span>{view.assignee}</span>
+          </AgentHoverCard>
+        ) : (
+          <span>{view.assignee}</span>
+        )}
       </div>
       {view.labels.length > 0 ? (
         <ul className="chips" aria-label="Labels">
