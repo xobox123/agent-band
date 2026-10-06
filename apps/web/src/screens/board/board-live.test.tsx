@@ -71,6 +71,7 @@ describe('Board new task form', () => {
         target: { type: 'label', label: 'backend' },
         priority: 1,
         mode: 'edit',
+        maxAttempts: 3,
       });
     });
     await waitFor(() => {

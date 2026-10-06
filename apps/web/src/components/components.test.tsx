@@ -10,6 +10,7 @@ import type { Column } from './Table.tsx';
 
 describe('StatusDot', () => {
   const expected: Record<string, [string, string]> = {
+    'task:scheduled': ['Scheduled', '--accent'],
     'task:queued': ['Queued', '--muted'],
     'task:claimed': ['Claimed', '--warn'],
     'task:running': ['Running', '--ok'],

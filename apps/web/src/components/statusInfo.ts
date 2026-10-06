@@ -3,11 +3,12 @@ export type StatusKind = 'task' | 'run' | 'agent' | 'user' | 'indicator';
 export interface StatusInfo {
   label: string;
   /** CSS custom property name of the dot colour. */
-  token: '--ok' | '--warn' | '--crit' | '--muted' | '--text-dim';
+  token: '--ok' | '--accent' | '--warn' | '--crit' | '--muted' | '--text-dim';
 }
 
 const TABLE: Record<StatusKind, Record<string, StatusInfo>> = {
   task: {
+    scheduled: { label: 'Scheduled', token: '--accent' },
     queued: { label: 'Queued', token: '--muted' },
     claimed: { label: 'Claimed', token: '--warn' },
     running: { label: 'Running', token: '--ok' },

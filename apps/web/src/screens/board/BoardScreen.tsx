@@ -39,7 +39,9 @@ export function BoardScreen() {
   const [accountId, setAccountId] = useState<string | null>(null);
   const [view, setView] = useState<'cards' | 'list'>('cards');
   const [swimlanes, setSwimlanes] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('task'),
+  );
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [agentDetailsId, setAgentDetailsId] = useState<string | null>(null);

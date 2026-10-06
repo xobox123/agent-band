@@ -2,6 +2,7 @@ import { DetailsPanel } from '../../components/DetailsPanel.tsx';
 import { LimitBar } from '../../components/LimitBar.tsx';
 import { StatusDot } from '../../components/StatusDot.tsx';
 import type { Priority } from '../../data/types.ts';
+import { formatClock } from '../../lib/schedule.ts';
 import { exactCount } from './format.ts';
 import { CANCELLABLE, PRIORITIES } from './model.ts';
 import type { TaskView } from './model.ts';
@@ -92,6 +93,15 @@ export function TaskDetails({ view, now, outsideView, onClose, onCancel, onSetPr
           </button>
         </Row>
         <Row label="Priority">{`P${String(task.priority)}`}</Row>
+        {task.runAt ? <Row label="Run at">{new Date(task.runAt).toLocaleString()}</Row> : null}
+        {task.resumeAt ? (
+          <Row label="Resumes at">{`${formatClock(task.resumeAt)} (attempt ${String(task.attempt)}/${String(task.maxAttempts)})`}</Row>
+        ) : null}
+        {task.scheduleId ? (
+          <Row label="Schedule">
+            <a href="#/schedules">Open schedules</a>
+          </Row>
+        ) : null}
         <Row label="Assignee / target">{view.assignee}</Row>
         <Row label="Work directory">
           <span className="mono">{task.workDir}</span>

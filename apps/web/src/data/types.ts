@@ -23,6 +23,13 @@ export interface Task {
   workDir: string;
   /** Latest run, if any. */
   runId: string | null;
+  /** When a scheduled task is released. */
+  runAt: string | null;
+  scheduleId: string | null;
+  attempt: number;
+  maxAttempts: number;
+  /** Planned automatic resume of a rate-limited task. */
+  resumeAt: string | null;
   error: string | null;
   /** Dispatcher-supplied reason when a queued task has no eligible agent. */
   noEligibleReason: string | null;
@@ -113,4 +120,7 @@ export interface NewTask {
   target: TaskTarget;
   priority: Priority;
   mode?: 'read-only' | 'edit' | 'full-auto';
+  /** ISO date-time in the future. */
+  runAt?: string;
+  maxAttempts?: number;
 }

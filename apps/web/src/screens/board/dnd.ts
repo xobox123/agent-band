@@ -26,7 +26,10 @@ export function evaluateDrop(dragged: Task, dragLane: string, target: DropTarget
   if (column === 'cancelled') {
     return CANCELLABLE.includes(dragged.status)
       ? { kind: 'cancel' }
-      : { kind: 'reject', reason: 'Only queued, claimed or running tasks can be cancelled.' };
+      : {
+          kind: 'reject',
+          reason: 'Only scheduled, queued, claimed, running or rate-limited tasks can be cancelled.',
+        };
   }
 
   if (column === 'queued') {

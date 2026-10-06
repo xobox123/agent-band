@@ -22,6 +22,10 @@ import type {
   PolicyDetailDto,
   PolicyDto,
   PrincipalDto,
+  CreateScheduleBody,
+  ScheduleDto,
+  SchedulePreviewDto,
+  UpdateScheduleBody,
   ProviderDto,
   RoleBindingDto,
   RunDto,
@@ -160,6 +164,17 @@ export function createApi(fetchImpl?: typeof fetch) {
         send<TaskDto>('POST', `/tasks/${id}/reorder`, beforeId ? { beforeId } : {}),
       setPriority: (id: string, priority: number) => send<TaskDto>('PATCH', `/tasks/${id}`, { priority }),
       cancel: (id: string) => send<TaskDto>('POST', `/tasks/${id}/cancel`),
+    },
+
+    schedules: {
+      list: () => get<Page<ScheduleDto>>('/schedules'),
+      create: (body: CreateScheduleBody) => send<ScheduleDto>('POST', '/schedules', body),
+      update: (id: string, body: UpdateScheduleBody) => send<ScheduleDto>('PATCH', `/schedules/${id}`, body),
+      remove: (id: string) => send<undefined>('DELETE', `/schedules/${id}`),
+      runNow: (id: string) => send<TaskDto>('POST', `/schedules/${id}/run-now`),
+      tasks: (id: string) => get<Page<TaskDto>>(`/schedules/${id}/tasks`),
+      preview: (cron: string, timezone?: string) =>
+        get<SchedulePreviewDto>('/schedules/preview', { cron, timezone }),
     },
 
     agents: {

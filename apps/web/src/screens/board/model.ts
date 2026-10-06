@@ -2,7 +2,7 @@ import type { Account, Agent, AgentGroup, BoardSnapshot, Priority, Run, Task } f
 import type { AgentHoverInfo } from '../../components/AgentHoverCard.tsx';
 import { formatDuration } from './format.ts';
 
-export type ColumnId = 'queued' | 'running' | 'rate_limited' | 'done' | 'failed' | 'cancelled';
+export type ColumnId = 'scheduled' | 'queued' | 'running' | 'rate_limited' | 'done' | 'failed' | 'cancelled';
 
 export interface ColumnDef {
   id: ColumnId;
@@ -12,6 +12,7 @@ export interface ColumnDef {
 }
 
 export const COLUMNS: ColumnDef[] = [
+  { id: 'scheduled', title: 'Scheduled', statuses: ['scheduled'], empty: 'No scheduled tasks' },
   { id: 'queued', title: 'Queued', statuses: ['queued'], empty: 'No queued tasks' },
   { id: 'running', title: 'Running', statuses: ['claimed', 'running'], empty: 'No running tasks' },
   { id: 'rate_limited', title: 'Rate limited', statuses: ['rate_limited'], empty: 'No rate-limited tasks' },
@@ -29,7 +30,7 @@ export function columnOf(status: Task['status']): ColumnId {
   return COLUMNS.find((c) => c.statuses.includes(status))?.id ?? 'queued';
 }
 
-export const CANCELLABLE: Task['status'][] = ['queued', 'claimed', 'running'];
+export const CANCELLABLE: Task['status'][] = ['scheduled', 'queued', 'claimed', 'running', 'rate_limited'];
 
 export const PRIORITIES: Priority[] = [0, 1, 2, 3];
 

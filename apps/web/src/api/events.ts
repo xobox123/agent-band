@@ -36,6 +36,7 @@ export const EVENT_TYPES = [
   'policy.updated',
   'skill.updated',
   'skill.assignment.updated',
+  'schedule.updated',
   'org.changed',
 ];
 
