@@ -63,6 +63,18 @@ async function openPostgres(url: string): Promise<Database> {
   };
 }
 
+function wrapPglite(lite: PGlite): Database {
+  return {
+    db: drizzlePglite(lite),
+    async listen(channel, fn) {
+      return lite.listen(channel, fn);
+    },
+    async close() {
+      await lite.close();
+    },
+  };
+}
+
 async function openPglite(dir: string | undefined): Promise<Database> {
   const lite = dir ? new PGlite(dir) : new PGlite();
   const client = drizzlePglite(lite);
@@ -73,15 +85,7 @@ async function openPglite(dir: string | undefined): Promise<Database> {
     throw err;
   }
 
-  return {
-    db: client,
-    async listen(channel, fn) {
-      return lite.listen(channel, fn);
-    },
-    async close() {
-      await lite.close();
-    },
-  };
+  return wrapPglite(lite);
 }
 
 export async function openDatabase(cfg: DatabaseConfig): Promise<Database> {
@@ -89,6 +93,21 @@ export async function openDatabase(cfg: DatabaseConfig): Promise<Database> {
   return openPglite(cfg.pgliteDir);
 }
 
-export function openTestDatabase(): Promise<Database> {
-  return openDatabase({ memory: true });
+let migratedSnapshot: Promise<File | Blob> | undefined;
+
+async function buildMigratedSnapshot(): Promise<File | Blob> {
+  const lite = new PGlite();
+  try {
+    await migratePglite(drizzlePglite(lite), { migrationsFolder });
+    return await lite.dumpDataDir('none');
+  } finally {
+    await lite.close();
+  }
+}
+
+// Migrations run once per process; each call restores an isolated instance from the snapshot.
+export async function openTestDatabase(): Promise<Database> {
+  migratedSnapshot ??= buildMigratedSnapshot();
+  const loadDataDir = await migratedSnapshot;
+  return wrapPglite(new PGlite({ loadDataDir }));
 }
