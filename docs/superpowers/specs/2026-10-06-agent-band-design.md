@@ -142,7 +142,8 @@ RoleBinding (RBAC)
   scope: { org } | { agentGroupId } | { agentId }
 
 Account
-  id, orgId, name, provider: "claude" | "openai", type: "cli" | "api",
+  id, orgId, name, provider (registry id, see "Providers"), type: "cli" | "api",
+  providerConfig (jsonb, validated by the provider descriptor),
   configDir?  (cli: CLAUDE_CONFIG_DIR / CODEX_HOME for this account)
   secret?     (api: encrypted at rest (AES-256-GCM) with a key from
                AGENT_BAND_SECRET_KEY or an auto-created key file in
@@ -328,6 +329,38 @@ Every spawned process gets the agent's git identity
 
 Parsers are pure and tested against real recordings in
 `apps/server/test/fixtures/` (already recorded and sanitised).
+
+## Providers (extensible)
+
+`Account.provider` is a string validated against a provider registry in
+code, not a closed database enum. Each provider has a descriptor:
+
+```
+ProviderDescriptor
+  id: "claude" | "openai" | "gemini" | "openai_compatible" | ...
+  displayName, harness: "claude-cli" | "codex-cli" | "gemini-cli"
+  accountTypes: ("cli" | "api")[]
+  accountFields: zod schema for provider-specific fields
+  capabilities: { runtimeToolEnforcement, limitWindows, costReporting,
+                  skills, systemPrompt }
+```
+
+The UI renders account forms and capability badges from the descriptors, and
+the effective-policy view marks rules a provider cannot enforce.
+
+- `claude`: Claude Code CLI (stage 1).
+- `openai`: Codex CLI (stage 1).
+- `gemini`: Gemini CLI (`gemini -p ... --output-format stream-json`), config
+  isolation per account verified at implementation. Later stage; the
+  descriptor and account form exist from stage 1 with the adapter disabled.
+- `openai_compatible`: any endpoint with an OpenAI-compatible API (vLLM,
+  Ollama, LM Studio, OpenRouter, Azure OpenAI, ...). Account fields:
+  `baseUrl`, `apiKey` (secret, optional for local servers), `models[]`,
+  `wireApi: "chat" | "responses"`. The harness is Codex CLI with a custom
+  model provider passed per run (`-c model_providers.<id>.base_url=...`,
+  `-c model_provider=<id>`, key in an env var), so these agents work on
+  repositories exactly like the others. Later stage; descriptor and account
+  form from stage 1.
 
 ## Usage and limits
 
