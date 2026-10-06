@@ -25,6 +25,9 @@ const TABLE: Record<StatusKind, Record<string, StatusInfo>> = {
     cancelled: { label: 'Cancelled', token: '--text-dim' },
   },
   agent: {
+    running: { label: 'Running', token: '--ok' },
+    idle: { label: 'Idle', token: '--muted' },
+    blocked: { label: 'Blocked', token: '--warn' },
     enabled: { label: 'Enabled', token: '--ok' },
     disabled: { label: 'Disabled', token: '--text-dim' },
   },
@@ -40,6 +43,11 @@ const TABLE: Record<StatusKind, Record<string, StatusInfo>> = {
     unknown: { label: 'Unknown', token: '--muted' },
     no_eligible_agent: { label: 'No eligible agent', token: '--warn' },
     connected: { label: 'Connected', token: '--ok' },
+    connecting: { label: 'Connecting', token: '--muted' },
+    idle: { label: 'Idle', token: '--muted' },
+    blocked: { label: 'Blocked', token: '--warn' },
+    ok: { label: 'Verified', token: '--ok' },
+    broken: { label: 'Chain broken', token: '--crit' },
     reconnecting: { label: 'Reconnecting', token: '--warn' },
   },
 };

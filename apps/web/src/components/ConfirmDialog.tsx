@@ -7,6 +7,7 @@ interface Props {
   confirmLabel: string;
   cancelLabel?: string;
   busy?: boolean;
+  error?: string | undefined;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -17,6 +18,7 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel = 'Keep task',
   busy = false,
+  error,
   onConfirm,
   onCancel,
 }: Props) {
@@ -52,6 +54,11 @@ export function ConfirmDialog({
           {title}
         </h2>
         <p>{message}</p>
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="dialog-actions">
           <button type="button" className="btn" ref={cancelRef} onClick={onCancel}>
             {cancelLabel}

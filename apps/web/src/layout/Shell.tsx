@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useConnectionState } from '../api/context.tsx';
 import { Dock } from '../components/Dock.tsx';
 import { useHashRoute } from '../router/useHashRoute.ts';
 import { ALL_ITEMS, routeLabel } from '../router/routes.ts';
@@ -21,6 +22,7 @@ function isTextInput(target: EventTarget | null): boolean {
 export function Shell({ children }: { children: (route: RouteId) => ReactNode }) {
   const { route, navigate } = useHashRoute();
   const { theme, toggle } = useTheme();
+  const connection = useConnectionState();
   const [detailsHost, setDetailsHost] = useState<HTMLElement | null>(null);
   const [dock, setDock] = useState<DockSpec | null>(null);
   const [count, setCount] = useState<number | null>(null);
@@ -80,7 +82,7 @@ export function Shell({ children }: { children: (route: RouteId) => ReactNode })
           <IconRail route={route} onNavigate={navigate} />
           <Sidebar route={route} theme={theme} onToggleTheme={toggle} />
           <div className="workspace" ref={areaRef}>
-            <Header title={routeLabel(route)} count={count} connection="connected" />
+            <Header title={routeLabel(route)} count={count} connection={connection} />
             <div className="workspace-top">
               <main className="main" id="main">
                 {children(route)}

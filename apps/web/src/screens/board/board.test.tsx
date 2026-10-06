@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DataSourceProvider } from '../../data/context.tsx';
 import { createMockDataSource } from '../../data/mock.ts';
 import type { BoardDataSource } from '../../data/source.ts';
-import type { Priority } from '../../data/types.ts';
+import type { NewTask, Priority } from '../../data/types.ts';
 import { evaluateDrop } from './dnd.ts';
 import { BoardScreen } from './BoardScreen.tsx';
 
@@ -13,6 +13,7 @@ function setup() {
     reorder: vi.fn((id: string, before: string | null) => mock.reorder(id, before)),
     setPriority: vi.fn((id: string, p: Priority) => mock.setPriority(id, p)),
     cancel: vi.fn((id: string) => mock.cancel(id)),
+    createTask: vi.fn((task: NewTask) => mock.createTask(task)),
   };
   const source: BoardDataSource = {
     load: (f) => mock.load(f),

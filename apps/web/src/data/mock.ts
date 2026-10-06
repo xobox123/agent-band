@@ -44,7 +44,9 @@ const groups: AgentGroup[] = [
   { id: 'grp-qa', name: 'QA' },
 ];
 
-const agents: Agent[] = [
+type AgentSeed = Omit<Agent, 'status' | 'runningRunId'>;
+
+const agentSeeds: AgentSeed[] = [
   {
     id: 'ag-ada',
     name: 'Ada',
@@ -278,7 +280,7 @@ const MIN = 60_000;
 export function createMockDataSource(options: MockOptions = {}): BoardDataSource {
   const { live = true, liveIntervalMs = 4000, latencyMs = 250, now = Date.now } = options;
   const t0 = now();
-  const agentMap = new Map(agents.map((a) => [a.id, a]));
+  const agentMap = new Map(agentSeeds.map((a) => [a.id, a]));
 
   let tasks: Task[] = [];
   let runs: Run[] = [];
@@ -400,7 +402,14 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
           cursor: String(cursor),
           tasks: filtered,
           runs: runs.filter((r) => ids.has(r.taskId)),
-          agents,
+          agents: agentSeeds.map((a) => {
+            const active = runs.find((r) => r.agentId === a.id && r.status === 'running');
+            return {
+              ...a,
+              status: !a.enabled ? 'disabled' : active ? 'running' : 'idle',
+              runningRunId: active?.id ?? null,
+            } satisfies Agent;
+          }),
           accounts,
           groups,
         }),
@@ -442,6 +451,29 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
       const task = findTask(taskId);
       if (task.status !== 'queued') throw new Error('Only queued tasks can change priority.');
       replace({ ...task, priority, updatedAt: iso(now()) });
+      emit();
+    },
+    async createTask(input) {
+      await delay();
+      const stamp = iso(now());
+      const key = `AB-${String(100 + tasks.length)}`;
+      tasks.push({
+        id: `task-${key.toLowerCase()}`,
+        key,
+        title: input.title,
+        prompt: input.prompt,
+        status: 'queued',
+        priority: input.priority,
+        rank: nextRank++,
+        target: input.target,
+        workDir: input.workDir,
+        runId: null,
+        error: null,
+        noEligibleReason: null,
+        createdBy: 'user:local',
+        createdAt: stamp,
+        updatedAt: stamp,
+      });
       emit();
     },
     async cancel(taskId) {

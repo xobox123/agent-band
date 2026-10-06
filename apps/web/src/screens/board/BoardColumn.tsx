@@ -18,6 +18,7 @@ interface Props {
   onOpen: (taskId: string) => void;
   onSetPriority: (taskId: string, priority: Priority) => void;
   onCancel: (taskId: string) => void;
+  onOpenAgent: (agentId: string) => void;
 }
 
 export function BoardColumn({
@@ -31,6 +32,7 @@ export function BoardColumn({
   onOpen,
   onSetPriority,
   onCancel,
+  onOpenAgent,
 }: Props) {
   const [limit, setLimit] = useState(PAGE);
   const [expanded, setExpanded] = useState(column.id !== 'cancelled');
@@ -51,6 +53,7 @@ export function BoardColumn({
       onOpen={onOpen}
       onSetPriority={onSetPriority}
       onCancel={onCancel}
+      onOpenAgent={onOpenAgent}
     />
   );
 

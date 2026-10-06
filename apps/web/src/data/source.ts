@@ -1,4 +1,4 @@
-import type { BoardEvent, BoardFilter, BoardSnapshot, Priority } from './types.ts';
+import type { BoardEvent, BoardFilter, BoardSnapshot, NewTask, Priority } from './types.ts';
 
 export interface BoardDataSource {
   load(filter: BoardFilter): Promise<BoardSnapshot>;
@@ -11,6 +11,7 @@ export interface BoardDataSource {
   reorder(taskId: string, beforeId: string | null): Promise<void>;
   setPriority(taskId: string, priority: Priority): Promise<void>;
   cancel(taskId: string): Promise<void>;
+  createTask(task: NewTask): Promise<void>;
 }
 
 export const emptyFilter: BoardFilter = { text: '', agentId: null, label: null, accountId: null };
