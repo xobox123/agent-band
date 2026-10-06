@@ -150,7 +150,7 @@ PolicyVersion (immutable)
     allowedAccountIds?: string[]            optional extra restriction
 
 Task
-  id, title, prompt, workDir, target: { agentId } | { label },
+  id, key (e.g. "AB-42"), title, prompt, workDir, target: { agentId } | { label },
   priority, status: queued | claimed | running | done | failed |
   rate_limited | cancelled | denied, error?, createdBy, createdAt, updatedAt
 
@@ -268,7 +268,7 @@ so real authentication slots in later.
 
 Visual style modelled on Lens (the Kubernetes IDE): dark theme by default
 (light theme available), narrow icon rail plus a left sidebar listing
-resource kinds (Dashboard, Agents, Tasks, Runs, Policies, Accounts, Audit),
+resource kinds (Board, Dashboard, Agents, Tasks, Runs, Policies, Accounts, Audit),
 dense sortable tables with coloured status dots, a details panel sliding in
 from the right when a row is selected, and a resizable bottom dock with the
 live log of the selected run. Small hand-written CSS with design tokens, no
@@ -276,6 +276,19 @@ component library.
 
 Agent details show its identity (handle, git identity), current policy and
 version, recent runs and its audit history.
+
+**Board** (Jira-like, the default work view): kanban columns by task status
+(Queued, Running, Rate limited, Done, Failed/Denied, Cancelled collapsed).
+Each card shows the task key (e.g. `AB-42`), title, assignee (the agent
+running it, or the target label while queued) with its avatar/initials,
+priority, labels, elapsed time and tokens so far. Filters: agent, label,
+account, text. Swimlanes optional: by agent. Dragging a card within Queued
+changes priority; dragging to Cancelled cancels it. Status changes stream in
+live over SSE. Clicking a card opens the task details panel with runs and
+the live log in the bottom dock.
+
+Tasks get a human-readable key: project prefix (default `AB`, configurable)
+plus a sequence number, unique and never reused.
 
 ## Repository layout
 

@@ -16,7 +16,10 @@ bottom dock with logs).
 1. Global layout: icon rail, sidebar sections and items, header, details
    panel, bottom dock. Sizes in px, behaviour on narrow windows
    (min width 1024 px).
-2. For each screen (Dashboard, Agents, Tasks, Runs, Policies, Accounts, Audit):
+2. For each screen (Board, Dashboard, Agents, Tasks, Runs, Policies, Accounts, Audit).
+   The Board is a Jira-like kanban (see "Board" in the spec UI section) and
+   the most important screen: specify columns, card anatomy, filters,
+   swimlanes, drag and drop rules and live updates in detail. For every screen:
    - purpose in one sentence,
    - table columns (name, source field from the domain model, format, sortable yes/no),
    - toolbar actions and filters,
