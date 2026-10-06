@@ -36,6 +36,13 @@
       "when": 1791315883665,
       "tag": "0004_t5_audit_immutable",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791316274109,
+      "tag": "0005_t7_policy_skills",
+      "breakpoints": true
     }
   ]
 }
