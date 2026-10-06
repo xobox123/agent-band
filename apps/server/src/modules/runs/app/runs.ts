@@ -236,15 +236,17 @@ export function createRuns(deps: ModuleDeps) {
       scope: UsageScope,
       timezone: string,
       now: Date,
+      kind: 'billable' | 'cached' = 'billable',
     ): Promise<number> {
+      const sum =
+        kind === 'cached'
+          ? sql`(${runEvents.payload}->>'cachedTokens')::double precision`
+          : sql`(${runEvents.payload}->>'inputTokens')::double precision + (${runEvents.payload}->>'outputTokens')::double precision`;
       return db.transaction(async (tx) => {
         await deps.authorizer.authorize(tx, actor, 'read', scope.agentId ? { agentId: scope.agentId } : {});
         const [row] = await tx
           .select({
-            tokens:
-              sql<number>`coalesce(sum((${runEvents.payload}->>'inputTokens')::double precision + (${runEvents.payload}->>'outputTokens')::double precision + (${runEvents.payload}->>'cachedTokens')::double precision),0)`.mapWith(
-                Number,
-              ),
+            tokens: sql<number>`coalesce(sum(${sum}),0)`.mapWith(Number),
           })
           .from(runEvents)
           .innerJoin(runs, and(eq(runs.id, runEvents.runId), eq(runs.orgId, actor.orgId)))

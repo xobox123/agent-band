@@ -6,36 +6,42 @@ import { runDto } from './dto.ts';
 export async function buildDashboard(c: Composition, actor: ActorContext): Promise<DashboardDto> {
   const db = c.database.db;
   const cursor = await c.cursor();
-  const [accounts, agents, running, queued, tokensToday] = await Promise.all([
+  const [accounts, agents, running, queued, tokensToday, cachedTokensToday] = await Promise.all([
     c.accounts.listAccounts(db, actor),
     c.agents.listAgents(db, actor),
     c.runs.listRuns(db, actor, { status: 'running' }),
     c.tasks.listTasks(db, actor, { status: 'queued' }),
     c.usage.tokensToday(db, actor, {}),
+    c.usage.cachedTokensToday(db, actor, {}),
   ]);
 
   const accountRows = await Promise.all(
     accounts.map(async (account) => {
-      const [windows, tokens, blockedUntil] = await Promise.all([
+      const [windows, tokens, cached, blockedUntil] = await Promise.all([
         c.usage.latestWindows(db, actor, account.id),
         c.usage.tokensToday(db, actor, { accountId: account.id }),
+        c.usage.cachedTokensToday(db, actor, { accountId: account.id }),
         c.usage.accountBlock(db, actor, account.id),
       ]);
       return {
         account,
         windows,
         tokensToday: tokens,
+        cachedTokensToday: cached,
         runningRuns: running.filter((r) => r.accountId === account.id).length,
         blockedUntil: blockedUntil?.toISOString() ?? null,
       };
     }),
+  );
+  const agentTokens = await Promise.all(
+    agents.map((agent) => c.usage.tokensToday(db, actor, { agentId: agent.id })),
   );
   const blocked = new Set(accountRows.filter((a) => a.blockedUntil !== null).map((a) => a.account.id));
 
   return {
     cursor,
     accounts: accountRows,
-    agents: agents.map((agent) => {
+    agents: agents.map((agent, i) => {
       const run = running.find((r) => r.agentId === agent.id);
       const status = !agent.enabled
         ? ('disabled' as const)
@@ -44,10 +50,11 @@ export async function buildDashboard(c: Composition, actor: ActorContext): Promi
           : blocked.has(agent.accountId)
             ? ('blocked' as const)
             : ('idle' as const);
-      return { agent, status, runningRunId: run?.id ?? null };
+      return { agent, status, runningRunId: run?.id ?? null, tokensToday: agentTokens[i] ?? 0 };
     }),
     runningRuns: running.map(runDto),
     queuedCount: queued.length,
     tokensToday,
+    cachedTokensToday,
   };
 }

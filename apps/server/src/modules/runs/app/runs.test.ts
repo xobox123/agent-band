@@ -140,11 +140,27 @@ it('sums usage by local event day across midnight and DST, excluding other orgs 
     .set({ ts: new Date('2026-03-29T22:30:00Z') })
     .where(eq(runEvents.id, event.id));
   const now = new Date('2026-03-30T00:30:00Z');
-  expect(await api.usageOnDay(database.db, actor, { agentId: run.agentId }, 'Europe/Warsaw', now)).toBe(15);
+  expect(await api.usageOnDay(database.db, actor, { agentId: run.agentId }, 'Europe/Warsaw', now)).toBe(12);
+  expect(
+    await api.usageOnDay(database.db, actor, { agentId: run.agentId }, 'Europe/Warsaw', now, 'cached'),
+  ).toBe(3);
   expect(await api.usageOnDay(database.db, actor, { accountId: run.accountId }, 'UTC', now)).toBe(0);
   expect(await api.usageOnDay(database.db, actor, { agentId: randomUUID() }, 'Europe/Warsaw', now)).toBe(0);
   expect(await api.usageOnDay(database.db, testActor(), {}, 'Europe/Warsaw', now)).toBe(0);
   expect(await api.runningCount(database.db, actor, run.accountId)).toBe(1);
+});
+it('does not count cached tokens toward billable usage', async () => {
+  const run = await start();
+  await database.db.transaction((tx) =>
+    api.appendRunEvent(tx, system, run.id, {
+      kind: 'usage',
+      inputTokens: 4,
+      outputTokens: 1,
+      cachedTokens: 1_000_000,
+    }),
+  );
+  expect(await api.usageOnDay(database.db, actor, {}, 'UTC', new Date())).toBe(5);
+  expect(await api.usageOnDay(database.db, actor, {}, 'UTC', new Date(), 'cached')).toBe(1_000_000);
 });
 it('finishes a rate-limited run as rate_limited even when the process exits successfully', async () => {
   const run = await start();

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Priority } from '../../data/types.ts';
 import { BoardColumn } from './BoardColumn.tsx';
 import { COLUMNS, laneOf, sortQueued, sortRecent } from './model.ts';
@@ -22,6 +23,54 @@ export const NO_LANE = '__all';
 
 export function BoardColumns({ views, swimlanes, ...rest }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [cancelledOpen, setCancelledOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+
+  const measure = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const left = el.scrollLeft > 1;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    setEdges((prev) => (prev.left === left && prev.right === right ? prev : { left, right }));
+    const box = el.getBoundingClientRect();
+    const next = new Set<string>();
+    el.querySelectorAll<HTMLElement>('[data-column]').forEach((node) => {
+      const r = node.getBoundingClientRect();
+      if (r.width > 0 && (r.right > box.right + 1 || r.left < box.left - 1))
+        next.add(node.dataset.column ?? '');
+    });
+    setHidden((prev) => (prev.size === next.size && [...next].every((id) => prev.has(id)) ? prev : next));
+  }, []);
+
+  useEffect(() => {
+    measure();
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  });
+
+  const reveal = (id: string) => {
+    if (id === 'cancelled') setCancelledOpen(true);
+    const node = scrollRef.current?.querySelector<HTMLElement>(`[data-column="${id}"]`);
+    if (typeof node?.scrollIntoView === 'function') {
+      node.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  };
+
+  const counts = useMemo(
+    () =>
+      COLUMNS.map((c) => ({
+        column: c,
+        count: views.filter((v) => c.statuses.includes(v.task.status)).length,
+      })),
+    [views],
+  );
 
   const lanes = useMemo(() => {
     if (!swimlanes) return [{ key: NO_LANE, name: '', views }];
@@ -49,15 +98,64 @@ export function BoardColumns({ views, swimlanes, ...rest }: Props) {
             : sortRecent(inColumn.map((v) => v.task));
         const byId = new Map(inColumn.map((v) => [v.task.id, v]));
         const ordered = sorted.flatMap((t) => byId.get(t.id) ?? []);
-        return <BoardColumn key={column.id} column={column} views={ordered} laneKey={laneKey} {...rest} />;
+        const isCancelled = column.id === 'cancelled';
+        return (
+          <BoardColumn
+            key={column.id}
+            column={column}
+            views={ordered}
+            laneKey={laneKey}
+            collapsed={isCancelled && !cancelledOpen}
+            onToggleCollapsed={
+              isCancelled
+                ? () => {
+                    setCancelledOpen((v) => !v);
+                  }
+                : undefined
+            }
+            {...rest}
+          />
+        );
       })}
     </div>
   );
 
-  if (!swimlanes) return <div className="board-scroll">{renderColumns(NO_LANE, views)}</div>;
+  const strip = (
+    <nav className="column-strip" aria-label="Board columns">
+      {counts.map(({ column, count }) => (
+        <button
+          key={column.id}
+          type="button"
+          className={`column-chip${hidden.has(column.id) ? ' is-hidden' : ''}`}
+          title={hidden.has(column.id) ? `Show ${column.title} (off screen)` : `Go to ${column.title}`}
+          onClick={() => {
+            reveal(column.id);
+          }}
+        >
+          {column.title}
+          <span className="count">{count}</span>
+        </button>
+      ))}
+    </nav>
+  );
 
-  return (
-    <div className="board-scroll">
+  const frame = (children: ReactNode) => (
+    <div className="board-frame">
+      {strip}
+      <div
+        className={`board-scroll-wrap${edges.left ? ' fade-left' : ''}${edges.right ? ' fade-right' : ''}`}
+      >
+        <div ref={scrollRef} className="board-scroll" onScroll={measure}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (!swimlanes) return frame(renderColumns(NO_LANE, views));
+
+  return frame(
+    <>
       {lanes.map((lane) => {
         const isCollapsed = collapsed.has(lane.key);
         return (
@@ -84,6 +182,6 @@ export function BoardColumns({ views, swimlanes, ...rest }: Props) {
           </section>
         );
       })}
-    </div>
+    </>,
   );
 }

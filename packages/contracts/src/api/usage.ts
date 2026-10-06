@@ -15,6 +15,8 @@ export const DashboardAccount = z.object({
   account: AccountDto,
   windows: z.array(LimitWindowDto),
   tokensToday: z.number(),
+  /** Cache reads, reported separately; not counted in budgets. */
+  cachedTokensToday: z.number(),
   runningRuns: z.number().int(),
   /** Set while the account is blocked by a rate limit. */
   blockedUntil: IsoDate.nullable(),
@@ -27,6 +29,7 @@ export const DashboardAgent = z.object({
   agent: AgentDto,
   status: AgentStatus,
   runningRunId: Id.nullable(),
+  tokensToday: z.number(),
 });
 
 export const DashboardDto = z.object({
@@ -36,5 +39,6 @@ export const DashboardDto = z.object({
   runningRuns: z.array(RunDto),
   queuedCount: z.number().int(),
   tokensToday: z.number(),
+  cachedTokensToday: z.number(),
 });
 export type DashboardDto = z.infer<typeof DashboardDto>;

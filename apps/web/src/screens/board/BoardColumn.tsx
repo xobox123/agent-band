@@ -19,6 +19,8 @@ interface Props {
   onSetPriority: (taskId: string, priority: Priority) => void;
   onCancel: (taskId: string) => void;
   onOpenAgent: (agentId: string) => void;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
 export function BoardColumn({
@@ -33,9 +35,11 @@ export function BoardColumn({
   onSetPriority,
   onCancel,
   onOpenAgent,
+  collapsed = false,
+  onToggleCollapsed,
 }: Props) {
   const [limit, setLimit] = useState(PAGE);
-  const [expanded, setExpanded] = useState(column.id !== 'cancelled');
+  const expanded = !collapsed;
   const shown = views.slice(0, limit);
   const colTarget = { kind: 'column', column: column.id, laneKey } as const;
   const colKey = targetKey(colTarget);
@@ -91,7 +95,7 @@ export function BoardColumn({
 
   return (
     <section
-      className={`column${colHint ? (colHint.ok ? ' drop-ok' : ' drop-bad') : ''}`}
+      className={`column${expanded ? '' : ' is-collapsed'}${colHint ? (colHint.ok ? ' drop-ok' : ' drop-bad') : ''}`}
       aria-label={column.title}
       data-column={column.id}
       onDragOver={(e) => {
@@ -106,16 +110,16 @@ export function BoardColumn({
         <span className="count" aria-label={`${views.length} tasks`}>
           {views.length}
         </span>
-        {column.id === 'cancelled' ? (
+        {onToggleCollapsed ? (
           <button
             type="button"
-            className="btn"
+            className="btn btn-icon column-toggle"
             aria-expanded={expanded}
-            onClick={() => {
-              setExpanded((v) => !v);
-            }}
+            aria-label={expanded ? 'Collapse' : 'Expand'}
+            title={expanded ? 'Collapse column' : 'Expand column'}
+            onClick={onToggleCollapsed}
           >
-            {expanded ? 'Collapse' : 'Expand'}
+            <span aria-hidden="true">{expanded ? '‹' : '›'}</span>
           </button>
         ) : null}
       </header>

@@ -64,14 +64,16 @@ describe('Dashboard', () => {
             { window: 'weekly', usedPercent: 71, resetsAt: null },
           ],
           tokensToday: 250_000,
+          cachedTokensToday: 1_500_000,
           runningRuns: 1,
           blockedUntil: null,
         },
       ],
-      agents: [{ agent: agentDto(), status: 'running', runningRunId: ID(40) }],
+      agents: [{ agent: agentDto(), status: 'running', runningRunId: ID(40), tokensToday: 1234 }],
       runningRuns: [],
       queuedCount: 4,
       tokensToday: 250_000,
+      cachedTokensToday: 1_500_000,
     },
     [`GET /agents/${ID(1)}`]: agentDto(),
     [`GET /agents/${ID(1)}/effective-policy`]: {
@@ -100,8 +102,17 @@ describe('Dashboard', () => {
     );
     expect(within(card).getByText('250,000 / 1,000,000')).toBeInTheDocument();
     expect(within(card).getByText('Not blocked')).toBeInTheDocument();
-    const agents = screen.getByRole('list', { name: 'Agents' });
+    const agents = screen.getByRole('table', { name: 'Agents' });
     expect(within(agents).getByText('Running')).toBeInTheDocument();
+    expect(within(agents).getByText('1,234')).toBeInTheDocument();
+  });
+
+  it('shows cached tokens as a secondary line, not added to tokens today', async () => {
+    mount(routes, <DashboardScreen />);
+    const card = await screen.findByRole('article', { name: 'Account Claude Max' });
+    expect(within(card).getByText('+ 1,500,000 cached')).toBeInTheDocument();
+    expect(screen.getAllByText('+ 1,500,000 cached').length).toBe(2);
+    expect(screen.getAllByText('250,000').length).toBeGreaterThan(0);
   });
 
   it('shows the agent hover card and opens details on click', async () => {
