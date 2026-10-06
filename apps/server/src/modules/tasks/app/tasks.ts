@@ -131,8 +131,30 @@ export function createTasks(deps: TasksDeps) {
           throw conflict('task_terminal', 'Task is already terminal');
         const wasActive = task.status === 'claimed' || task.status === 'running';
         const cancelled = await update(tx, actor, id, { status: 'cancelled' }, 'task.cancel');
-        if (wasActive) await publish(tx, 'task.cancel_requested', { orgId: actor.orgId, taskId: id });
+        if (wasActive)
+          await publish(tx, 'task.cancel_requested', {
+            orgId: actor.orgId,
+            taskId: id,
+            previousStatus: task.status,
+          });
         return cancelled;
+      });
+    },
+    async getTask(db: Db, actor: ActorContext, id: string): Promise<Task> {
+      const [task] = await db.select().from(tasks).where(where(actor, id));
+      if (!task) throw notFound('task');
+      await deps.authorizer.authorize(db, actor, 'read', resource(task.target));
+      return task;
+    },
+    async setTaskPriority(db: Db, actor: ActorContext, id: string, priority: number): Promise<Task> {
+      if (!Number.isInteger(priority) || priority < 0 || priority > 3)
+        throw invalid([{ path: 'priority', message: 'must be an integer from 0 to 3' }]);
+      return db.transaction(async (tx) => {
+        const task = await get(tx, actor, id);
+        await deps.authorizer.authorize(tx, actor, 'task.write', resource(task.target));
+        if (task.status !== 'queued')
+          throw conflict('task_not_queued', 'Only queued tasks can change priority');
+        return update(tx, actor, id, { priority }, 'task.priority');
       });
     },
     listTasks(db: Db, actor: ActorContext, filter: TaskFilter = {}): Promise<Task[]> {

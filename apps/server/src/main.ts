@@ -1,17 +1,21 @@
-import { buildApp } from './http/app.ts';
 import { ConfigError, loadConfig } from './platform/config.ts';
+import { start } from './server.ts';
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const app = buildApp({ logger: { level: config.logLevel } });
+  const server = await start(config);
 
   const shutdown = (): void => {
-    void app.close().then(() => process.exit(0));
+    server.stop().then(
+      () => process.exit(0),
+      (err: unknown) => {
+        console.error(err);
+        process.exit(1);
+      },
+    );
   };
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
-
-  await app.listen({ host: '127.0.0.1', port: config.port });
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
 }
 
 main().catch((err: unknown) => {

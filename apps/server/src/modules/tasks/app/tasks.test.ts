@@ -156,5 +156,5 @@ it('requests cancellation of active tasks and skips excluded tasks when claiming
   const event = (await database.db.select().from(outboxEvents)).find(
     (e) => e.type === 'task.cancel_requested',
   );
-  expect(event?.payload).toEqual({ orgId: actor.orgId, taskId: b.id });
+  expect(event?.payload).toEqual({ orgId: actor.orgId, taskId: b.id, previousStatus: 'claimed' });
 });
