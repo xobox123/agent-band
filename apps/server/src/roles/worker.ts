@@ -1,7 +1,13 @@
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
-import type { NormalizedEvent, ProviderAdapter, RunHandle, RunSpec } from '@agent-band/contracts';
+import {
+  MCP_TOOLS_ALLOW,
+  type NormalizedEvent,
+  type ProviderAdapter,
+  type RunHandle,
+  RunSpec,
+} from '@agent-band/contracts';
 import type { ActorContext } from '../platform/actor.ts';
 import type { Db } from '../platform/db.ts';
 import { AppError } from '../platform/errors.ts';
@@ -27,7 +33,9 @@ import {
   revokeRunAuth,
   stableHash,
   writeClaudePlugin,
+  writeMcpConfig,
 } from '../execution/index.ts';
+import { LEADER_PROMPT } from './leader-prompt.ts';
 
 type Availability = Awaited<ReturnType<ReturnType<typeof createUsage>['accountAvailability']>>;
 
@@ -157,6 +165,13 @@ export function createWorker(deps: WorkerDeps): Worker {
     const policy = await deps.policy.forAgent(deps.db, orgId, agent.id);
     if (task.kind === 'goal' && agent.role !== 'leader')
       return { reasons: [`agent ${agent.handle}: goals need an agent with role leader`] };
+    // Only Claude can be given the delegation MCP server per run (see the capability matrix).
+    if (task.kind === 'goal' && !(skillsLoadable && account.provider === 'claude'))
+      return {
+        reasons: [
+          `agent ${agent.handle}: leader agents are not supported on provider ${account.provider} yet`,
+        ],
+      };
     const skills = skillsLoadable ? await deps.skills.forAgent(deps.db, orgId, agent.id) : [];
     const agentTokensToday = await deps.usage.tokensToday(deps.db, d, { agentId: agent.id });
     const decision = evaluateRunStart(policy, {
@@ -218,7 +233,14 @@ export function createWorker(deps: WorkerDeps): Worker {
             workDir: task.workDir,
             token,
             policy: {
-              ...(c.policy.allowedTools ? { allowedTools: c.policy.allowedTools } : {}),
+              ...(c.policy.allowedTools
+                ? {
+                    allowedTools:
+                      task.kind === 'goal'
+                        ? [...c.policy.allowedTools, MCP_TOOLS_ALLOW]
+                        : c.policy.allowedTools,
+                  }
+                : {}),
               deniedTools: c.policy.deniedTools,
               workDirSets: c.policy.workDirSets,
             },
@@ -331,13 +353,26 @@ export function createWorker(deps: WorkerDeps): Worker {
           text: `skills not supported for provider ${c.account.provider}`,
         });
       }
+      const isGoal = task.kind === 'goal';
+      const mcpConfigPath = join(dir, 'mcp.json');
+      let resumeSessionId: string | undefined;
+      if (isGoal) {
+        await writeMcpConfig({ path: mcpConfigPath, port: deps.apiPort, runId: run.id, token });
+        const goal = await deps.tasks.getGoalState(deps.db, orgId, task.id);
+        if (goal?.status === 'continuing' && goal.leaderSessionId) resumeSessionId = goal.leaderSessionId;
+      }
+      const systemPrompt = [systemPromptOf(c.agent), isGoal ? LEADER_PROMPT : undefined]
+        .filter(Boolean)
+        .join('\n\n');
       const spec: RunSpec = {
         runId: run.id,
         prompt: task.prompt,
         workDir: task.workDir,
         mode: c.mode,
         ...(c.agent.model ? { model: c.agent.model } : {}),
-        ...(systemPromptOf(c.agent) ? { systemPrompt: systemPromptOf(c.agent) } : {}),
+        ...(systemPrompt ? { systemPrompt } : {}),
+        ...(isGoal ? { mcpConfigPath } : {}),
+        ...(resumeSessionId ? { resumeSessionId } : {}),
         ...(c.policy.allowedTools ? { allowedTools: c.policy.allowedTools } : {}),
         ...(c.policy.deniedTools.length ? { deniedTools: c.policy.deniedTools } : {}),
         configDir:
@@ -347,24 +382,37 @@ export function createWorker(deps: WorkerDeps): Worker {
         agentId: c.agent.id,
         env: { AGENT_BAND_RUN_TOKEN: token },
       };
-      handle = adapter.start(spec);
-      const h = handle;
-      entry.cancel = () => {
-        h.cancel();
-      };
-      if (entry.userCancelled || forceStop) h.cancel();
       if (c.policy.maxRunMinutes !== undefined) {
         timer = setTimeout(() => {
           timedOut = true;
-          h.cancel();
+          handle?.cancel();
         }, c.policy.maxRunMinutes * minuteMs);
       }
-      for await (const event of h.events) {
-        if (event.kind === 'error') lastError = event.message;
-        await append(run.id, event);
-        if (event.kind === 'rate_limit') await recordLimits(c.account.id, event);
+      const attempt = async (s: RunSpec) => {
+        let worked = false;
+        handle = adapter.start(s);
+        const h = handle;
+        entry.cancel = () => {
+          h.cancel();
+        };
+        if (entry.userCancelled || forceStop || timedOut) h.cancel();
+        for await (const event of h.events) {
+          if (event.kind === 'error') lastError = event.message;
+          if (event.kind === 'text' || event.kind === 'tool') worked = true;
+          await append(run.id, event);
+          if (event.kind === 'rate_limit') await recordLimits(c.account.id, event);
+        }
+        return { result: await h.done, worked };
+      };
+      let { result, worked } = await attempt(spec);
+      if (spec.resumeSessionId && result.exitCode !== 0 && !worked && !entry.userCancelled && !timedOut) {
+        // The previous session may be gone; the continuation prompt is self-contained, so start fresh.
+        const fresh: RunSpec = { ...spec };
+        delete fresh.resumeSessionId;
+        await append(run.id, { kind: 'stderr', text: 'resume failed, retrying with a fresh session' });
+        lastError = undefined;
+        ({ result, worked } = await attempt(fresh));
       }
-      const result = await h.done;
       failure =
         result.error ??
         (result.exitCode !== 0 && !entry.userCancelled ? `exit code ${result.exitCode}` : undefined);

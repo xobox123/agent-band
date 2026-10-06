@@ -1,5 +1,6 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, posix } from 'node:path';
+import { MCP_SERVER_NAME, RUN_ID_HEADER, RUN_TOKEN_HEADER } from '@agent-band/contracts';
 import { HOOKS_JSON, hookScript } from '../infra/hook-script.ts';
 
 export interface PluginSkill {
@@ -53,6 +54,26 @@ export async function writeClaudePlugin(opts: {
       hookScript({ port: opts.hook.port, runId: opts.runId }),
     );
   }
+}
+
+/** Writes the Claude MCP config that attaches the delegation server to one leader run. */
+export async function writeMcpConfig(opts: {
+  path: string;
+  port: number;
+  runId: string;
+  token: string;
+}): Promise<void> {
+  await mkdir(dirname(opts.path), { recursive: true });
+  const config = {
+    mcpServers: {
+      [MCP_SERVER_NAME]: {
+        type: 'http',
+        url: `http://127.0.0.1:${opts.port}/api/v1/mcp`,
+        headers: { [RUN_ID_HEADER]: opts.runId, [RUN_TOKEN_HEADER]: opts.token },
+      },
+    },
+  };
+  await writeFile(opts.path, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
 export async function removeRunDir(dir: string): Promise<void> {
