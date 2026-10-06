@@ -320,7 +320,7 @@ Every spawned process gets the agent's git identity
   `--allowedTools`, `--disallowedTools`, `--append-system-prompt` when set.
   Env `CLAUDE_CONFIG_DIR`. Rate limit windows come from `rate_limit_event`.
 - Codex CLI: `codex exec --json --skip-git-repo-check` with `-s read-only`,
-  `-s workspace-write` or `--full-auto`, `-m` when set. Env `CODEX_HOME`.
+  `-s workspace-write` or `-s danger-full-access`, `-m` when set. Env `CODEX_HOME`.
   Rate limit windows are read after the run from the session rollout file
   `$CODEX_HOME/sessions/**/rollout-*-<thread_id>.jsonl`.
 - API accounts: stub adapter that fails with "API accounts arrive in a later
