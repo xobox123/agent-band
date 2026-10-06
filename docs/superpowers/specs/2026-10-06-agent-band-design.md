@@ -1,189 +1,303 @@
 # agent-band: stage 1 design (engine + localhost UI)
 
-Date: 2026-10-06
+Date: 2026-10-06 (rev 2: identity, policy, audit, scalable architecture)
 
 ## Goal
 
-A local control panel for a fleet of AI coding agents. The user registers
-provider accounts (Claude, OpenAI), creates any number of agents bound to those
-accounts, dispatches tasks to them, and sees at a glance which agents are
-running, how many tokens each account consumed, and how much of each account's
-limit is left.
+A control plane for a fleet of AI coding agents. The user registers provider
+accounts (Claude, OpenAI), creates any number of agents bound to those
+accounts, and dispatches tasks to them. Every agent is a first-class identity
+with its own policy and a tamper-evident audit trail. The UI shows which
+agents are running, token usage per account and agent, and how much of each
+account's limit is left.
 
-Stage 1 delivers the engine and a web UI served on `localhost`. Later stages
-(not in scope here):
+Stage 1 delivers the engine and a web UI on `localhost`. Later stages (not in
+scope here):
 
-- Stage 2: scheduler (cron-like recurring tasks, automatic resume after a limit
-  window resets).
+- Stage 2: scheduler (cron-like recurring tasks, automatic resume after a
+  limit window resets).
 - Stage 3: leader agent that splits work, assigns it to other agents by label
   and reviews results.
-- Stage 4: macOS app (Tauri wrapper around the same UI, menu bar icon,
+- Stage 4: macOS app (Tauri wrapper, embedded database, menu bar,
   notifications).
+- Stage 5: team mode (multi-user auth, remote runners on developer machines,
+  hosted control plane).
 
-## Product constraints
+The architecture of stage 1 must not block stages 2 to 5.
 
-- Positioned as "one place to manage agents, budgets and schedules", not as a
-  way to multiply subscription limits. Each account has an explicit purpose
-  (label, scope), and limits are enforced, never bypassed.
-- Two account types in the data model from day one:
-  - `cli`: uses the user's locally installed `claude` / `codex` CLI, isolated
-    per account by its config directory. Implemented in stage 1.
-  - `api`: provider API key. Modelled in stage 1, adapter returns
-    "not implemented".
-- Everything runs on the user's machine. The HTTP server binds to `127.0.0.1`
-  only. No telemetry.
+## Product principles
 
-## Stack
+- **Identity**: every agent is a principal with a stable id and handle
+  (`agent:<slug>`). Everything an agent does is attributed to it: runs, tool
+  calls, git commits (agent-specific git author), audit entries.
+- **Policy**: what an agent may do is defined by an explicit, versioned
+  policy, evaluated by one policy engine. Every decision (allow or deny, with
+  reasons) is recorded. Nothing is silently widened.
+- **Audit trail**: an append-only, hash-chained log of every control-plane
+  action and every agent action. It can be verified and exported.
+- **Limits are respected, never bypassed**. Positioning: "one place to manage
+  agents, their permissions, budgets and schedules", not a way to multiply
+  subscription limits.
+- Local first: in stage 1 everything runs on the user's machine, HTTP binds
+  to `127.0.0.1`, no telemetry.
 
-- TypeScript end to end, Node 22+ (developed on Node 25).
-- Server: Fastify, SQLite via `better-sqlite3`, `zod` for validation.
-- UI: React + Vite, served by the same Fastify process in production, Vite dev
-  server in development.
-- Tests: Vitest.
-- Monorepo with npm workspaces: `packages/shared` (types, zod schemas),
-  `packages/server`, `packages/web`.
+## Architecture
 
-## Data model
+### Modular monolith, split-ready
+
+One TypeScript codebase, organised as modules with hard boundaries. Each
+module owns its tables and exposes a public API (`index.ts`). Other modules
+use only that API or subscribe to its domain events; no cross-module table
+access. This keeps each module extractable into a service later.
+
+Modules:
+
+| Module | Owns | Responsibility |
+|---|---|---|
+| `identity` | principals | users, agents as principals, the local user, actor context |
+| `accounts` | accounts | provider accounts (cli/api), secrets handling |
+| `agents` | agents | agent profiles: account, model, role, labels, policy binding |
+| `policy` | policies, policy_versions | versioned policies, `evaluate()` engine |
+| `tasks` | tasks | task lifecycle, queue (claiming) |
+| `runs` | runs, run_events | execution records, normalised event stream |
+| `usage` | usage_snapshots | token accounting, limit windows, budgets |
+| `audit` | audit_events | append-only hash-chained log, verify, export |
+| `runner` | none | provider adapters, spawning CLIs, reporting back |
+
+Layers inside a module: `domain/` (pure types and logic, no I/O), `app/`
+(use cases, transactions, event publishing), `infra/` (database, processes),
+`http/` (routes). Domain code is unit tested without a database.
+
+### Process roles
+
+The same build starts in one of three roles, selected by `AGENT_BAND_ROLE`:
+
+- `api`: HTTP API, SSE, use cases.
+- `worker`: claims queued tasks and executes them through the runner. Must run
+  where the CLIs are installed. Several workers may run in parallel; claiming
+  is safe under concurrency.
+- `all` (default, local mode): both in one process.
+
+Workers talk to the rest of the system only through module use cases and the
+database queue. In stage 5 the worker becomes a remote runner talking to the
+API over HTTP; the use-case boundary is designed for that.
+
+### Data and messaging
+
+- PostgreSQL 17 as the single source of truth.
+  - Development: `docker compose up db`.
+  - Tests: PGlite (Postgres compiled to WASM, in-process). Real Postgres
+    semantics, no Docker needed in tests or CI.
+  - Desktop app (stage 4): embedded PGlite with a data directory.
+- Drizzle ORM with SQL migrations generated by drizzle-kit and committed.
+  Driver chosen by config: `node-postgres` (`DATABASE_URL`) or PGlite
+  (`PGLITE_DIR`, or in-memory for tests).
+- Task queue in Postgres: workers claim with
+  `SELECT ... FOR UPDATE SKIP LOCKED`.
+- Domain events go through a transactional outbox table, written in the same
+  transaction as the state change. An outbox relay publishes them with
+  `pg_notify` (and an in-process bus in PGlite mode). The API fans them out
+  to SSE clients, so any number of API instances get every event.
+
+### Cross-cutting
+
+- Config: env vars validated with zod at startup, fail fast with a clear
+  message.
+- Logging: pino, JSON, with request id and actor id.
+- Errors: `application/problem+json` (RFC 9457) with stable error codes.
+- HTTP schemas: zod, exposed as OpenAPI at `/api/openapi.json`.
+- Health: `/healthz` (process up), `/readyz` (database reachable, migrations
+  applied).
+- Graceful shutdown: stop claiming, let running runs finish or cancel after a
+  timeout, close the database.
+- Quality gates: ESLint (typescript-eslint strict), Prettier, `tsc --noEmit`,
+  Vitest. GitHub Actions runs all of them on every push and PR.
+- Decisions recorded as ADRs in `docs/adr/`.
+
+## Domain model
 
 ```
+Principal
+  id, kind: "user" | "agent" | "system", handle (unique, e.g. "user:local",
+  "agent:backend-1", "system:dispatcher"), displayName, createdAt
+
 Account
   id, name, provider: "claude" | "openai", type: "cli" | "api",
-  configDir?   (cli: CLAUDE_CONFIG_DIR / CODEX_HOME for this account)
-  apiKeyRef?   (api: reference to the key, stored in macOS Keychain later;
-                stage 1 stores it in the DB and never returns it over HTTP)
-  labels: string[]
-  limits: { dailyTokenBudget?: number, maxConcurrentRuns: number }
-  createdAt
+  configDir?  (cli: CLAUDE_CONFIG_DIR / CODEX_HOME for this account)
+  secret?     (api: encrypted at rest with a key from AGENT_BAND_SECRET_KEY;
+               never returned over HTTP; Keychain in stage 4)
+  labels[], limits: { dailyTokenBudget?, maxConcurrentRuns }
+  createdBy (principal), createdAt, updatedAt
 
 Agent
-  id, name, accountId, model?, role: "leader" | "worker" | "reviewer",
-  systemPrompt?, labels: string[]
-  permissions:
-    workDirs: string[]          (absolute paths the agent may run in)
+  id = its principal id, slug, name, accountId, model?, role:
+  "leader" | "worker" | "reviewer", systemPrompt?, labels[],
+  policyId, enabled, gitIdentity: { name, email } (defaults to
+  "<name> (agent-band)" / "<slug>@agents.agent-band.local"),
+  createdBy, createdAt, updatedAt
+
+Policy
+  id, name, description, currentVersion, createdBy, createdAt
+PolicyVersion (immutable)
+  policyId, version, rules, createdBy, createdAt
+  rules:
+    workDirs: string[]                      absolute, agent may run only inside
     mode: "read-only" | "edit" | "full-auto"
-    allowedTools?: string[]     (passed through to the CLI where supported)
+    allowedTools?: string[]                 passed to the CLI where supported
+    deniedTools?: string[]
     dailyTokenBudget?: number
-  enabled: boolean
-  createdAt
+    maxRunMinutes?: number                  run is cancelled when exceeded
+    allowedAccountIds?: string[]            optional extra restriction
 
 Task
-  id, title, prompt, workDir,
-  target: { agentId } | { label }   (label = any free enabled agent with it)
-  priority: number, status: "queued" | "running" | "done" | "failed"
-                            | "rate_limited" | "cancelled"
-  createdAt
+  id, title, prompt, workDir, target: { agentId } | { label },
+  priority, status: queued | claimed | running | done | failed |
+  rate_limited | cancelled | denied, error?, createdBy, createdAt, updatedAt
 
 Run
-  id, taskId, agentId, accountId, status, startedAt, finishedAt?,
-  exitCode?, inputTokens, outputTokens, cachedTokens, costUsd?,
-  rateLimitResetsAt?, error?
+  id, taskId, agentId, accountId, policyId, policyVersion, workerId,
+  status: running | done | failed | rate_limited | cancelled,
+  startedAt, finishedAt?, exitCode?, inputTokens, outputTokens,
+  cachedTokens, costUsd?, rateLimitResetsAt?, error?
+
 RunEvent
-  id, runId, ts, kind: "text" | "tool" | "usage" | "rate_limit" | "error"
-                       | "stderr", payload (JSON)
-AccountUsageSnapshot
-  id, accountId, ts, window: "5h" | "weekly", usedPercent, resetsAt
+  id (bigserial), runId, ts, kind: text | tool | usage | rate_limit |
+  error | stderr | session, payload (jsonb)
+
+UsageSnapshot
+  id, accountId, ts, window: "5h" | "weekly", usedPercent, resetsAt?
+
+AuditEvent (append-only)
+  seq (bigserial), ts, actorId (principal), action, targetType, targetId,
+  data (jsonb), prevHash, hash
+  hash = sha256(prevHash + canonicalJSON({seq, ts, actorId, action,
+         targetType, targetId, data}))
+  UPDATE and DELETE are rejected by a database trigger.
+
+OutboxEvent
+  id (bigserial), ts, type, payload (jsonb), publishedAt?
 ```
 
-## Engine
+## Policy engine
 
-### Queue / dispatcher
+Pure function in `policy/domain`:
 
-Single in-process loop, ticks on task creation, run completion and every few
-seconds. For each queued task by priority:
+```
+evaluate(rules, request) -> { allow: boolean, reasons: string[] }
+request = { action: "run.start", agent, account, task, usage: {
+            agentTokensToday, accountTokensToday } }
+```
 
-1. Resolve candidate agents (explicit agent, or enabled agents with the label).
-2. Skip agents that are busy, disabled, or whose account is at
-   `maxConcurrentRuns`, over a daily token budget, or known rate-limited until
-   a future `resetsAt`.
-3. Check permissions: `task.workDir` must be inside one of the agent's
-   `workDirs` (path-normalised, no `..` escape). Violations fail the task with
-   a clear error, they are never silently widened.
-4. Start a Run through the provider adapter.
+Checks for `run.start`: agent enabled, workDir inside `workDirs`
+(normalised, no `..` escape, no prefix lookalikes), account allowed,
+agent budget not exhausted. Account-level checks (concurrency, account
+budget, rate limit window) live in `usage` and are not policy, because they
+are not about what the agent is allowed to do.
 
-Cancellation kills the child process (SIGTERM, then SIGKILL after 5 s).
+A deny on an explicitly targeted task sets the task to `denied` with the
+reasons. For label targets, denied agents are skipped; if every candidate is
+denied, the task is `denied`. Every evaluation result is written to the audit
+log (`policy.decision`).
 
-On server start, runs left in `running` from a previous process are marked
-`failed` with error "server restarted".
+Policy changes create a new immutable version; runs record the version they
+ran under.
 
-### Provider adapters
+## Audit
+
+Actions recorded (stage 1): `account.create|update|delete`,
+`agent.create|update|delete`, `policy.create|update`, `task.create|cancel`,
+`policy.decision`, `run.start|finish`, `agent.tool_use` (one per tool event,
+with tool name and a truncated input), `run.rate_limited`.
+
+The actor is always explicit: the local user for UI actions, the agent for
+tool use, `system:dispatcher` for scheduling. API endpoints: list with
+filters (actor, action, target, time range, cursor pagination), verify the
+chain, export as JSONL.
+
+## Runner and provider adapters
 
 Common interface:
 
 ```ts
-interface ProviderAdapter {
-  start(ctx: RunContext): RunHandle   // spawns, returns handle
-}
+interface ProviderAdapter { start(ctx: RunContext): RunHandle }
 interface RunHandle {
   events: AsyncIterable<NormalizedEvent>
+  done: Promise<{ exitCode: number | null; error?: string }>
   cancel(): void
-  done: Promise<{ exitCode: number }>
 }
 ```
 
-- Claude CLI: `claude -p <prompt> --output-format stream-json --verbose`,
-  env `CLAUDE_CONFIG_DIR=<account.configDir>`, cwd `task.workDir`.
-  Mode mapping: read-only -> `--permission-mode plan`, edit ->
-  `--permission-mode acceptEdits`, full-auto -> `--permission-mode
-  bypassPermissions` (UI shows a warning). `--model` and `--allowedTools`
-  when set.
-- Codex CLI: `codex exec --json --skip-git-repo-check <prompt>`, env
-  `CODEX_HOME=<account.configDir>`, cwd `task.workDir`. Mode mapping:
-  read-only -> `-s read-only`, edit -> `-s workspace-write`, full-auto ->
-  `--full-auto`. `-m` when model is set. stdin is closed.
-- API: stub that fails the run with "API accounts arrive in a later stage".
+Every spawned process gets the agent's git identity
+(`GIT_AUTHOR_NAME/EMAIL`, `GIT_COMMITTER_NAME/EMAIL`) and
+`AGENT_BAND_AGENT_ID`, so commits and tool calls are attributable.
 
-Each adapter has a pure parser `parseLine(line) -> NormalizedEvent[]`. Parsers
-are tested against recorded sample outputs checked into
-`packages/server/test/fixtures/`. The exact JSON shapes must be taken from real
-recordings made with the installed CLIs, not assumed.
+- Claude CLI: `claude -p <prompt> --output-format stream-json --verbose
+  --permission-mode <plan|acceptEdits|bypassPermissions>` plus `--model`,
+  `--allowedTools`, `--disallowedTools`, `--append-system-prompt` when set.
+  Env `CLAUDE_CONFIG_DIR`. Rate limit windows come from `rate_limit_event`.
+- Codex CLI: `codex exec --json --skip-git-repo-check` with `-s read-only`,
+  `-s workspace-write` or `--full-auto`, `-m` when set. Env `CODEX_HOME`.
+  Rate limit windows are read after the run from the session rollout file
+  `$CODEX_HOME/sessions/**/rollout-*-<thread_id>.jsonl`.
+- API accounts: stub adapter that fails with "API accounts arrive in a later
+  stage".
 
-### Usage and limits
+Parsers are pure and tested against real recordings in
+`apps/server/test/fixtures/` (already recorded and sanitised).
 
-- Token counts come from usage events in the CLI stream and are summed into
-  the Run.
-- Codex: `rate_limits` data (primary 5 h window, secondary weekly window, with
-  `used_percent` and `resets_at`) is stored as `AccountUsageSnapshot`.
-- Claude: limit-reached messages are detected and turned into a
-  `rate_limit` event with a reset time when the CLI provides one. Otherwise
-  the UI shows token totals per window computed from Runs.
-- A run that ends on a limit gets status `rate_limited`, its task goes back to
-  `rate_limited`, and the account is marked unavailable until `resetsAt`.
-  Automatic resume is stage 2.
+## Usage and limits
+
+- Tokens are summed per run from usage events (Claude: only the final
+  `result` event; Codex: `turn.completed`).
+- Limit windows (5 h, weekly) are stored as snapshots per account.
+- A run that hits a limit ends as `rate_limited`; the account is blocked
+  until the reset time; the task becomes `rate_limited` (resume is stage 2).
+- Before starting a run the dispatcher checks account concurrency, account
+  daily budget and the rate-limit block.
 
 ## HTTP API (localhost only)
 
-REST under `/api`: CRUD for accounts, agents, tasks; `POST /api/tasks/:id/cancel`;
-`GET /api/runs?taskId=`; `GET /api/dashboard` (accounts with usage and limits,
-agents with status). Live updates over one Server-Sent Events stream
-`GET /api/events` (run events, status changes). Secrets are never returned.
+REST under `/api/v1`, zod-validated, OpenAPI generated. Resources: accounts,
+agents, policies (+ versions), tasks (+ cancel), runs (+ events), usage
+dashboard, audit (+ verify, export), principals (read-only). Live updates
+over SSE `GET /api/v1/events`. Secrets are never returned. In stage 1 every
+request runs as `user:local`; the actor resolution sits behind one function
+so real authentication slots in later.
 
 ## UI
 
-- Dashboard: account cards with limit bars (5 h, weekly, daily budget) and
-  token totals; agent list with status badge (idle, running, error,
-  rate-limited).
-- Accounts, Agents, Tasks: list + create/edit forms.
-- Run view: live log stream, token counters, cancel button.
+Visual style modelled on Lens (the Kubernetes IDE): dark theme by default
+(light theme available), narrow icon rail plus a left sidebar listing
+resource kinds (Dashboard, Agents, Tasks, Runs, Policies, Accounts, Audit),
+dense sortable tables with coloured status dots, a details panel sliding in
+from the right when a row is selected, and a resizable bottom dock with the
+live log of the selected run. Small hand-written CSS with design tokens, no
+component library.
 
-Plain, dense, readable. No design system beyond a small CSS file.
+Agent details show its identity (handle, git identity), current policy and
+version, recent runs and its audit history.
 
-## Error handling
+## Repository layout
 
-- CLI binary missing or account not logged in: run fails with an actionable
-  message (e.g. "run `CLAUDE_CONFIG_DIR=... claude` and log in").
-- Unparseable output lines are kept as `stderr`/`text` events, never crash the
-  run.
-- All input validated with zod at the HTTP boundary.
+```
+apps/server        Fastify app, modules, runner, roles
+apps/web           React + Vite SPA
+packages/contracts zod schemas and types shared by server and web
+docs/adr           architecture decision records
+docker-compose.yml Postgres for development
+```
 
 ## Testing
 
-- Unit: parsers (fixtures), dispatcher selection logic (fake adapter), path
-  permission checks, limit accounting.
-- Integration: HTTP API against an in-memory SQLite and a fake adapter that
-  emits scripted events. No real tokens spent in tests.
-- One manual smoke script that runs a trivial task on each real CLI.
+- Unit: domain logic (policy engine, audit hashing, availability, parsers).
+- Module integration: use cases against PGlite with migrations applied.
+- HTTP: Fastify `inject` against PGlite and a fake adapter.
+- Concurrency: two workers claiming from the same queue never take the same
+  task.
+- No test spawns a real `claude`/`codex` or spends tokens. One manual smoke
+  script exercises the real CLIs.
 
 ## Out of scope for stage 1
 
-Scheduler, leader orchestration, API adapters, Keychain, auth for the web UI,
-multi-user, packaging as a Mac app.
+Scheduler, leader orchestration, API adapters, multi-user auth, remote
+runners, Keychain, Mac packaging, per-agent signing keys.
