@@ -1,6 +1,12 @@
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type { NormalizedEvent, ProviderAdapter, RunHandle, RunSpec } from '@agent-band/contracts';
+import {
+  MCP_TOOLS_ALLOW,
+  type NormalizedEvent,
+  type ProviderAdapter,
+  type RunHandle,
+  RunSpec,
+} from '@agent-band/contracts';
 import { parseClaudeLine, parseCodexLine } from './parsers.ts';
 import { eventQueue, spawnJsonLines } from './process.ts';
 import { readCodexRateLimits } from './rollout.ts';
@@ -21,6 +27,10 @@ export function runEnv(s: RunSpec, provider: 'claude' | 'openai'): Record<string
     AGENT_BAND_RUN_ID: s.runId,
   };
 }
+function allowedToolsArg(s: RunSpec): string | undefined {
+  const tools = [...(s.allowedTools ?? []), ...(s.mcpConfigPath !== undefined ? [MCP_TOOLS_ALLOW] : [])];
+  return tools.length > 0 ? tools.join(',') : undefined;
+}
 export function claudeArgs(s: RunSpec): string[] {
   const args = [
     '-p',
@@ -33,12 +43,16 @@ export function claudeArgs(s: RunSpec): string[] {
   ];
   for (const [flag, value] of [
     ['--model', s.model],
-    ['--allowedTools', s.allowedTools?.join(',')],
+    ['--allowedTools', allowedToolsArg(s)],
     ['--disallowedTools', s.deniedTools?.join(',')],
     ['--append-system-prompt', s.systemPrompt],
     ['--plugin-dir', s.skillsDir],
+    ['--mcp-config', s.mcpConfigPath],
+    ['--resume', s.resumeSessionId],
   ])
     if (value !== undefined && flag !== undefined) args.push(flag, value);
+  // Only the per-run delegation server is loaded; user and project MCP servers are ignored.
+  if (s.mcpConfigPath !== undefined) args.push('--strict-mcp-config');
   return args;
 }
 export function codexArgs(s: RunSpec): string[] {

@@ -4,6 +4,7 @@ import { accountRoutes } from './accounts.ts';
 import { agentRoutes } from './agents.ts';
 import { auditRoutes } from './audit.ts';
 import { executionRoutes } from './execution.ts';
+import { mcpRoutes } from './mcp.ts';
 import { eventRoutes, type SseOptions } from './events.ts';
 import { orgRoutes } from './org.ts';
 import { policyRoutes } from './policies.ts';
@@ -29,6 +30,7 @@ export async function registerApiRoutes(
       await api.register(eventRoutes(c, sse));
       await api.register(policyRoutes(c));
       await api.register(executionRoutes(c));
+      await api.register(mcpRoutes(c));
     },
     { prefix: '/api/v1' },
   );

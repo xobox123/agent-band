@@ -38,6 +38,10 @@ export const RunSpec = z.object({
   deniedTools: z.array(z.string()).optional(),
   configDir: z.string(),
   skillsDir: z.string().optional(),
+  /** Claude MCP config file attached to goal (leader) runs. */
+  mcpConfigPath: z.string().optional(),
+  /** Claude session to resume on a leader continuation turn. */
+  resumeSessionId: z.string().optional(),
   gitIdentity: z.object({ name: z.string(), email: z.string() }),
   agentId: z.string(),
   env: z.record(z.string(), z.string()).optional(),
