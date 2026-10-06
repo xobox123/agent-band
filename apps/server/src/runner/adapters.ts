@@ -1,12 +1,18 @@
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import type { NormalizedEvent, ProviderAdapter, RunHandle, RunSpec } from '@agent-band/contracts';
 import { parseClaudeLine, parseCodexLine } from './parsers.ts';
 import { eventQueue, spawnJsonLines } from './process.ts';
 import { readCodexRateLimits } from './rollout.ts';
 
 export function runEnv(s: RunSpec, provider: 'claude' | 'openai'): Record<string, string> {
+  const key = provider === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME';
+  // Setting the variable even to the default dir changes where the CLI looks up its login
+  // (Claude on macOS keys the Keychain entry by it), so the default dir is left implicit.
+  const isDefault = resolve(s.configDir) === join(homedir(), provider === 'claude' ? '.claude' : '.codex');
   return {
     ...s.env,
-    [provider === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME']: s.configDir,
+    ...(isDefault ? {} : { [key]: s.configDir }),
     GIT_AUTHOR_NAME: s.gitIdentity.name,
     GIT_AUTHOR_EMAIL: s.gitIdentity.email,
     GIT_COMMITTER_NAME: s.gitIdentity.name,

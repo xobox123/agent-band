@@ -1,5 +1,5 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RunHandle, RunSpec } from '@agent-band/contracts';
@@ -205,6 +205,13 @@ describe('run env', () => {
     const env = runEnv({ ...spec, env: { AGENT_BAND_RUN_TOKEN: 't', AGENT_BAND_RUN_ID: 'evil' } }, 'claude');
     expect(env['AGENT_BAND_RUN_TOKEN']).toBe('t');
     expect(env['AGENT_BAND_RUN_ID']).toBe('run');
+  });
+  it.each([
+    ['claude', '.claude', 'CLAUDE_CONFIG_DIR'],
+    ['openai', '.codex', 'CODEX_HOME'],
+  ] as const)('leaves the default %s config dir implicit', (provider, dir, key) => {
+    expect(runEnv({ ...spec, configDir: join(homedir(), dir) }, provider)).not.toHaveProperty(key);
+    expect(runEnv({ ...spec, configDir: join(homedir(), dir) + '/' }, provider)).not.toHaveProperty(key);
   });
 });
 
