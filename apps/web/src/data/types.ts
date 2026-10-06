@@ -1,0 +1,106 @@
+// Local mirror of the domain types. T10 replaces these with @agent-band/contracts.
+
+export type TaskStatus =
+  'queued' | 'claimed' | 'running' | 'done' | 'failed' | 'rate_limited' | 'cancelled' | 'denied';
+
+export type RunStatus = 'running' | 'done' | 'failed' | 'rate_limited' | 'cancelled';
+
+/** 0 is highest (P0), 3 is lowest (P3). Default is 2. */
+export type Priority = 0 | 1 | 2 | 3;
+
+export type TaskTarget =
+  | { type: 'agent'; agentId: string }
+  | { type: 'label'; label: string }
+  | { type: 'group'; agentGroupId: string };
+
+export interface Task {
+  id: string;
+  key: string;
+  title: string;
+  prompt: string;
+  status: TaskStatus;
+  priority: Priority;
+  rank: number;
+  target: TaskTarget;
+  workDir: string;
+  /** Latest run, if any. */
+  runId: string | null;
+  error: string | null;
+  /** Dispatcher-supplied reason when a queued task has no eligible agent. */
+  noEligibleReason: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Run {
+  id: string;
+  taskId: string;
+  agentId: string;
+  accountId: string;
+  status: RunStatus;
+  startedAt: string;
+  finishedAt: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cachedTokens: number | null;
+  rateLimitResetsAt: string | null;
+  error: string | null;
+}
+
+export interface AvatarSpec {
+  initials?: string;
+  /** Approved theme token name, e.g. "av-3". */
+  color?: string;
+  url?: string;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  handle: string;
+  role: 'leader' | 'worker' | 'reviewer';
+  enabled: boolean;
+  accountId: string;
+  model: string | null;
+  labels: string[];
+  groupIds: string[];
+  avatar: AvatarSpec | null;
+}
+
+export interface Account {
+  id: string;
+  name: string;
+  provider: 'claude' | 'codex' | 'api';
+  dailyTokenBudget: number | null;
+  tokensToday: number;
+}
+
+export interface AgentGroup {
+  id: string;
+  name: string;
+}
+
+export interface BoardFilter {
+  text: string;
+  agentId: string | null;
+  label: string | null;
+  accountId: string | null;
+}
+
+export interface BoardSnapshot {
+  /** Latest outbox id at read time. */
+  cursor: string;
+  /** Tasks matching the filter. */
+  tasks: Task[];
+  /** Runs of the returned tasks. */
+  runs: Run[];
+  /** All agents, accounts and groups (unfiltered) for filter options. */
+  agents: Agent[];
+  accounts: Account[];
+  groups: AgentGroup[];
+}
+
+export interface BoardEvent {
+  cursor: string;
+}
