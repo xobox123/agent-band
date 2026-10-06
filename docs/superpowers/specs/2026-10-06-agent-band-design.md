@@ -52,17 +52,18 @@ access. This keeps each module extractable into a service later.
 
 Modules:
 
-| Module | Owns | Responsibility |
-|---|---|---|
-| `identity` | principals | users, agents as principals, the local user, actor context |
-| `accounts` | accounts | provider accounts (cli/api), secrets handling |
-| `agents` | agents | agent profiles: account, model, role, labels, policy binding |
-| `policy` | policies, policy_versions | versioned policies, `evaluate()` engine |
-| `tasks` | tasks | task lifecycle, queue (claiming) |
-| `runs` | runs, run_events | execution records, normalised event stream |
-| `usage` | usage_snapshots | token accounting, limit windows, budgets |
-| `audit` | audit_events | append-only hash-chained log, verify, export |
-| `runner` | none | provider adapters, spawning CLIs, reporting back |
+| Module     | Owns                                                   | Responsibility                                          |
+| ---------- | ------------------------------------------------------ | ------------------------------------------------------- |
+| `org`      | organizations, principals, users, teams, role_bindings | org, human identities, teams, RBAC `authorize()`        |
+| `accounts` | accounts                                               | provider accounts (cli/api), encrypted secrets          |
+| `agents`   | agents, agent_groups                                   | personalised agents as principals, groups               |
+| `policy`   | policies, policy_versions                              | versioned policies, merge and `evaluate()`              |
+| `skills`   | skills, skill_versions, skill_assignments              | org skill library, assignment, materialisation input    |
+| `tasks`    | tasks                                                  | task lifecycle, keys, queue (claiming), board ordering  |
+| `runs`     | runs, run_events                                       | execution records, normalised event stream              |
+| `usage`    | usage_snapshots                                        | token accounting, limit windows, budgets                |
+| `audit`    | audit_events                                           | append-only hash-chained log, verify, export            |
+| `runner`   | none                                                   | provider adapters, skill materialisation, spawning CLIs |
 
 Layers inside a module: `domain/` (pure types and logic, no I/O), `app/`
 (use cases, transactions, event publishing), `infra/` (database, processes),
@@ -116,46 +117,89 @@ API over HTTP; the use-case boundary is designed for that.
 
 ## Domain model
 
+Everything belongs to one `Organization` (stage 1 creates a single default
+organization; the column exists so team mode needs no migration of meaning).
+
 ```
+Organization
+  id, name, taskKeyPrefix (default "AB"), createdAt
+
 Principal
-  id, kind: "user" | "agent" | "system", handle (unique, e.g. "user:local",
-  "agent:backend-1", "system:dispatcher"), displayName, createdAt
+  id, orgId, kind: "user" | "agent" | "system", handle (unique per org, e.g.
+  "user:local", "agent:backend-1", "system:dispatcher"), displayName,
+  avatar? (initials + colour or image URL), createdAt
+
+User (human, kind = user)
+  principalId, email?, status: active | disabled
+  Stage 1: one user "user:local" with role owner, no login.
+
+Team (group of humans)
+  id, orgId, name, description; members: userId[]
+
+RoleBinding (RBAC)
+  id, orgId, subject: { userId } | { teamId },
+  role: "owner" | "admin" | "operator" | "viewer",
+  scope: { org } | { agentGroupId } | { agentId }
 
 Account
-  id, name, provider: "claude" | "openai", type: "cli" | "api",
+  id, orgId, name, provider: "claude" | "openai", type: "cli" | "api",
   configDir?  (cli: CLAUDE_CONFIG_DIR / CODEX_HOME for this account)
-  secret?     (api: encrypted at rest with a key from AGENT_BAND_SECRET_KEY;
-               never returned over HTTP; Keychain in stage 4)
+  secret?     (api: encrypted at rest (AES-256-GCM) with a key from
+               AGENT_BAND_SECRET_KEY or an auto-created key file in
+               AGENT_BAND_HOME with mode 0600; never returned over HTTP;
+               Keychain in stage 4)
   labels[], limits: { dailyTokenBudget?, maxConcurrentRuns }
   createdBy (principal), createdAt, updatedAt
 
-Agent
-  id = its principal id, slug, name, accountId, model?, role:
-  "leader" | "worker" | "reviewer", systemPrompt?, labels[],
-  policyId, enabled, gitIdentity: { name, email } (defaults to
-  "<name> (agent-band)" / "<slug>@agents.agent-band.local"),
-  createdBy, createdAt, updatedAt
+AgentGroup
+  id, orgId, name, description, labels[], policyId?, createdBy, createdAt
+  An agent belongs to zero or more groups.
+
+Agent (personalised, kind = agent principal)
+  id = its principal id, slug, name, avatar?, accountId, model?,
+  role: "leader" | "worker" | "reviewer",
+  persona? (short description of who the agent is and how it works),
+  systemPrompt?, labels[], groupIds[], policyId?, enabled,
+  gitIdentity: { name, email } (defaults to "<name> (agent-band)" /
+  "<slug>@agents.agent-band.local"), createdBy, createdAt, updatedAt
 
 Policy
-  id, name, description, currentVersion, createdBy, createdAt
+  id, orgId, name, description, currentVersion, createdBy, createdAt
 PolicyVersion (immutable)
   policyId, version, rules, createdBy, createdAt
-  rules:
-    workDirs: string[]                      absolute, agent may run only inside
-    mode: "read-only" | "edit" | "full-auto"
-    allowedTools?: string[]                 passed to the CLI where supported
-    deniedTools?: string[]
-    dailyTokenBudget?: number
-    maxRunMinutes?: number                  run is cancelled when exceeded
-    allowedAccountIds?: string[]            optional extra restriction
+  rules (every field optional; absent = no restriction at this level):
+    workDirs: string[]                      absolute roots
+    maxMode: "read-only" | "edit" | "full-auto"
+    allowedTools: string[]
+    deniedTools: string[]
+    dailyTokenBudget: number
+    maxRunMinutes: number                   run is cancelled when exceeded
+    allowedAccountIds: string[]
+    allowedSkillIds: string[]               restricts which skills may load
+PolicyBinding: the org has an optional baseline policy (Organization
+  .policyId), each AgentGroup and Agent may reference one.
+
+Skill (org-wide library)
+  id, orgId, name, description, currentVersion, createdBy, createdAt
+SkillVersion (immutable)
+  skillId, version, contentHash (sha256 of the bundle), files (bundle of
+  SKILL.md plus supporting files, stored in the database as bytea, max 5 MB),
+  source: "upload" | "path" | "git" (+ origin), createdBy, createdAt
+SkillAssignment
+  id, skillId, pinnedVersion? (absent = always current),
+  scope: { org } | { agentGroupId } | { agentId }, createdBy, createdAt
 
 Task
-  id, key (e.g. "AB-42"), title, prompt, workDir, target: { agentId } | { label },
-  priority, status: queued | claimed | running | done | failed |
-  rate_limited | cancelled | denied, error?, createdBy, createdAt, updatedAt
+  id, orgId, key (e.g. "AB-42"), title, prompt, workDir,
+  target: { agentId } | { label } | { agentGroupId },
+  priority, mode? (requested mode, capped by policy),
+  status: queued | claimed | running | done | failed | rate_limited |
+  cancelled | denied, error?, createdBy, createdAt, updatedAt
 
 Run
-  id, taskId, agentId, accountId, policyId, policyVersion, workerId,
+  id, taskId, agentId, accountId, workerId, effectivePolicy (jsonb snapshot
+  plus the policy version ids it was computed from), skills (skillId +
+  version + contentHash for each loaded skill),
   status: running | done | failed | rate_limited | cancelled,
   startedAt, finishedAt?, exitCode?, inputTokens, outputTokens,
   cachedTokens, costUsd?, rateLimitResetsAt?, error?
@@ -168,62 +212,102 @@ UsageSnapshot
   id, accountId, ts, window: "5h" | "weekly", usedPercent, resetsAt?
 
 AuditEvent (append-only)
-  seq (bigserial), ts, actorId (principal), action, targetType, targetId,
-  data (jsonb), prevHash, hash
-  hash = sha256(prevHash + canonicalJSON({seq, ts, actorId, action,
+  seq (bigserial), orgId, ts, actorId (principal), action, targetType,
+  targetId, data (jsonb), prevHash, hash
+  hash = sha256(prevHash + canonicalJSON({seq, orgId, ts, actorId, action,
          targetType, targetId, data}))
+  Appends are serialised with a transaction-scoped advisory lock.
   UPDATE and DELETE are rejected by a database trigger.
 
 OutboxEvent
-  id (bigserial), ts, type, payload (jsonb), publishedAt?
+  id (bigserial), ts, type, payload (jsonb)
 ```
+
+## Authorization (humans)
+
+One function, called by every use case before it acts:
+
+```
+authorize(actor, action, resource) -> { allow, reason }
+```
+
+RBAC from RoleBindings: `viewer` reads; `operator` also creates and cancels
+tasks on agents in scope; `admin` also manages agents, groups, policies,
+skills and accounts in scope; `owner` everything including role bindings and
+audit export. A binding on an AgentGroup applies to its agents. Denials
+return 403 with a stable error code and are audited (`authz.denied`). In
+stage 1 the only actor is `user:local` with an org-scope `owner` binding;
+the enforcement path is real and tested with other roles.
 
 ## Policy engine
 
-Pure function in `policy/domain`:
+Pure functions in `policy/domain`:
 
 ```
-evaluate(rules, request) -> { allow: boolean, reasons: string[] }
-request = { action: "run.start", agent, account, task, usage: {
-            agentTokensToday, accountTokensToday } }
+effectivePolicy(org baseline, group policies[], agent policy) -> rules
+evaluate(effectiveRules, request) -> { allow: boolean, reasons: string[] }
+request = { action: "run.start", agent, account, task, skills,
+            usage: { agentTokensToday } }
 ```
 
-Checks for `run.start`: agent enabled, workDir inside `workDirs`
-(normalised, no `..` escape, no prefix lookalikes), account allowed,
-agent budget not exhausted. Account-level checks (concurrency, account
-budget, rate limit window) live in `usage` and are not policy, because they
-are not about what the agent is allowed to do.
+Merging is most-restrictive-wins, so a lower level can only narrow:
+`workDirs` is the intersection of path sets (a directory is allowed only if
+every level that sets workDirs allows it), `maxMode` is the minimum,
+`allowedTools`/`allowedAccountIds`/`allowedSkillIds` are intersections,
+`deniedTools` is the union, budgets and `maxRunMinutes` are the minimum.
 
-A deny on an explicitly targeted task sets the task to `denied` with the
-reasons. For label targets, denied agents are skipped; if every candidate is
-denied, the task is `denied`. Every evaluation result is written to the audit
-log (`policy.decision`).
+Checks for `run.start`: agent enabled, workDir allowed (normalised, no `..`
+escape, no prefix lookalikes), requested mode not above `maxMode` (the run
+uses `min(task.mode ?? maxMode, maxMode)`), account allowed, every skill to
+load allowed, agent budget not exhausted. Account-level checks (concurrency,
+account budget, rate-limit window) live in `usage`, because they are not
+about what the agent is allowed to do.
 
-Policy changes create a new immutable version; runs record the version they
-ran under.
+A deny on an explicitly targeted task sets it to `denied` with the reasons.
+For label or group targets, denied agents are skipped; if every candidate is
+denied, the task is `denied`. Every evaluation is audited
+(`policy.decision`, with the effective rules hash and reasons).
+
+## Skills
+
+- Library: upload a folder (zip) or register a local path or git URL; each
+  import creates an immutable SkillVersion with a content hash.
+- Assignment at org, group or agent level; effective skills for a run =
+  union of all assignments, filtered by the policy's `allowedSkillIds`.
+- Loading: the runner materialises the effective skills into a per-run
+  temporary directory and passes it to the CLI in the provider's native
+  format (Claude: a generated plugin directory via `--plugin-dir`; Codex:
+  the provider's skills mechanism). The exact mechanism per CLI is verified
+  against the installed CLI during implementation and recorded in an ADR.
+  The user's own CLI config is never modified.
+- Every run records the skill versions and hashes it loaded; skill changes
+  and assignments are audited.
 
 ## Audit
 
-Actions recorded (stage 1): `account.create|update|delete`,
-`agent.create|update|delete`, `policy.create|update`, `task.create|cancel`,
-`policy.decision`, `run.start|finish`, `agent.tool_use` (one per tool event,
-with tool name and a truncated input), `run.rate_limited`.
+Actions recorded (stage 1): create/update/delete of accounts, agents,
+agent groups, policies, skills, skill assignments, teams, role bindings;
+`task.create|cancel`, `policy.decision`, `authz.denied`, `run.start|finish`
+(with effective policy hash and skill hashes), `agent.tool_use` (one per tool
+event, with tool name and a truncated input), `run.rate_limited`.
 
-The actor is always explicit: the local user for UI actions, the agent for
-tool use, `system:dispatcher` for scheduling. API endpoints: list with
-filters (actor, action, target, time range, cursor pagination), verify the
-chain, export as JSONL.
+The actor is always explicit: the user for UI actions, the agent for tool
+use, `system:dispatcher` for scheduling. API: list with filters (actor,
+action, target, time range, cursor pagination), verify the chain, export as
+JSONL. Agent, group and user detail views show their audit history.
 
 ## Runner and provider adapters
 
 Common interface:
 
 ```ts
-interface ProviderAdapter { start(ctx: RunContext): RunHandle }
+interface ProviderAdapter {
+  start(ctx: RunContext): RunHandle;
+}
 interface RunHandle {
-  events: AsyncIterable<NormalizedEvent>
-  done: Promise<{ exitCode: number | null; error?: string }>
-  cancel(): void
+  events: AsyncIterable<NormalizedEvent>;
+  done: Promise<{ exitCode: number | null; error?: string }>;
+  cancel(): void;
 }
 ```
 
@@ -232,7 +316,7 @@ Every spawned process gets the agent's git identity
 `AGENT_BAND_AGENT_ID`, so commits and tool calls are attributable.
 
 - Claude CLI: `claude -p <prompt> --output-format stream-json --verbose
-  --permission-mode <plan|acceptEdits|bypassPermissions>` plus `--model`,
+--permission-mode <plan|acceptEdits|bypassPermissions>` plus `--model`,
   `--allowedTools`, `--disallowedTools`, `--append-system-prompt` when set.
   Env `CLAUDE_CONFIG_DIR`. Rate limit windows come from `rate_limit_event`.
 - Codex CLI: `codex exec --json --skip-git-repo-check` with `-s read-only`,
@@ -268,7 +352,8 @@ so real authentication slots in later.
 
 Visual style modelled on Lens (the Kubernetes IDE): dark theme by default
 (light theme available), narrow icon rail plus a left sidebar listing
-resource kinds (Board, Dashboard, Agents, Tasks, Runs, Policies, Accounts, Audit),
+resource kinds (Board, Dashboard, Agents, Agent groups, Tasks, Runs, Skills,
+Policies, Accounts, People and teams, Audit),
 dense sortable tables with coloured status dots, a details panel sliding in
 from the right when a row is selected, and a resizable bottom dock with the
 live log of the selected run. Small hand-written CSS with design tokens, no
