@@ -83,6 +83,8 @@ export function createLiveDataSource(api: Api, events: EventsClient, throttleMs 
         target: toTargetDto(task.target),
         priority: task.priority,
         ...(task.mode ? { mode: task.mode } : {}),
+        ...(task.runAt ? { runAt: task.runAt } : {}),
+        ...(task.maxAttempts ? { maxAttempts: task.maxAttempts } : {}),
       });
     },
   };

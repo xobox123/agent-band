@@ -5,6 +5,7 @@ export type RouteId =
   | 'agent-groups'
   | 'tasks'
   | 'runs'
+  | 'schedules'
   | 'skills'
   | 'policies'
   | 'accounts'
@@ -45,6 +46,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: 'agent-groups', label: 'Agent groups' },
       { id: 'tasks', label: 'Tasks', shortcut: '4' },
       { id: 'runs', label: 'Runs', shortcut: '5' },
+      { id: 'schedules', label: 'Schedules' },
     ],
   },
   {

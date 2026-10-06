@@ -227,3 +227,37 @@
 .section-title + .section-pad {
   padding-top: 8px;
 }
+
+.schedule-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preview-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: var(--fs-sm);
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.form-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}

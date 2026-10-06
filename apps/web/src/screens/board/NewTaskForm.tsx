@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { Field, FormDialog } from '../../components/FormDialog.tsx';
-import type { Agent, AgentGroup, NewTask, Priority } from '../../data/types.ts';
-import { PRIORITIES } from './model.ts';
-
-type TargetType = 'agent' | 'label' | 'group';
-type Mode = '' | 'read-only' | 'edit' | 'full-auto';
+import type { Agent, AgentGroup, NewTask } from '../../data/types.ts';
+import { localToIso } from '../../lib/schedule.ts';
+import { EMPTY_TASK_FIELDS, TaskFields, toNewTask, validateTaskFields } from './TaskFields.tsx';
+import type { TaskFieldsValue, TargetType } from './TaskFields.tsx';
 
 interface Props {
   agents: Agent[];
@@ -12,6 +11,8 @@ interface Props {
   onSubmit: (task: NewTask) => Promise<void>;
   onCancel: () => void;
 }
+
+export const DEFAULT_MAX_ATTEMPTS = 3;
 
 export function validateNewTask(input: {
   title: string;
@@ -21,60 +22,46 @@ export function validateNewTask(input: {
   agentId: string;
   label: string;
   groupId: string;
+  runAt?: string;
+  maxAttempts?: number;
 }): string | null {
-  if (input.title.trim() === '') return 'Title is required.';
-  if (input.prompt.trim() === '') return 'Prompt is required.';
-  if (
-    !input.workDir.startsWith('/') ||
-    input.workDir.includes('\0') ||
-    input.workDir.split('/').includes('..')
-  ) {
-    return 'Work directory must be an absolute path without .. segments.';
+  const fields = validateTaskFields(input);
+  if (fields) return fields;
+  if (input.runAt) {
+    const iso = localToIso(input.runAt);
+    if (!iso) return 'Run at is not a valid date and time.';
+    if (Date.parse(iso) <= Date.now()) return 'Run at must be in the future.';
   }
-  if (input.targetType === 'agent' && input.agentId === '') return 'Select an agent.';
-  if (input.targetType === 'label' && input.label.trim() === '') return 'Enter a label.';
-  if (input.targetType === 'group' && input.groupId === '') return 'Select a group.';
+  const attempts = input.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  if (!Number.isInteger(attempts) || attempts < 1 || attempts > 20) {
+    return 'Max attempts must be a whole number from 1 to 20.';
+  }
   return null;
 }
 
 export function NewTaskForm({ agents, groups, onSubmit, onCancel }: Props) {
-  const [title, setTitle] = useState('');
-  const [prompt, setPrompt] = useState('');
-  const [workDir, setWorkDir] = useState('');
-  const [targetType, setTargetType] = useState<TargetType>('agent');
-  const [agentId, setAgentId] = useState('');
-  const [label, setLabel] = useState('');
-  const [groupId, setGroupId] = useState('');
-  const [priority, setPriority] = useState<Priority>(2);
-  const [mode, setMode] = useState<Mode>('');
+  const [fields, setFields] = useState<TaskFieldsValue>(EMPTY_TASK_FIELDS);
+  const [runAt, setRunAt] = useState('');
+  const [maxAttempts, setMaxAttempts] = useState(String(DEFAULT_MAX_ATTEMPTS));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [touched, setTouched] = useState(false);
 
-  const invalid = validateNewTask({ title, prompt, workDir, targetType, agentId, label, groupId });
+  const attempts = maxAttempts.trim() === '' ? Number.NaN : Number(maxAttempts);
+  const invalid = validateNewTask({ ...fields, runAt, maxAttempts: attempts });
 
   const submit = () => {
     setTouched(true);
     if (invalid) return;
-    const target: NewTask['target'] =
-      targetType === 'agent'
-        ? { type: 'agent', agentId }
-        : targetType === 'label'
-          ? { type: 'label', label: label.trim() }
-          : { type: 'group', agentGroupId: groupId };
+    const iso = localToIso(runAt);
     setPending(true);
     setError(null);
-    onSubmit({
-      title: title.trim(),
-      prompt,
-      workDir,
-      target,
-      priority,
-      ...(mode ? { mode } : {}),
-    }).catch((e: unknown) => {
-      setError(e);
-      setPending(false);
-    });
+    onSubmit({ ...toNewTask(fields), ...(iso ? { runAt: iso } : {}), maxAttempts: attempts }).catch(
+      (e: unknown) => {
+        setError(e);
+        setPending(false);
+      },
+    );
   };
 
   return (
@@ -87,125 +74,29 @@ export function NewTaskForm({ agents, groups, onSubmit, onCancel }: Props) {
       onSubmit={submit}
       onCancel={onCancel}
     >
-      <Field label="Title" help="A short description shown on the board.">
+      <TaskFields value={fields} onChange={setFields} agents={agents} groups={groups} />
+      <Field label="Run at (optional)" help="Leave blank to queue now. The task stays scheduled until then.">
         <input
           className="field"
-          value={title}
-          maxLength={200}
+          type="datetime-local"
+          value={runAt}
           onChange={(e) => {
-            setTitle(e.target.value);
+            setRunAt(e.target.value);
           }}
         />
       </Field>
-      <Field label="Work directory" help="Must be inside the agent's effective policy work directories.">
+      <Field label="Max attempts" help="Automatic resumes after a rate limit stop at this count (1 to 20).">
         <input
-          className="field mono"
-          value={workDir}
-          placeholder="/path/to/repo"
+          className="field"
+          type="number"
+          min={1}
+          max={20}
+          step={1}
+          value={maxAttempts}
           onChange={(e) => {
-            setWorkDir(e.target.value);
+            setMaxAttempts(e.target.value);
           }}
         />
-      </Field>
-      <div className="wide form-field">
-        <Field label="Prompt" help="Instructions passed to the agent.">
-          <textarea
-            className="field"
-            rows={5}
-            value={prompt}
-            onChange={(e) => {
-              setPrompt(e.target.value);
-            }}
-          />
-        </Field>
-      </div>
-      <Field label="Target type">
-        <select
-          className="field"
-          value={targetType}
-          onChange={(e) => {
-            setTargetType(e.target.value as TargetType);
-          }}
-        >
-          <option value="agent">Agent</option>
-          <option value="label">Label</option>
-          <option value="group">Group</option>
-        </select>
-      </Field>
-      {targetType === 'agent' ? (
-        <Field label="Agent" help="An ineligible agent causes a denied task.">
-          <select
-            className="field"
-            value={agentId}
-            onChange={(e) => {
-              setAgentId(e.target.value);
-            }}
-          >
-            <option value="">Select an agent</option>
-            {agents.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.enabled ? a.name : `${a.name} (disabled)`}
-              </option>
-            ))}
-          </select>
-        </Field>
-      ) : null}
-      {targetType === 'label' ? (
-        <Field label="Label" help="Matching agents are evaluated individually.">
-          <input
-            className="field"
-            value={label}
-            maxLength={63}
-            onChange={(e) => {
-              setLabel(e.target.value);
-            }}
-          />
-        </Field>
-      ) : null}
-      {targetType === 'group' ? (
-        <Field label="Group" help="Uses an eligible member without silent cross-account failover.">
-          <select
-            className="field"
-            value={groupId}
-            onChange={(e) => {
-              setGroupId(e.target.value);
-            }}
-          >
-            <option value="">Select a group</option>
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-      ) : null}
-      <Field label="Priority" help="P0 is highest; equal priorities follow manual rank.">
-        <select
-          className="field"
-          value={priority}
-          onChange={(e) => {
-            setPriority(Number(e.target.value) as Priority);
-          }}
-        >
-          {PRIORITIES.map((p) => (
-            <option key={p} value={p}>{`P${String(p)}`}</option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Mode (optional)" help="Capped by the effective maxMode; blank uses the effective cap.">
-        <select
-          className="field"
-          value={mode}
-          onChange={(e) => {
-            setMode(e.target.value as Mode);
-          }}
-        >
-          <option value="">Effective cap</option>
-          <option value="read-only">read-only</option>
-          <option value="edit">edit</option>
-          <option value="full-auto">full-auto</option>
-        </select>
       </Field>
     </FormDialog>
   );

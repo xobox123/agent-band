@@ -24,6 +24,7 @@ export const NO_LANE = '__all';
 export function BoardColumns({ views, swimlanes, ...rest }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [cancelledOpen, setCancelledOpen] = useState(false);
+  const [scheduledOpen, setScheduledOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ left: false, right: false });
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -57,6 +58,7 @@ export function BoardColumns({ views, swimlanes, ...rest }: Props) {
 
   const reveal = (id: string) => {
     if (id === 'cancelled') setCancelledOpen(true);
+    if (id === 'scheduled') setScheduledOpen(true);
     const node = scrollRef.current?.querySelector<HTMLElement>(`[data-column="${id}"]`);
     if (typeof node?.scrollIntoView === 'function') {
       node.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
@@ -99,19 +101,19 @@ export function BoardColumns({ views, swimlanes, ...rest }: Props) {
         const byId = new Map(inColumn.map((v) => [v.task.id, v]));
         const ordered = sorted.flatMap((t) => byId.get(t.id) ?? []);
         const isCancelled = column.id === 'cancelled';
+        const emptyScheduled = column.id === 'scheduled' && ordered.length === 0;
+        const toggle = (set: (fn: (v: boolean) => boolean) => void) => () => {
+          set((v) => !v);
+        };
         return (
           <BoardColumn
             key={column.id}
             column={column}
             views={ordered}
             laneKey={laneKey}
-            collapsed={isCancelled && !cancelledOpen}
+            collapsed={(isCancelled && !cancelledOpen) || (emptyScheduled && !scheduledOpen)}
             onToggleCollapsed={
-              isCancelled
-                ? () => {
-                    setCancelledOpen((v) => !v);
-                  }
-                : undefined
+              isCancelled ? toggle(setCancelledOpen) : emptyScheduled ? toggle(setScheduledOpen) : undefined
             }
             {...rest}
           />

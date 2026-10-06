@@ -5,6 +5,7 @@ import { StatusDot } from '../../components/StatusDot.tsx';
 import type { Priority } from '../../data/types.ts';
 import { CANCELLABLE, PRIORITIES, hoverInfoOf } from './model.ts';
 import type { TaskView } from './model.ts';
+import { formatClock, formatRelative } from '../../lib/schedule.ts';
 import { compactCount, exactCount } from './format.ts';
 import { targetKey } from './dndApi.ts';
 import type { DndApi } from './dndApi.ts';
@@ -161,11 +162,20 @@ export function TaskCard({
         ) : null}
       </div>
       {noEligible ? <div className="card-reason dim">{task.noEligibleReason}</div> : null}
+      {task.status === 'scheduled' && task.runAt ? (
+        <div className="card-reason dim">
+          <time dateTime={task.runAt} title={new Date(task.runAt).toLocaleString()}>
+            {`Runs ${formatRelative(task.runAt, now)}`}
+          </time>
+        </div>
+      ) : null}
       {task.status === 'rate_limited' ? (
         <div className="card-reason dim">
-          {run?.rateLimitResetsAt
-            ? `Resets ${new Date(run.rateLimitResetsAt).toLocaleString()}`
-            : 'Reset time unknown'}
+          {task.resumeAt
+            ? `Resumes at ${formatClock(task.resumeAt)} (attempt ${String(task.attempt)}/${String(task.maxAttempts)})`
+            : run?.rateLimitResetsAt
+              ? `Resets ${new Date(run.rateLimitResetsAt).toLocaleString()}`
+              : 'Reset time unknown'}
         </div>
       ) : null}
       <div className="card-assignee">

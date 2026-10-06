@@ -110,10 +110,32 @@ interface Seed {
   error?: string;
   noEligible?: string;
   resetInMin?: number;
+  runAtInMin?: number;
+  scheduleId?: string;
+  attempt?: number;
   updatedMinAgo: number;
 }
 
 const seeds: Seed[] = [
+  {
+    key: 'AB-41',
+    title: 'Nightly dependency audit and advisory report',
+    status: 'scheduled',
+    priority: 2,
+    target: { type: 'label', label: 'backend' },
+    runAtInMin: 185,
+    scheduleId: 'sched-nightly',
+    updatedMinAgo: 3,
+  },
+  {
+    key: 'AB-42',
+    title: 'Prepare the release notes draft',
+    status: 'scheduled',
+    priority: 1,
+    target: { type: 'agent', agentId: 'ag-ada' },
+    runAtInMin: 26 * 60,
+    updatedMinAgo: 6,
+  },
   {
     key: 'AB-31',
     title: 'Add retry with backoff to the outbox dispatcher',
@@ -212,6 +234,7 @@ const seeds: Seed[] = [
     durationMin: 30,
     tokens: [310_000, 66_500, 140_000],
     resetInMin: 42,
+    attempt: 2,
     updatedMinAgo: 25,
   },
   {
@@ -323,6 +346,11 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
       target: s.target,
       workDir: '/Users/dev/agent-band',
       runId,
+      runAt: s.runAtInMin ? iso(t0 + s.runAtInMin * MIN) : null,
+      scheduleId: s.scheduleId ?? null,
+      attempt: s.attempt ?? 1,
+      maxAttempts: 3,
+      resumeAt: s.resetInMin ? iso(t0 + s.resetInMin * MIN) : null,
       error: s.error ?? null,
       noEligibleReason: s.noEligible ?? null,
       createdBy: 'user:local',
@@ -462,12 +490,17 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
         key,
         title: input.title,
         prompt: input.prompt,
-        status: 'queued',
+        status: input.runAt ? 'scheduled' : 'queued',
         priority: input.priority,
         rank: nextRank++,
         target: input.target,
         workDir: input.workDir,
         runId: null,
+        runAt: input.runAt ?? null,
+        scheduleId: null,
+        attempt: 1,
+        maxAttempts: input.maxAttempts ?? 3,
+        resumeAt: null,
         error: null,
         noEligibleReason: null,
         createdBy: 'user:local',
@@ -479,7 +512,7 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
     async cancel(taskId) {
       await delay();
       const task = findTask(taskId);
-      if (!['queued', 'claimed', 'running'].includes(task.status)) {
+      if (!['scheduled', 'queued', 'claimed', 'running', 'rate_limited'].includes(task.status)) {
         throw new Error('This item changed. Review its latest state and try again.');
       }
       const stamp = iso(now());

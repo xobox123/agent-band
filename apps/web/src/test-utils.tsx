@@ -139,6 +139,11 @@ export function taskDto(over: Record<string, unknown> = {}) {
     rank: 1,
     mode: null,
     status: 'queued',
+    runAt: null,
+    scheduleId: null,
+    attempt: 1,
+    maxAttempts: 3,
+    resumeAt: null,
     workerId: null,
     error: null,
     createdBy: ID(200),
@@ -173,3 +178,29 @@ export function runDto(over: Record<string, unknown> = {}) {
 }
 
 export const list = <T,>(items: T[]) => ({ items, cursor: 5 });
+
+export function scheduleDto(over: Record<string, unknown> = {}) {
+  return {
+    id: ID(50),
+    orgId: ID(100),
+    name: 'Nightly audit',
+    enabled: true,
+    cron: '0 9 * * 1-5',
+    timezone: null,
+    template: {
+      title: 'Audit dependencies',
+      prompt: 'Check advisories',
+      workDir: '/work',
+      target: { agentId: ID(1) },
+      priority: 2,
+    },
+    overlap: 'skip',
+    lastFiredAt: null,
+    lastTaskId: null,
+    nextFireAt: '2026-10-07T07:00:00.000Z',
+    createdBy: ID(200),
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...over,
+  };
+}
