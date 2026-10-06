@@ -1,7 +1,7 @@
-import type { RunDto, RunEventDto, ScheduleDto, TaskDto } from '@agent-band/contracts';
+import type { GoalStateDto, RunDto, RunEventDto, ScheduleDto, TaskDto } from '@agent-band/contracts';
 import type { Run, RunEvent } from '../modules/runs/index.ts';
 import type { Schedule } from '../modules/scheduler/index.ts';
-import type { Task } from '../modules/tasks/index.ts';
+import type { GoalState, Task } from '../modules/tasks/index.ts';
 
 export function taskDto(t: Task): TaskDto {
   return {
@@ -23,9 +23,34 @@ export function taskDto(t: Task): TaskDto {
     resumeAt: t.resumeAt?.toISOString() ?? null,
     workerId: t.workerId,
     error: t.error,
+    kind: t.kind,
+    parentTaskId: t.parentTaskId,
+    rootTaskId: t.rootTaskId,
+    depth: t.depth,
+    dependsOn: t.dependsOn,
+    result: t.result,
+    eligibilityReason: t.eligibility?.reason ?? null,
     createdBy: t.createdBy,
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
+  };
+}
+
+export function goalDto(g: GoalState, treeTokensUsed = g.treeTokensUsed): GoalStateDto {
+  return {
+    rootTaskId: g.rootTaskId,
+    orgId: g.orgId,
+    round: g.round,
+    leaderAgentId: g.leaderAgentId,
+    status: g.status,
+    treeTokensUsed,
+    limits: g.limits,
+    summary: g.summary,
+    outcome: g.outcome,
+    reason: g.reason,
+    notes: g.notes,
+    createdAt: g.createdAt.toISOString(),
+    updatedAt: g.updatedAt.toISOString(),
   };
 }
 

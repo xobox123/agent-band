@@ -32,6 +32,11 @@ describe('PolicyRules schema', () => {
         allowedAccountIds: ['a'],
         allowedSkillIds: ['s'],
         allowAccountFailover: true,
+        canDelegate: true,
+        delegateTargets: { agentIds: ['a'], labels: ['l'], groupIds: ['g'] },
+        maxSubtasks: 10,
+        maxRounds: 3,
+        treeTokenBudget: 100000,
       }).success,
     ).toBe(true);
   });
@@ -42,6 +47,11 @@ describe('PolicyRules schema', () => {
     { dailyTokenBudget: -1 },
     { maxRunMinutes: 0 },
     { unknown: 1 },
+    { maxSubtasks: 0 },
+    { maxRounds: 1.5 },
+    { treeTokenBudget: -5 },
+    { canDelegate: 'yes' },
+    { delegateTargets: { unknown: [] } },
   ])('rejects %j', (bad) => {
     expect(PolicyRulesSchema.safeParse(bad).success).toBe(false);
   });
@@ -130,6 +140,44 @@ describe('mergePolicies', () => {
         lvl('agent', { allowAccountFailover: true }),
       ]).allowAccountFailover,
     ).toBe(false);
+  });
+
+  it('delegation is opt-in and any explicit false wins', () => {
+    expect(mergePolicies([lvl('org', {})]).canDelegate).toBeUndefined();
+    expect(mergePolicies([lvl('org', {}), lvl('agent', { canDelegate: true })]).canDelegate).toBe(true);
+    expect(
+      mergePolicies([lvl('org', { canDelegate: false }), lvl('agent', { canDelegate: true })]).canDelegate,
+    ).toBe(false);
+    expect(
+      mergePolicies([
+        lvl('org', { canDelegate: true }),
+        lvl('group', { canDelegate: false }),
+        lvl('agent', { canDelegate: true }),
+      ]).canDelegate,
+    ).toBe(false);
+  });
+
+  it('intersects delegateTargets per dimension', () => {
+    const e = mergePolicies([
+      lvl('org', { delegateTargets: { labels: ['a', 'b'], groupIds: ['g1'] } }),
+      lvl('agent', { delegateTargets: { labels: ['b', 'c'], agentIds: ['x'] } }),
+    ]);
+    expect(e.delegateTargets).toEqual({ labels: ['b'], groupIds: ['g1'], agentIds: ['x'] });
+    expect(
+      mergePolicies([
+        lvl('org', { delegateTargets: { agentIds: ['x'] } }),
+        lvl('agent', { delegateTargets: { agentIds: ['y'] } }),
+      ]).delegateTargets,
+    ).toEqual({ agentIds: [] });
+    expect(mergePolicies([lvl('org', {})]).delegateTargets).toBeUndefined();
+  });
+
+  it('takes the minimum of delegation limits', () => {
+    const e = mergePolicies([
+      lvl('org', { maxSubtasks: 10, maxRounds: 5, treeTokenBudget: 1000 }),
+      lvl('agent', { maxSubtasks: 4, treeTokenBudget: 5000 }),
+    ]);
+    expect(e).toMatchObject({ maxSubtasks: 4, maxRounds: 5, treeTokenBudget: 1000 });
   });
 
   it('does not mutate its input', () => {

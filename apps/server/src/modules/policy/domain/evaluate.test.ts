@@ -114,6 +114,16 @@ describe('mergePolicies is most-restrictive (property)', () => {
     if (r() < 0.5) rules.deniedTools = subset(tools);
     if (r() < 0.5) rules.dailyTokenBudget = Math.floor(r() * 100);
     if (r() < 0.5) rules.maxRunMinutes = 1 + Math.floor(r() * 60);
+    if (r() < 0.5) rules.canDelegate = r() < 0.5;
+    if (r() < 0.5)
+      rules.delegateTargets = {
+        ...(r() < 0.5 && { agentIds: subset(ids) }),
+        ...(r() < 0.5 && { labels: subset(tools) }),
+        ...(r() < 0.5 && { groupIds: subset(dirs) }),
+      };
+    if (r() < 0.5) rules.maxSubtasks = 1 + Math.floor(r() * 20);
+    if (r() < 0.5) rules.maxRounds = 1 + Math.floor(r() * 10);
+    if (r() < 0.5) rules.treeTokenBudget = 1 + Math.floor(r() * 1000);
     return rules;
   }
 
@@ -153,7 +163,21 @@ describe('mergePolicies is most-restrictive (property)', () => {
         expect(after.allowedTools).toBeDefined();
         for (const t of after.allowedTools ?? []) expect(before.allowedTools).toContain(t);
       }
-      for (const k of ['dailyTokenBudget', 'maxRunMinutes'] as const) {
+      if (before.canDelegate === false) expect(after.canDelegate).toBe(false);
+      for (const k of ['agentIds', 'labels', 'groupIds'] as const) {
+        const was = before.delegateTargets?.[k];
+        if (was) {
+          expect(after.delegateTargets?.[k]).toBeDefined();
+          for (const x of after.delegateTargets?.[k] ?? []) expect(was).toContain(x);
+        }
+      }
+      for (const k of [
+        'dailyTokenBudget',
+        'maxRunMinutes',
+        'maxSubtasks',
+        'maxRounds',
+        'treeTokenBudget',
+      ] as const) {
         if (before[k] !== undefined) expect(after[k]).toBeLessThanOrEqual(before[k] ?? Infinity);
       }
     }
@@ -172,6 +196,13 @@ describe('mergePolicies is most-restrictive (property)', () => {
       const b = mergePolicies([...ls].reverse());
       expect(b.maxMode).toBe(a.maxMode);
       expect(b.dailyTokenBudget).toBe(a.dailyTokenBudget);
+      expect(b.canDelegate).toBe(a.canDelegate);
+      expect(b.maxSubtasks).toBe(a.maxSubtasks);
+      expect(b.treeTokenBudget).toBe(a.treeTokenBudget);
+      for (const k of ['agentIds', 'labels', 'groupIds'] as const)
+        expect([...(b.delegateTargets?.[k] ?? [])].sort()).toEqual(
+          [...(a.delegateTargets?.[k] ?? [])].sort(),
+        );
       expect([...(b.allowedTools ?? [])].sort()).toEqual([...(a.allowedTools ?? [])].sort());
       expect([...b.deniedTools].sort()).toEqual([...a.deniedTools].sort());
     }

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { NormalizedEvent } from '@agent-band/contracts';
 import type { ActorContext } from '../../../platform/actor.ts';
 import type { Db } from '../../../platform/db.ts';
@@ -219,6 +219,40 @@ export function createRuns(deps: ModuleDeps) {
           );
         return result;
       });
+    },
+    /** Last assistant text event of a run, or undefined when it produced none. */
+    async lastRunText(db: DbOrTx, actor: ActorContext, runId: string): Promise<string | undefined> {
+      const [row] = await db
+        .select({ payload: runEvents.payload })
+        .from(runEvents)
+        .where(and(eq(runEvents.orgId, actor.orgId), eq(runEvents.runId, runId), eq(runEvents.kind, 'text')))
+        .orderBy(desc(runEvents.id))
+        .limit(1);
+      return row?.payload.kind === 'text' ? row.payload.text : undefined;
+    },
+    /** Session id of the newest run of a task that reported one. */
+    async latestSessionId(db: DbOrTx, actor: ActorContext, taskId: string): Promise<string | undefined> {
+      const [row] = await db
+        .select({ payload: runEvents.payload })
+        .from(runEvents)
+        .innerJoin(runs, and(eq(runs.id, runEvents.runId), eq(runs.orgId, actor.orgId)))
+        .where(and(eq(runEvents.orgId, actor.orgId), eq(runs.taskId, taskId), eq(runEvents.kind, 'session')))
+        .orderBy(desc(runEvents.id))
+        .limit(1);
+      return row?.payload.kind === 'session' ? row.payload.sessionId : undefined;
+    },
+    /** Billable tokens (input + output) per task, summed over all runs of each task. */
+    async tokensByTask(db: DbOrTx, actor: ActorContext, taskIds: string[]): Promise<Record<string, number>> {
+      if (taskIds.length === 0) return {};
+      const rows = await db
+        .select({
+          taskId: runs.taskId,
+          tokens: sql<number>`coalesce(sum(${runs.inputTokens} + ${runs.outputTokens}),0)`.mapWith(Number),
+        })
+        .from(runs)
+        .where(and(eq(runs.orgId, actor.orgId), inArray(runs.taskId, taskIds)))
+        .groupBy(runs.taskId);
+      return Object.fromEntries(rows.map((r) => [r.taskId, r.tokens]));
     },
     async runningCount(db: DbOrTx, actor: ActorContext, accountId: string): Promise<number> {
       return db.transaction(async (tx) => {

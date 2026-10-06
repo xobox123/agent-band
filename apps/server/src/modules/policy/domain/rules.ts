@@ -23,8 +23,21 @@ export const PolicyRules = z.strictObject({
   allowedAccountIds: z.array(z.string().min(1)).optional(),
   allowedSkillIds: z.array(z.string().min(1)).optional(),
   allowAccountFailover: z.boolean().optional(),
+  canDelegate: z.boolean().optional(),
+  delegateTargets: z
+    .strictObject({
+      agentIds: z.array(z.string().min(1)).optional(),
+      labels: z.array(z.string().min(1)).optional(),
+      groupIds: z.array(z.string().min(1)).optional(),
+    })
+    .optional(),
+  maxSubtasks: z.number().int().positive().optional(),
+  maxRounds: z.number().int().positive().optional(),
+  treeTokenBudget: z.number().int().positive().optional(),
 });
 export type PolicyRules = z.infer<typeof PolicyRules>;
+
+export type DelegateTargets = NonNullable<PolicyRules['delegateTargets']>;
 
 export type PolicyLevel = 'org' | 'group' | 'agent';
 
@@ -38,6 +51,11 @@ export interface EffectivePolicy {
   allowedAccountIds?: string[];
   allowedSkillIds?: string[];
   allowAccountFailover?: boolean;
+  canDelegate?: boolean;
+  delegateTargets?: DelegateTargets;
+  maxSubtasks?: number;
+  maxRounds?: number;
+  treeTokenBudget?: number;
   sources: { level: PolicyLevel; policyId: string; version: number }[];
 }
 
@@ -54,6 +72,15 @@ function minNumber(a: number | undefined, b: number | undefined): number | undef
   return Math.min(a, b);
 }
 
+function mergeDimension(
+  key: keyof DelegateTargets,
+  current: DelegateTargets | undefined,
+  next: string[] | undefined,
+): DelegateTargets {
+  const merged = intersect(current?.[key], next);
+  return merged === undefined ? {} : { [key]: merged };
+}
+
 export function mergePolicies(
   levels: { level: PolicyLevel; policyId: string; version: number; rules: PolicyRules }[],
 ): EffectivePolicy {
@@ -67,6 +94,11 @@ export function mergePolicies(
   let dailyTokenBudget: number | undefined;
   let maxRunMinutes: number | undefined;
   let allowAccountFailover: boolean | undefined;
+  let canDelegate: boolean | undefined;
+  let targets: DelegateTargets | undefined;
+  let maxSubtasks: number | undefined;
+  let maxRounds: number | undefined;
+  let treeTokenBudget: number | undefined;
 
   for (const { level, policyId, version, rules } of levels) {
     sources.push({ level, policyId, version });
@@ -82,6 +114,21 @@ export function mergePolicies(
     if (rules.allowAccountFailover === false) allowAccountFailover = false;
     else if (rules.allowAccountFailover === true && allowAccountFailover === undefined)
       allowAccountFailover = true;
+    // Delegation is opt-in and any explicit false wins.
+    if (rules.canDelegate === false) canDelegate = false;
+    else if (rules.canDelegate === true && canDelegate === undefined) canDelegate = true;
+    if (rules.delegateTargets) {
+      const t = rules.delegateTargets;
+      targets = {
+        ...(targets ?? {}),
+        ...mergeDimension('agentIds', targets, t.agentIds),
+        ...mergeDimension('labels', targets, t.labels),
+        ...mergeDimension('groupIds', targets, t.groupIds),
+      };
+    }
+    maxSubtasks = minNumber(maxSubtasks, rules.maxSubtasks);
+    maxRounds = minNumber(maxRounds, rules.maxRounds);
+    treeTokenBudget = minNumber(treeTokenBudget, rules.treeTokenBudget);
   }
 
   // Unset limits stay absent so the stored snapshot has no undefined members.
@@ -95,6 +142,11 @@ export function mergePolicies(
     ...(allowedAccountIds && { allowedAccountIds }),
     ...(allowedSkillIds && { allowedSkillIds }),
     ...(allowAccountFailover !== undefined && { allowAccountFailover }),
+    ...(canDelegate !== undefined && { canDelegate }),
+    ...(targets && { delegateTargets: targets }),
+    ...(maxSubtasks !== undefined && { maxSubtasks }),
+    ...(maxRounds !== undefined && { maxRounds }),
+    ...(treeTokenBudget !== undefined && { treeTokenBudget }),
     sources,
   };
 }

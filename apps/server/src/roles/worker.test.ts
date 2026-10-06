@@ -68,8 +68,8 @@ describe('worker', () => {
     expect((decision?.data as { effectivePolicyHash: string }).effectivePolicyHash).toMatch(/^[0-9a-f]{64}$/);
     expect(actions().slice(actions().indexOf('task.create'))).toEqual([
       'task.create',
-      'task.claim',
       'policy.decision',
+      'task.claim',
       'run.start',
       'task.status',
       'agent.tool_use',
@@ -373,5 +373,97 @@ describe('script type', () => {
   it('is used', () => {
     const s: Script = () => ({ events: [] });
     expect(s).toBeTypeOf('function');
+  });
+});
+
+describe('worker and goals', () => {
+  it('stores a truncated result summary and outcome for subtask runs', async () => {
+    const acc = await kit.account('a');
+    const agent = await kit.agent('alpha', acc.id);
+    kit.script = () => ({
+      events: [
+        { kind: 'text', text: 'first' },
+        { kind: 'text', text: 'x'.repeat(6000) },
+      ],
+    });
+    const goal = await kit.task({ target: { agentId: agent.id }, kind: 'goal' });
+    const child = await kit.db.transaction((tx) =>
+      kit.tasks.createChildTask(
+        tx,
+        kit.actor,
+        { title: 'c', prompt: 'p', workDir: '/work/repo', target: { agentId: agent.id } },
+        { kind: 'task', rootTaskId: goal.id, parentTaskId: goal.id, depth: 1, dependsOn: [] },
+      ),
+    );
+    const bad = await kit.db.transaction((tx) =>
+      kit.tasks.createChildTask(
+        tx,
+        kit.actor,
+        { title: 'c2', prompt: 'p2', workDir: '/work/repo', target: { agentId: agent.id } },
+        { kind: 'review', rootTaskId: goal.id, parentTaskId: goal.id, depth: 1, dependsOn: [child.id] },
+      ),
+    );
+    await run(kit);
+    await reachStatus(child.id, 'done');
+    const t = await kit.taskStatus(child.id);
+    expect(t?.result?.outcome).toBe('success');
+    expect(Buffer.byteLength(t?.result?.summary ?? '')).toBe(4096);
+    await reachStatus(bad.id, 'done');
+  });
+
+  it('sets the goal to waiting with the session id when a leader run ends without completing', async () => {
+    const acc = await kit.account('a');
+    const leader = await kit.agent('lead', acc.id, { role: 'leader' });
+    kit.script = () => ({ events: [{ kind: 'session', sessionId: 'sess-9' }] });
+    const goal = await kit.task({ target: { agentId: leader.id }, kind: 'goal' });
+    await run(kit);
+    await reachStatus(goal.id, 'done');
+    const state = await waitFor(async () => {
+      const g = await kit.tasks.getGoalState(kit.db, kit.actor.orgId, goal.id);
+      return g?.status === 'waiting' && g;
+    });
+    expect(state).toMatchObject({ leaderAgentId: leader.id, leaderSessionId: 'sess-9', round: 1 });
+  });
+
+  it('denies a goal for an agent that is not a leader', async () => {
+    const acc = await kit.account('a');
+    const worker = await kit.agent('w', acc.id);
+    const goal = await kit.task({ target: { agentId: worker.id }, kind: 'goal' });
+    await run(kit);
+    await reachStatus(goal.id, 'denied');
+    expect((await kit.taskStatus(goal.id))?.error).toContain('role leader');
+  });
+
+  it('fails the goal when the leader run fails', async () => {
+    const acc = await kit.account('a');
+    const leader = await kit.agent('lead', acc.id, { role: 'leader' });
+    kit.script = () => ({ events: [{ kind: 'error', message: 'boom' }], exitCode: 1 });
+    const goal = await kit.task({ target: { agentId: leader.id }, kind: 'goal' });
+    await run(kit);
+    await reachStatus(goal.id, 'failed');
+    const state = await waitFor(async () => {
+      const g = await kit.tasks.getGoalState(kit.db, kit.actor.orgId, goal.id);
+      return g?.status === 'failed' && g;
+    });
+    expect(state.reason).toContain('boom');
+  });
+});
+
+describe('worker eligibility', () => {
+  it('does not churn claims or audit rows for a task with no eligible agent, and picks it up once one exists', async () => {
+    const acc = await kit.account('a');
+    const task = await kit.task({ target: { label: 'ghost' } });
+    await run(kit, { pollIntervalMs: 20, retryDelayMs: 1000 });
+    await waitFor(async () => (await kit.taskStatus(task.id))?.eligibility?.reason);
+    await new Promise((r) => setTimeout(r, 400));
+    const mine = kit.deps.audit.entries.filter((e) => e.targetId === task.id).map((e) => e.action);
+    expect(mine.filter((a) => a === 'task.ineligible')).toHaveLength(1);
+    expect(mine.filter((a) => a === 'task.claim' || a === 'task.release')).toHaveLength(0);
+    expect(mine.length).toBeLessThanOrEqual(2);
+    expect((await kit.taskStatus(task.id))?.eligibility?.reason).toBe('no matching agent');
+
+    await kit.agent('ghost1', acc.id, { labels: ['ghost'] });
+    kit.script = () => ({ events: [{ kind: 'text', text: 'ok' }] });
+    await reachStatus(task.id, 'done');
   });
 });
