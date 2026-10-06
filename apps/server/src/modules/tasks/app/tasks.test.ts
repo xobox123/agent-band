@@ -63,6 +63,7 @@ it('claims P0 first, then rank and creation time; release preserves queued reaso
 });
 it('groups all board statuses, including claimed and denied', async () => {
   for (const status of [
+    'scheduled',
     'queued',
     'claimed',
     'running',
@@ -77,6 +78,7 @@ it('groups all board statuses, including claimed and denied', async () => {
   }
   const board = await api.boardView(database.db, actor);
   expect(Object.fromEntries(Object.entries(board).map(([k, v]) => [k, v.length]))).toEqual({
+    scheduled: 1,
     queued: 1,
     running: 2,
     rate_limited: 1,
@@ -163,4 +165,53 @@ it('writes no audit rows for list calls', async () => {
   deps.audit.entries.length = 0;
   await api.listTasks(database.db, actor);
   expect(deps.audit.entries).toEqual([]);
+});
+it('creates a scheduled task for a future runAt and rejects a past one', async () => {
+  const future = new Date(Date.now() + 3_600_000);
+  const task = await api.createTask(database.db, actor, { ...input, runAt: future, maxAttempts: 5 });
+  expect(task).toMatchObject({ status: 'scheduled', attempt: 1, maxAttempts: 5, resumeAt: null });
+  expect(task.runAt?.getTime()).toBe(future.getTime());
+  await expect(
+    api.createTask(database.db, actor, { ...input, runAt: new Date(Date.now() - 1000) }),
+  ).rejects.toMatchObject({ status: 400 });
+  expect(await api.createTask(database.db, actor, input)).toMatchObject({ status: 'queued', runAt: null });
+});
+it('never claims scheduled tasks', async () => {
+  await api.createTask(database.db, actor, { ...input, runAt: new Date(Date.now() + 3_600_000) });
+  expect(await database.db.transaction((tx) => api.claimNextTask(tx, system, 'w'))).toBeNull();
+});
+it('cancelling a scheduled or rate limited task clears runAt and resumeAt', async () => {
+  const scheduled = await api.createTask(database.db, actor, {
+    ...input,
+    runAt: new Date(Date.now() + 3_600_000),
+  });
+  const limited = await api.createTask(database.db, actor, input);
+  await database.db
+    .update(tasks)
+    .set({ status: 'rate_limited', resumeAt: new Date(Date.now() + 1000) })
+    .where(eq(tasks.id, limited.id));
+  expect(await api.cancelTask(database.db, actor, scheduled.id)).toMatchObject({
+    status: 'cancelled',
+    runAt: null,
+  });
+  expect(await api.cancelTask(database.db, actor, limited.id)).toMatchObject({
+    status: 'cancelled',
+    resumeAt: null,
+  });
+});
+it('stores resumeAt when a running task becomes rate limited', async () => {
+  const task = await api.createTask(database.db, actor, input);
+  await database.db.transaction(async (tx) => {
+    await api.claimNextTask(tx, system, 'w');
+    await api.setTaskStatus(tx, system, task.id, 'running');
+    const resumeAt = new Date('2026-01-01T00:00:00Z');
+    const limited = await api.setTaskStatus(tx, system, task.id, 'rate_limited', 'limit', { resumeAt });
+    expect(limited.resumeAt?.getTime()).toBe(resumeAt.getTime());
+  });
+});
+it('filters tasks by schedule id', async () => {
+  const scheduleId = '00000000-0000-4000-8000-000000000009';
+  await api.createTask(database.db, actor, { ...input, scheduleId });
+  await api.createTask(database.db, actor, input);
+  expect(await api.listTasks(database.db, actor, { scheduleId })).toHaveLength(1);
 });

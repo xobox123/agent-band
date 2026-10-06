@@ -45,6 +45,7 @@ import {
   unassignSkill,
 } from './modules/skills/index.ts';
 import { createRuns } from './modules/runs/index.ts';
+import { createScheduler } from './modules/scheduler/index.ts';
 import { createTasks } from './modules/tasks/index.ts';
 import { createUsage } from './modules/usage/index.ts';
 
@@ -84,6 +85,16 @@ export async function createComposition(opts: CompositionOptions) {
   });
   const tasks = createTasks({ ...deps, orgSettings: settings });
   const runs = createRuns(deps);
+  const scheduler = createScheduler({
+    ...deps,
+    orgSettings: settings,
+    tasks: {
+      createTask: (tx, actor, input) => tasks.createTaskIn(tx, actor, input),
+      hasOpenTaskOfSchedule: (tx, actor, id) => tasks.hasOpenTaskOfSchedule(tx, actor, id),
+      releaseDueScheduled: (tx, actor, now) => tasks.releaseDueScheduled(tx, actor, now),
+      resumeDueRateLimited: (tx, actor, now) => tasks.resumeDueRateLimited(tx, actor, now),
+    },
+  });
   const usage = createUsage({
     ...deps,
     orgSettings: settings,
@@ -145,6 +156,7 @@ export async function createComposition(opts: CompositionOptions) {
     orgId: boot.orgId,
     localUser: boot.localUser,
     dispatcher: boot.dispatcher,
+    schedulerActor: boot.scheduler,
     resolveActor,
     /** Latest outbox id at read time; every list endpoint returns it as `cursor`. */
     cursor: () => latestOutboxId(database.db),
@@ -165,6 +177,7 @@ export async function createComposition(opts: CompositionOptions) {
     agents,
     groups,
     tasks,
+    scheduler,
     runs,
     usage,
     audit,

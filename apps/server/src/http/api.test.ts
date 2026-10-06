@@ -264,6 +264,158 @@ describe('tasks, runs and dashboard', () => {
   });
 });
 
+describe('schedules and scheduled tasks', () => {
+  const template = (target: unknown) => ({ title: 'Nightly', prompt: 'Go', workDir: '/work', target });
+
+  it('creates a scheduled task with runAt and shows it on the board', async () => {
+    const { agent } = await seedAgent();
+    const body = { title: 'Later', prompt: 'p', workDir: '/work', target: { agentId: agent.id } };
+    const runAt = new Date(Date.now() + 3_600_000).toISOString();
+    const created = await call('POST', '/tasks', { ...body, runAt, maxAttempts: 4 });
+    expect(created.status).toBe(201);
+    expect(created.json()).toMatchObject({
+      status: 'scheduled',
+      runAt,
+      attempt: 1,
+      maxAttempts: 4,
+      resumeAt: null,
+      scheduleId: null,
+    });
+    const board = (await call('GET', '/board')).json();
+    expect(board.columns.scheduled.map((t: { id: string }) => t.id)).toEqual([created.json().id]);
+    expect(board.columns.queued).toEqual([]);
+    const past = await call('POST', '/tasks', {
+      ...body,
+      runAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    expect(past.status).toBe(400);
+    expect((await call('POST', '/tasks', { ...body, runAt: 'tomorrow' })).status).toBe(400);
+    const cancelled = await call('POST', `/tasks/${created.json().id}/cancel`);
+    expect(cancelled.json()).toMatchObject({ status: 'cancelled', runAt: null });
+  });
+
+  it('runs the schedule CRUD flow', async () => {
+    const { agent } = await seedAgent();
+    const body = {
+      name: 'Nightly',
+      cron: '0 2 * * *',
+      timezone: 'Europe/Warsaw',
+      template: template({ agentId: agent.id }),
+    };
+    const created = await call('POST', '/schedules', body);
+    expect(created.status).toBe(201);
+    const s = created.json();
+    expect(s).toMatchObject({
+      name: 'Nightly',
+      enabled: true,
+      overlap: 'skip',
+      timezone: 'Europe/Warsaw',
+      lastFiredAt: null,
+      lastTaskId: null,
+    });
+    expect(s.template.priority).toBe(2);
+    expect(Date.parse(s.nextFireAt)).toBeGreaterThan(Date.now());
+
+    const list = (await call('GET', '/schedules')).json();
+    expect(list.items.map((i: { id: string }) => i.id)).toEqual([s.id]);
+    expect(typeof list.cursor).toBe('number');
+    expect((await call('GET', `/schedules/${s.id}`)).json().id).toBe(s.id);
+
+    const patched = await call('PATCH', `/schedules/${s.id}`, {
+      enabled: false,
+      overlap: 'queue',
+      timezone: null,
+    });
+    expect(patched.json()).toMatchObject({ enabled: false, overlap: 'queue', timezone: null });
+    expect((await call('PATCH', `/schedules/${s.id}`, { cron: 'nope' })).status).toBe(400);
+    expect((await call('PATCH', `/schedules/${s.id}`, { bogus: 1 })).status).toBe(400);
+
+    expect((await call('DELETE', `/schedules/${s.id}`)).status).toBe(204);
+    expect((await call('GET', `/schedules/${s.id}`)).status).toBe(404);
+    expect((await call('DELETE', `/schedules/${s.id}`)).status).toBe(404);
+  });
+
+  it('validates create bodies', async () => {
+    const { agent } = await seedAgent();
+    const ok = { name: 'n', cron: '* * * * *', template: template({ agentId: agent.id }) };
+    expect((await call('POST', '/schedules', { ...ok, cron: '* * * *' })).status).toBe(400);
+    expect((await call('POST', '/schedules', { ...ok, timezone: 'Mars/Base' })).status).toBe(400);
+    expect((await call('POST', '/schedules', { ...ok, overlap: 'both' })).status).toBe(400);
+    expect((await call('POST', '/schedules', { ...ok, template: { title: 'x' } })).status).toBe(400);
+    expect((await call('GET', '/schedules')).json().items).toEqual([]);
+  });
+
+  it('previews the next five fire times and rejects bad input', async () => {
+    const res = await call('GET', '/schedules/preview?cron=0%209%20*%20*%20*&timezone=Europe/Warsaw');
+    expect(res.status).toBe(200);
+    const times: string[] = res.json().fireTimes;
+    expect(times).toHaveLength(5);
+    expect(times.every((t) => new Date(t).getUTCMinutes() === 0)).toBe(true);
+    expect((await call('GET', '/schedules/preview?cron=bad')).status).toBe(400);
+    expect((await call('GET', '/schedules/preview')).status).toBe(400);
+  });
+
+  it('run-now creates a task, lists it under the schedule and keeps nextFireAt', async () => {
+    const { agent } = await seedAgent();
+    const s = (
+      await call('POST', '/schedules', {
+        name: 'n',
+        cron: '0 2 * * *',
+        template: template({ agentId: agent.id }),
+      })
+    ).json();
+    const run = await call('POST', `/schedules/${s.id}/run-now`);
+    expect(run.status).toBe(201);
+    expect(run.json()).toMatchObject({ scheduleId: s.id, status: 'queued', title: 'Nightly' });
+    const tasks = (await call('GET', `/schedules/${s.id}/tasks`)).json();
+    expect(tasks.items.map((t: { id: string }) => t.id)).toEqual([run.json().id]);
+    const after = (await call('GET', `/schedules/${s.id}`)).json();
+    expect(after.nextFireAt).toBe(s.nextFireAt);
+    expect(after.lastTaskId).toBe(run.json().id);
+    expect((await call('POST', `/schedules/${crypto.randomUUID()}/run-now`)).status).toBe(404);
+    expect((await call('GET', `/schedules/${crypto.randomUUID()}/tasks`)).status).toBe(404);
+  });
+
+  it('a scheduler tick fires the schedule and releases scheduled tasks', async () => {
+    const { agent } = await seedAgent();
+    const s = (
+      await call('POST', '/schedules', {
+        name: 'n',
+        cron: '0 2 * * *',
+        template: template({ agentId: agent.id }),
+      })
+    ).json();
+    const later = new Date(Date.now() + 3 * 86_400_000);
+    const result = await api.c.scheduler.tick(api.database.db, api.c.schedulerActor, later);
+    expect(result).toMatchObject({ leader: true, fired: 1 });
+    const tasks = (await call('GET', `/schedules/${s.id}/tasks`)).json().items;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].scheduleId).toBe(s.id);
+    expect((await call('GET', `/schedules/${s.id}`)).json().lastTaskId).toBe(tasks[0].id);
+  });
+
+  it('lets viewers read but not change schedules', async () => {
+    const { agent } = await seedAgent();
+    const s = (
+      await call('POST', '/schedules', {
+        name: 'n',
+        cron: '0 2 * * *',
+        template: template({ agentId: agent.id }),
+      })
+    ).json();
+    api.as(await api.makeUser('viewer', 'viewer'));
+    expect((await call('GET', '/schedules')).status).toBe(200);
+    expect((await call('GET', `/schedules/${s.id}`)).status).toBe(200);
+    expect((await call('GET', '/schedules/preview?cron=*%20*%20*%20*%20*')).status).toBe(200);
+    expect(
+      (await call('POST', '/schedules', { name: 'x', cron: '* * * * *', template: s.template })).status,
+    ).toBe(403);
+    expect((await call('PATCH', `/schedules/${s.id}`, { enabled: false })).status).toBe(403);
+    expect((await call('DELETE', `/schedules/${s.id}`)).status).toBe(403);
+    expect((await call('POST', `/schedules/${s.id}/run-now`)).status).toBe(403);
+  });
+});
+
 describe('audit', () => {
   it('lists with a cursor, verifies a range and exports JSONL', async () => {
     await seedAgent();
@@ -403,6 +555,14 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/runs/{id}',
   'GET /api/v1/runs/{id}/events',
   'POST /api/v1/runs/{runId}/authorize-tool',
+  'GET /api/v1/schedules',
+  'POST /api/v1/schedules',
+  'GET /api/v1/schedules/preview',
+  'GET /api/v1/schedules/{id}',
+  'PATCH /api/v1/schedules/{id}',
+  'DELETE /api/v1/schedules/{id}',
+  'POST /api/v1/schedules/{id}/run-now',
+  'GET /api/v1/schedules/{id}/tasks',
   'GET /api/v1/skill-assignments',
   'POST /api/v1/skill-assignments',
   'DELETE /api/v1/skill-assignments/{id}',

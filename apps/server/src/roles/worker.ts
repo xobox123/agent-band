@@ -49,6 +49,8 @@ export interface WorkerDeps {
   /** Length of one policy minute in ms (tests shorten it). */
   minuteMs?: number;
   runsRoot?: string;
+  /** Random delay added to an automatic resume time (default 0 to 60 s). */
+  resumeJitterMs?: () => number;
   log?: (level: 'warn' | 'error', message: string, err?: unknown) => void;
 }
 
@@ -420,6 +422,8 @@ export function createWorker(deps: WorkerDeps): Worker {
       userCancelled: boolean;
     },
   ): Promise<void> {
+    // The account block recorded from the run's rate-limit events decides when the task may resume.
+    const blockedUntil = await deps.usage.accountBlock(deps.db, d, run.accountId).catch(() => null);
     await deps.db.transaction(async (tx) => {
       const finished = await deps.runs.finishRun(tx, d, run.id, {
         status: r.status,
@@ -445,6 +449,14 @@ export function createWorker(deps: WorkerDeps): Worker {
           taskStatus === 'rate_limited'
             ? `rate limited${finished.rateLimitResetsAt ? ` until ${finished.rateLimitResetsAt.toISOString()}` : ''}`
             : r.error,
+          taskStatus === 'rate_limited'
+            ? {
+                resumeAt: new Date(
+                  (blockedUntil ?? finished.rateLimitResetsAt ?? new Date(Date.now() + 3_600_000)).getTime() +
+                    (deps.resumeJitterMs?.() ?? Math.random() * 60_000),
+                ),
+              }
+            : {},
         );
       } catch (err) {
         // The task was cancelled by a user while the run was ending.

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Id, IsoDate, listOf } from './common.ts';
 
 export const TaskStatus = z.enum([
+  'scheduled',
   'queued',
   'claimed',
   'running',
@@ -36,6 +37,14 @@ export const TaskDto = z.object({
   rank: z.number(),
   mode: TaskMode.nullable(),
   status: TaskStatus,
+  /** Set while status is `scheduled`: when the task becomes queued. */
+  runAt: IsoDate.nullable(),
+  /** Set when a schedule created the task. */
+  scheduleId: Id.nullable(),
+  attempt: z.number().int().min(1),
+  maxAttempts: z.number().int().min(1),
+  /** Set while status is `rate_limited` and an automatic resume is planned. */
+  resumeAt: IsoDate.nullable(),
   workerId: z.string().nullable(),
   /** Failure or "no eligible agent" reason. */
   error: z.string().nullable(),
@@ -55,6 +64,9 @@ export const CreateTaskBody = z
     priority: TaskPriority.default(2),
     rank: z.number().default(0),
     mode: TaskMode.optional(),
+    /** ISO date-time in the future; the task stays `scheduled` until then. */
+    runAt: z.iso.datetime({ offset: true }).optional(),
+    maxAttempts: z.number().int().min(1).max(20).optional(),
   })
   .strict();
 export type CreateTaskBody = z.input<typeof CreateTaskBody>;
@@ -72,6 +84,7 @@ export const ReorderTaskBody = z.object({ beforeId: Id.optional() }).strict();
 export const UpdateTaskBody = z.object({ priority: TaskPriority }).strict();
 
 export const BoardColumns = z.object({
+  scheduled: z.array(TaskDto),
   queued: z.array(TaskDto),
   running: z.array(TaskDto),
   rate_limited: z.array(TaskDto),

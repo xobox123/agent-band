@@ -215,6 +215,28 @@ describe('worker', () => {
     expect(actions()).toContain('run.rate_limited');
   });
 
+  it('plans an automatic resume at the account block plus jitter', async () => {
+    const acc = await kit.account('a');
+    const agent = await kit.agent('alpha', acc.id);
+    const resetsAt = new Date(Date.now() + 3_600_000);
+    kit.script = () => ({
+      events: [
+        {
+          kind: 'rate_limit',
+          windows: [{ window: '5h', usedPercent: 100, resetsAt: resetsAt.toISOString() }],
+          limitReached: true,
+          resetsAt: resetsAt.toISOString(),
+        },
+      ],
+    });
+    const task = await kit.task({ target: { agentId: agent.id } });
+    await run(kit, { resumeJitterMs: () => 30_000 });
+    await reachStatus(task.id, 'rate_limited');
+    const t = await kit.taskStatus(task.id);
+    expect(t?.resumeAt?.getTime()).toBe(resetsAt.getTime() + 30_000);
+    expect(t).toMatchObject({ attempt: 1, maxAttempts: 3 });
+  });
+
   it('cancels a running task through the outbox event', async () => {
     const acc = await kit.account('a');
     const agent = await kit.agent('alpha', acc.id);

@@ -51,6 +51,12 @@ describe('bootstrapLocalOrg', () => {
     expect(again.dispatcher.principalId).toBe(boot.dispatcher.principalId);
     expect(boot.localUser.kind).toBe('user');
     expect(boot.dispatcher.kind).toBe('system');
+    expect(boot.scheduler.kind).toBe('system');
+    expect(again.scheduler.principalId).toBe(boot.scheduler.principalId);
+    expect(boot.scheduler.principalId).not.toBe(boot.dispatcher.principalId);
+    expect(
+      (await orgUseCases.listPrincipals(db, boot.localUser, { kind: 'system' })).map((p) => p.handle).sort(),
+    ).toEqual(['system:dispatcher', 'system:scheduler']);
 
     const bindings = await orgUseCases.listRoleBindings(db, boot.localUser);
     expect(bindings).toHaveLength(1);

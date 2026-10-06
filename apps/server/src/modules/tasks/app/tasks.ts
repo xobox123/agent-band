@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, ilike, isNotNull, lte, notInArray, sql } from 'drizzle-orm';
 import type { ActorContext } from '../../../platform/actor.ts';
 import type { Db } from '../../../platform/db.ts';
 import type { Tx } from '../../../platform/tx.ts';
@@ -21,8 +21,9 @@ export interface TaskFilter {
   label?: string;
   agentGroupId?: string;
   text?: string;
+  scheduleId?: string;
 }
-export type TasksDeps = ModuleDeps & { orgSettings: OrgSettings };
+export type TasksDeps = ModuleDeps & { orgSettings: OrgSettings; now?: () => Date };
 export function createTasks(deps: TasksDeps) {
   const where = (actor: ActorContext, id: string) => and(eq(tasks.orgId, actor.orgId), eq(tasks.id, id));
   async function get(tx: Tx, actor: ActorContext, id: string) {
@@ -83,47 +84,137 @@ export function createTasks(deps: TasksDeps) {
           filter.agentId ? sql`${tasks.target}->>'agentId' = ${filter.agentId}` : undefined,
           filter.label ? sql`${tasks.target}->>'label' = ${filter.label}` : undefined,
           filter.agentGroupId ? sql`${tasks.target}->>'agentGroupId' = ${filter.agentGroupId}` : undefined,
+          filter.scheduleId ? eq(tasks.scheduleId, filter.scheduleId) : undefined,
           filter.text ? ilike(sql`${tasks.key} || ' ' || ${tasks.title}`, `%${filter.text}%`) : undefined,
         ),
       )
       .orderBy(asc(tasks.priority), asc(tasks.rank), asc(tasks.createdAt), asc(tasks.id));
     return result;
   }
+  async function createIn(tx: Tx, actor: ActorContext, input: CreateTaskInput): Promise<Task> {
+    const parsed = CreateTask.safeParse(input);
+    if (!parsed.success) throw invalid(parsed.error.issues);
+    const { runAt, ...rest } = parsed.data;
+    if (runAt && runAt.getTime() <= (deps.now?.() ?? new Date()).getTime())
+      throw invalid([{ path: 'runAt', message: 'must be in the future' }]);
+    await deps.authorizer.authorize(tx, actor, 'task.write', resource(parsed.data.target));
+    const settings = await deps.orgSettings.get(tx, actor.orgId);
+    await tx.insert(taskKeySeq).values({ orgId: actor.orgId }).onConflictDoNothing();
+    const [counter] = await tx
+      .update(taskKeySeq)
+      .set({ seq: sql`${taskKeySeq.seq}+1` })
+      .where(eq(taskKeySeq.orgId, actor.orgId))
+      .returning();
+    if (!counter) throw new Error('Missing task counter');
+    const [task] = await tx
+      .insert(tasks)
+      .values({
+        ...rest,
+        ...(runAt ? { runAt, status: 'scheduled' as const } : {}),
+        orgId: actor.orgId,
+        key: formatTaskKey(settings.taskKeyPrefix, counter.seq),
+        createdBy: actor.principalId,
+      })
+      .returning();
+    if (!task) throw new Error('Missing inserted task');
+    return changed(tx, actor, task, 'task.create');
+  }
   return {
-    async createTask(db: Db, actor: ActorContext, input: CreateTaskInput): Promise<Task> {
-      const parsed = CreateTask.safeParse(input);
-      if (!parsed.success) throw invalid(parsed.error.issues);
-      return db.transaction(async (tx) => {
-        await deps.authorizer.authorize(tx, actor, 'task.write', resource(parsed.data.target));
-        const settings = await deps.orgSettings.get(tx, actor.orgId);
-        await tx.insert(taskKeySeq).values({ orgId: actor.orgId }).onConflictDoNothing();
-        const [counter] = await tx
-          .update(taskKeySeq)
-          .set({ seq: sql`${taskKeySeq.seq}+1` })
-          .where(eq(taskKeySeq.orgId, actor.orgId))
-          .returning();
-        if (!counter) throw new Error('Missing task counter');
-        const [task] = await tx
-          .insert(tasks)
-          .values({
-            ...parsed.data,
-            orgId: actor.orgId,
-            key: formatTaskKey(settings.taskKeyPrefix, counter.seq),
-            createdBy: actor.principalId,
-          })
-          .returning();
-        if (!task) throw new Error('Missing inserted task');
-        return changed(tx, actor, task, 'task.create');
-      });
+    createTask(db: Db, actor: ActorContext, input: CreateTaskInput): Promise<Task> {
+      return db.transaction((tx) => createIn(tx, actor, input));
+    },
+    createTaskIn: createIn,
+    async hasOpenTaskOfSchedule(tx: Tx, actor: ActorContext, scheduleId: string): Promise<boolean> {
+      await deps.authorizer.authorize(tx, actor, 'read', {});
+      const [row] = await tx
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(
+          and(
+            eq(tasks.orgId, actor.orgId),
+            eq(tasks.scheduleId, scheduleId),
+            notInArray(tasks.status, ['done', 'failed', 'cancelled', 'denied']),
+          ),
+        )
+        .limit(1);
+      return row !== undefined;
+    },
+    async releaseDueScheduled(tx: Tx, actor: ActorContext, now: Date): Promise<Task[]> {
+      system(actor);
+      await deps.authorizer.authorize(tx, actor, 'task.write', {});
+      const due = await tx
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.orgId, actor.orgId), eq(tasks.status, 'scheduled'), lte(tasks.runAt, now)))
+        .orderBy(asc(tasks.runAt), asc(tasks.id))
+        .for('update', { skipLocked: true });
+      const released: Task[] = [];
+      for (const task of due)
+        released.push(
+          await update(tx, actor, task.id, { status: 'queued', runAt: null }, 'task.release_scheduled'),
+        );
+      return released;
+    },
+    async resumeDueRateLimited(
+      tx: Tx,
+      actor: ActorContext,
+      now: Date,
+    ): Promise<{ resumed: Task[]; exhausted: Task[] }> {
+      system(actor);
+      await deps.authorizer.authorize(tx, actor, 'task.write', {});
+      const due = await tx
+        .select()
+        .from(tasks)
+        .where(
+          and(
+            eq(tasks.orgId, actor.orgId),
+            eq(tasks.status, 'rate_limited'),
+            isNotNull(tasks.resumeAt),
+            lte(tasks.resumeAt, now),
+          ),
+        )
+        .orderBy(asc(tasks.resumeAt), asc(tasks.id))
+        .for('update', { skipLocked: true });
+      const resumed: Task[] = [];
+      const exhausted: Task[] = [];
+      for (const task of due) {
+        if (task.attempt < task.maxAttempts)
+          resumed.push(
+            await update(
+              tx,
+              actor,
+              task.id,
+              { status: 'queued', attempt: task.attempt + 1, resumeAt: null, workerId: null, error: null },
+              'task.resume',
+            ),
+          );
+        else
+          exhausted.push(
+            await update(
+              tx,
+              actor,
+              task.id,
+              { status: 'failed', resumeAt: null, error: 'rate limit retries exhausted' },
+              'task.resume_exhausted',
+            ),
+          );
+      }
+      return { resumed, exhausted };
     },
     async cancelTask(db: Db, actor: ActorContext, id: string): Promise<Task> {
       return db.transaction(async (tx) => {
         const task = await get(tx, actor, id);
         await deps.authorizer.authorize(tx, actor, 'task.write', resource(task.target));
-        if (!['queued', 'claimed', 'running'].includes(task.status))
+        if (!['scheduled', 'queued', 'claimed', 'running', 'rate_limited'].includes(task.status))
           throw conflict('task_terminal', 'Task is already terminal');
         const wasActive = task.status === 'claimed' || task.status === 'running';
-        const cancelled = await update(tx, actor, id, { status: 'cancelled' }, 'task.cancel');
+        const cancelled = await update(
+          tx,
+          actor,
+          id,
+          { status: 'cancelled', runAt: null, resumeAt: null },
+          'task.cancel',
+        );
         if (wasActive)
           await publish(tx, 'task.cancel_requested', {
             orgId: actor.orgId,
@@ -160,6 +251,7 @@ export function createTasks(deps: TasksDeps) {
     ): Promise<Record<(typeof boardColumns)[number], Task[]>> {
       const result = await db.transaction((tx) => list(tx, actor, filter));
       const columns: Record<(typeof boardColumns)[number], Task[]> = {
+        scheduled: [],
         queued: [],
         running: [],
         rate_limited: [],
@@ -241,6 +333,7 @@ export function createTasks(deps: TasksDeps) {
       id: string,
       status: TaskStatus,
       error?: string,
+      opts: { resumeAt?: Date } = {},
     ): Promise<Task> {
       system(actor);
       const task = await get(tx, actor, id);
@@ -252,7 +345,17 @@ export function createTasks(deps: TasksDeps) {
       };
       if (!transitions[task.status]?.includes(status))
         throw conflict('invalid_task_transition', `${task.status} cannot become ${status}`);
-      return update(tx, actor, id, { status, error: error ?? null }, 'task.status');
+      return update(
+        tx,
+        actor,
+        id,
+        {
+          status,
+          error: error ?? null,
+          ...(status === 'rate_limited' ? { resumeAt: opts.resumeAt ?? null } : {}),
+        },
+        'task.status',
+      );
     },
   };
 }
