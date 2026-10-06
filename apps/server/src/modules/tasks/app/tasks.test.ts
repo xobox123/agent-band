@@ -158,3 +158,9 @@ it('requests cancellation of active tasks and skips excluded tasks when claiming
   );
   expect(event?.payload).toEqual({ orgId: actor.orgId, taskId: b.id, previousStatus: 'claimed' });
 });
+it('writes no audit rows for list calls', async () => {
+  await api.createTask(database.db, actor, input);
+  deps.audit.entries.length = 0;
+  await api.listTasks(database.db, actor);
+  expect(deps.audit.entries).toEqual([]);
+});

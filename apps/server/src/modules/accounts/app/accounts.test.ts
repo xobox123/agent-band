@@ -34,6 +34,20 @@ const code = async (p: Promise<unknown>): Promise<string | undefined> =>
   );
 
 describe('accounts', () => {
+  it('writes no audit rows for list and get', async () => {
+    const { deps, uc, actor, db } = setup();
+    const dto = await uc.createAccount(db, actor, {
+      name: 'API',
+      provider: 'claude',
+      type: 'api',
+      secret: 's',
+    });
+    deps.audit.entries.length = 0;
+    await uc.getAccount(db, actor, dto.id);
+    await uc.listAccounts(db, actor);
+    expect(deps.audit.entries).toEqual([]);
+  });
+
   it('never exposes the secret and reports hasSecret', async () => {
     const { uc, actor, db } = setup();
     const dto = await uc.createAccount(db, actor, {

@@ -101,3 +101,16 @@ it('requires system writers, authorizes reads, and rolls back snapshots', async 
   deps.authorizer.deny = () => true;
   await expect(api.tokensToday(database.db, actor, {})).rejects.toMatchObject({ status: 403 });
 });
+it('audits only block changes, never reads or snapshots', async () => {
+  const windows = [{ window: '5h' as const, usedPercent: 100, resetsAt: future }];
+  await database.db.transaction((tx) => api.recordWindows(tx, system, accountId, windows));
+  await api.latestWindows(database.db, actor, accountId);
+  await api.accountBlock(database.db, actor, accountId, now);
+  await api.tokensToday(database.db, actor, {}, now);
+  await api.accountAvailability(database.db, actor, accountId, { maxConcurrentRuns: 1 }, now);
+  expect(deps.audit.entries).toEqual([]);
+  const until = new Date(future);
+  await database.db.transaction((tx) => api.blockAccount(tx, system, accountId, until));
+  await database.db.transaction((tx) => api.blockAccount(tx, system, accountId, until));
+  expect(deps.audit.entries.map((e) => e.action)).toEqual(['usage.update']);
+});
