@@ -16,7 +16,7 @@ bottom dock with logs).
 1. Global layout: icon rail, sidebar sections and items, header, details
    panel, bottom dock. Sizes in px, behaviour on narrow windows
    (min width 1024 px).
-2. For each screen (Board, Dashboard, Agents, Tasks, Runs, Policies, Accounts, Audit).
+2. For each screen (Board, Dashboard, Agents, Agent groups, Tasks, Runs, Skills, Policies, Accounts, People and teams, Audit).
    The Board is a Jira-like kanban (see "Board" in the spec UI section) and
    the most important screen: specify columns, card anatomy, filters,
    swimlanes, drag and drop rules and live updates in detail. For every screen:
@@ -41,3 +41,9 @@ Code, colours beyond the tokens named above, marketing copy.
 
 ## Report
 `handoff/chatgpt/reports/001-report.md` per the template in the README.
+
+## Additional screens (added after the spec revision)
+- Skills: org-wide library, versions, where each skill is assigned (org, group, agent), upload/import flow.
+- Agent groups: members, group policy, group skills.
+- Agent details also show: persona, avatar, effective policy (merged from org, groups, agent, with which level set each rule), effective skills.
+- People and teams: users, teams, role bindings (owner, admin, operator, viewer) with scope.
