@@ -1,0 +1,155 @@
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #14161a;
+  --surface: #1b1e24;
+  --surface-2: #22262e;
+  --surface-3: #2a2f38;
+  --border: #2f3541;
+  --text: #e6e9ef;
+  --text-dim: #8b93a3;
+  --muted: #6b7384;
+  --accent: #4f8cff;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(79, 140, 255, 0.16);
+  --ok: #3fb97c;
+  --warn: #e0a43a;
+  --crit: #ee5d62;
+  --ok-soft: rgba(63, 185, 124, 0.16);
+  --warn-soft: rgba(224, 164, 58, 0.16);
+  --crit-soft: rgba(238, 93, 98, 0.16);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --av-1: #5b7cfa;
+  --av-2: #2fa58a;
+  --av-3: #c4739a;
+  --av-4: #d28c3a;
+  --av-5: #8a68d6;
+  --av-6: #3a9bc4;
+  --av-7: #b5604f;
+  --av-8: #7b9a3c;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --surface-3: #e6e9ee;
+  --border: #d6dae1;
+  --text: #1c2027;
+  --text-dim: #5d6574;
+  --muted: #7a8294;
+  --accent: #2f6fe4;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(47, 111, 228, 0.12);
+  --ok: #1f8f5a;
+  --warn: #b57a12;
+  --crit: #cf3f45;
+  --ok-soft: rgba(31, 143, 90, 0.12);
+  --warn-soft: rgba(181, 122, 18, 0.14);
+  --crit-soft: rgba(207, 63, 69, 0.12);
+  --shadow: 0 8px 24px rgba(20, 30, 50, 0.18);
+}
+
+:root {
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --radius: 6px;
+  --fs: 13px;
+  --fs-sm: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: var(--fs) / 1.4 var(--font);
+  overflow: auto;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.dim {
+  color: var(--text-dim);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.1);
+}
+
+.btn-danger {
+  color: var(--crit);
+  border-color: var(--crit);
+}
+
+.btn-icon {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  border-color: transparent;
+}
