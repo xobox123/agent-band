@@ -66,7 +66,16 @@ describe('worker', () => {
     expect(decision?.actorId).toBe(kit.dispatcher.principalId);
     expect(decision?.data).toMatchObject({ allow: true });
     expect((decision?.data as { effectivePolicyHash: string }).effectivePolicyHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(actions()).toEqual(expect.arrayContaining(['run.start', 'run.finish']));
+    expect(actions().slice(actions().indexOf('task.create'))).toEqual([
+      'task.create',
+      'task.claim',
+      'policy.decision',
+      'run.start',
+      'task.status',
+      'agent.tool_use',
+      'run.finish',
+      'task.status',
+    ]);
     const runDir = join(kit.workerDeps().runsRoot ?? '', r?.id ?? '');
     await waitFor(() => Promise.resolve(!existsSync(runDir)));
   });

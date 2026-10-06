@@ -31,17 +31,9 @@ export function createUsage(deps: UsageDeps) {
     tx: Tx,
     actor: ActorContext,
     action: 'read' | 'task.write',
-    targetId: string,
     scope: UsageScope = {},
   ) {
     await deps.authorizer.authorize(tx, actor, action, scope.agentId ? { agentId: scope.agentId } : {});
-    await deps.audit.append(tx, {
-      orgId: actor.orgId,
-      actorId: actor.principalId,
-      action: action === 'read' ? 'usage.read' : 'usage.update',
-      targetType: scope.agentId ? 'agent' : 'account',
-      targetId,
-    });
   }
   async function latest(tx: Tx, actor: ActorContext, accountId: string): Promise<LimitWindow[]> {
     const rows = await tx
@@ -74,7 +66,7 @@ export function createUsage(deps: UsageDeps) {
       windows: LimitWindow[],
     ): Promise<void> {
       system(actor);
-      await authorize(tx, actor, 'task.write', accountId);
+      await authorize(tx, actor, 'task.write');
       for (const w of windows) {
         if (
           !['5h', 'weekly'].includes(w.window) ||
@@ -94,26 +86,39 @@ export function createUsage(deps: UsageDeps) {
     },
     async latestWindows(db: Db, actor: ActorContext, accountId: string): Promise<LimitWindow[]> {
       return db.transaction(async (tx) => {
-        await authorize(tx, actor, 'read', accountId);
+        await authorize(tx, actor, 'read');
         return latest(tx, actor, accountId);
       });
     },
     async tokensToday(db: Db, actor: ActorContext, scope: UsageScope, now = new Date()): Promise<number> {
       return db.transaction(async (tx) => {
-        await authorize(tx, actor, 'read', scope.agentId ?? scope.accountId ?? actor.orgId, scope);
+        await authorize(tx, actor, 'read', scope);
         return tokens(tx, actor, scope, now);
       });
     },
     async blockAccount(tx: Tx, actor: ActorContext, accountId: string, until: Date): Promise<void> {
       system(actor);
-      await authorize(tx, actor, 'task.write', accountId);
+      await authorize(tx, actor, 'task.write');
       if (!Number.isFinite(until.getTime())) throw invalid('Invalid reset time');
+      const [existing] = await tx
+        .select({ until: accountBlocks.until })
+        .from(accountBlocks)
+        .where(and(eq(accountBlocks.orgId, actor.orgId), eq(accountBlocks.accountId, accountId)));
       await tx
         .insert(accountBlocks)
         .values({ orgId: actor.orgId, accountId, until })
         .onConflictDoUpdate({
           target: [accountBlocks.orgId, accountBlocks.accountId],
           set: { until: sql`greatest(${accountBlocks.until},${until.toISOString()}::timestamptz)` },
+        });
+      if (!existing || existing.until.getTime() < until.getTime())
+        await deps.audit.append(tx, {
+          orgId: actor.orgId,
+          actorId: actor.principalId,
+          action: 'usage.update',
+          targetType: 'account',
+          targetId: accountId,
+          data: { blockedUntil: until.toISOString() },
         });
     },
     async accountBlock(
@@ -123,7 +128,7 @@ export function createUsage(deps: UsageDeps) {
       now = new Date(),
     ): Promise<Date | null> {
       return db.transaction(async (tx) => {
-        await authorize(tx, actor, 'read', accountId);
+        await authorize(tx, actor, 'read');
         return block(tx, actor, accountId, now);
       });
     },
@@ -135,7 +140,7 @@ export function createUsage(deps: UsageDeps) {
       now = new Date(),
     ): Promise<Availability> {
       return db.transaction(async (tx) => {
-        await authorize(tx, actor, 'read', accountId);
+        await authorize(tx, actor, 'read');
         if (
           !Number.isInteger(limits.maxConcurrentRuns) ||
           limits.maxConcurrentRuns < 1 ||

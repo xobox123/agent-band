@@ -20,6 +20,14 @@ afterEach(async () => {
 });
 
 describe('policies', () => {
+  it('writes no audit rows for list and get', async () => {
+    const p = await createPolicy(database.db, deps, actor, { name: 'base', rules: { maxMode: 'edit' } });
+    deps.audit.entries.length = 0;
+    await getPolicy(database.db, deps, actor, p.id);
+    await listPolicies(database.db, deps, actor);
+    expect(deps.audit.entries).toEqual([]);
+  });
+
   it('creates version 1 and audits, authorizes and publishes', async () => {
     const p = await createPolicy(database.db, deps, actor, { name: 'base', rules: { maxMode: 'edit' } });
     expect(p.currentVersion).toBe(1);

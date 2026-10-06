@@ -111,15 +111,9 @@ it('isolates orgs, scopes read authorization, and rolls back failed audit', asyn
   const broken = createRuns({ ...deps, audit: { append: () => Promise.reject(new Error('audit failed')) } });
   await expect(
     database.db.transaction((tx) =>
-      broken.appendRunEvent(tx, system, run.id, {
-        kind: 'usage',
-        inputTokens: 10,
-        outputTokens: 0,
-        cachedTokens: 0,
-      }),
+      broken.appendRunEvent(tx, system, run.id, { kind: 'tool', name: 'Read', input: {} }),
     ),
   ).rejects.toThrow('audit failed');
-  expect((await api.listRuns(database.db, actor))[0]?.inputTokens).toBe(0);
   expect(await api.listRunEvents(database.db, actor, run.id)).toEqual([]);
 });
 it('recovers only running runs for the specified worker and org', async () => {
@@ -176,4 +170,32 @@ it('attributes tool use to the agent that ran it', async () => {
   const entry = deps.audit.entries.find((e) => e.action === 'agent.tool_use');
   expect(entry).toMatchObject({ actorId: run.agentId, targetId: run.id });
   expect(deps.audit.entries.find((e) => e.action === 'run.start')?.actorId).toBe(system.principalId);
+});
+it('writes no audit rows for reads or for non-decision events', async () => {
+  const run = await start();
+  await database.db.transaction(async (tx) => {
+    await api.appendRunEvent(tx, system, run.id, { kind: 'text', text: 'hi' });
+    await api.appendRunEvent(tx, system, run.id, {
+      kind: 'usage',
+      inputTokens: 1,
+      outputTokens: 1,
+      cachedTokens: 0,
+    });
+    await api.appendRunEvent(tx, system, run.id, { kind: 'tool', name: 'Read', input: {} });
+  });
+  deps.audit.entries.length = 0;
+  await api.listRuns(database.db, actor);
+  await api.getRun(database.db, actor, run.id);
+  await api.listRunEvents(database.db, actor, run.id);
+  await api.runningCount(database.db, actor, run.accountId);
+  await api.usageOnDay(database.db, actor, {}, 'UTC', new Date());
+  expect(deps.audit.entries).toEqual([]);
+});
+it('audits tool use and rate limits but never plain events', async () => {
+  const run = await start();
+  await database.db.transaction(async (tx) => {
+    await api.appendRunEvent(tx, system, run.id, { kind: 'text', text: 'hi' });
+    await api.appendRunEvent(tx, system, run.id, { kind: 'tool', name: 'Read', input: {} });
+  });
+  expect(deps.audit.entries.map((e) => e.action)).toEqual(['run.start', 'agent.tool_use']);
 });

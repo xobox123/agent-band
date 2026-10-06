@@ -36,6 +36,14 @@ afterEach(async () => {
 });
 
 describe('importSkill', () => {
+  it('writes no audit rows for list and get', async () => {
+    const s = await importSkill(database.db, deps, actor, { name: 'review', files: files('# review') });
+    deps.audit.entries.length = 0;
+    await getSkill(database.db, deps, actor, s.id);
+    await listSkills(database.db, deps, actor);
+    expect(deps.audit.entries).toEqual([]);
+  });
+
   it('creates version 1 with a content hash, audit and event', async () => {
     const s = await importSkill(database.db, deps, actor, { name: 'review', files: files('# review') });
     expect(s.currentVersion).toBe(1);

@@ -87,13 +87,6 @@ export function createTasks(deps: TasksDeps) {
         ),
       )
       .orderBy(asc(tasks.priority), asc(tasks.rank), asc(tasks.createdAt), asc(tasks.id));
-    await deps.audit.append(tx, {
-      orgId: actor.orgId,
-      actorId: actor.principalId,
-      action: 'task.list',
-      targetType: 'organization',
-      targetId: actor.orgId,
-    });
     return result;
   }
   return {

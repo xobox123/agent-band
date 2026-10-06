@@ -130,25 +130,28 @@ export function createRuns(deps: ModuleDeps) {
         .values({ orgId: actor.orgId, runId: id, kind: event.kind, payload: event })
         .returning();
       if (!stored) throw new Error('Missing inserted event');
-      await audit(
-        tx,
-        actor,
+      const auditAction =
         event.kind === 'tool'
           ? 'agent.tool_use'
           : event.kind === 'rate_limit' && event.limitReached
             ? 'run.rate_limited'
-            : 'run.event',
-        run,
-        {
-          eventId: stored.id,
-          kind: event.kind,
-          ...(event.kind === 'tool'
-            ? { name: event.name, input: JSON.stringify(event.input ?? null).slice(0, 2000) }
-            : {}),
-        },
-        // Tool use is attributed to the agent that performed it.
-        event.kind === 'tool' ? run.agentId : undefined,
-      );
+            : undefined;
+      if (auditAction)
+        await audit(
+          tx,
+          actor,
+          auditAction,
+          run,
+          {
+            eventId: stored.id,
+            kind: event.kind,
+            ...(event.kind === 'tool'
+              ? { name: event.name, input: JSON.stringify(event.input ?? null).slice(0, 2000) }
+              : {}),
+          },
+          // Tool use is attributed to the agent that performed it.
+          event.kind === 'tool' ? run.agentId : undefined,
+        );
       await publish(tx, 'run.event', { orgId: actor.orgId, runId: id, eventId: stored.id });
       return stored;
     },
@@ -169,13 +172,6 @@ export function createRuns(deps: ModuleDeps) {
             ),
           )
           .orderBy(desc(runs.startedAt), desc(runs.id));
-        await deps.audit.append(tx, {
-          orgId: actor.orgId,
-          actorId: actor.principalId,
-          action: 'run.list',
-          targetType: 'organization',
-          targetId: actor.orgId,
-        });
         return result;
       });
     },
@@ -194,7 +190,6 @@ export function createRuns(deps: ModuleDeps) {
           .from(runEvents)
           .where(and(eq(runEvents.orgId, actor.orgId), eq(runEvents.runId, id), gt(runEvents.id, afterId)))
           .orderBy(asc(runEvents.id));
-        await audit(tx, actor, 'run.events.list', run);
         return result;
       });
     },
@@ -232,13 +227,6 @@ export function createRuns(deps: ModuleDeps) {
           .select({ n: count() })
           .from(runs)
           .where(and(eq(runs.orgId, actor.orgId), eq(runs.accountId, accountId), eq(runs.status, 'running')));
-        await deps.audit.append(tx, {
-          orgId: actor.orgId,
-          actorId: actor.principalId,
-          action: 'run.count',
-          targetType: 'account',
-          targetId: accountId,
-        });
         return row?.n ?? 0;
       });
     },
@@ -269,13 +257,6 @@ export function createRuns(deps: ModuleDeps) {
               sql`(${runEvents.ts} at time zone ${timezone})::date = (${now.toISOString()}::timestamptz at time zone ${timezone})::date`,
             ),
           );
-        await deps.audit.append(tx, {
-          orgId: actor.orgId,
-          actorId: actor.principalId,
-          action: 'run.usage',
-          targetType: scope.agentId ? 'agent' : 'account',
-          targetId: scope.agentId ?? scope.accountId ?? actor.orgId,
-        });
         return row?.tokens ?? 0;
       });
     },

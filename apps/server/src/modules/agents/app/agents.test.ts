@@ -135,6 +135,16 @@ describe('agents', () => {
     await s.accountUc.deleteAccount(s.db, s.actor, acc.id);
   });
 
+  it('writes no audit rows for list and get', async () => {
+    const s = setup();
+    const acc = await withAccount(s);
+    const a = await s.agentUc.createAgent(s.db, s.actor, { name: 'A1', slug: 'a1', accountId: acc.id });
+    s.deps.audit.entries.length = 0;
+    await s.agentUc.getAgent(s.db, s.actor, a.id);
+    await s.agentUc.listAgents(s.db, s.actor);
+    expect(s.deps.audit.entries).toEqual([]);
+  });
+
   it('lists with label, group and enabled filters and scopes by org', async () => {
     const s = setup();
     const acc = await withAccount(s);
