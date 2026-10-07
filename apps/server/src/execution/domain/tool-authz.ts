@@ -4,12 +4,15 @@ import { isPathAllowed } from '../../modules/policy/domain/paths.ts';
 export interface ToolPolicySnapshot {
   allowedTools?: string[];
   deniedTools: string[];
+  /** Effective pre-approved rules; an allowed call that matches one is granted explicitly. */
+  preApprovedTools?: string[];
   workDirSets: string[][];
 }
 
 export interface ToolDecision {
   decision: 'allow' | 'deny';
   reason: string;
+  preApproved?: boolean;
 }
 
 const allow = (reason: string): ToolDecision => ({ decision: 'allow', reason });
@@ -73,6 +76,26 @@ function pathsOf(tool: string, input: Record<string, unknown>, workDir: string):
   return paths;
 }
 
+const SHELL_CONTROL = /[;&|`<>\n\r]|\$\(/;
+
+/** Whether one pre-approved rule ("Tool", "Bash", "Bash(prefix:*)", "Bash(exact)") covers this call. */
+export function matchesPreApproved(rule: string, toolName: string, toolInput: unknown): boolean {
+  const r = parseRule(rule);
+  if (r.name !== toolName) return false;
+  if (!r.scoped) return true;
+  if (toolName !== 'Bash' || !rule.endsWith(')')) return false;
+  const command = (toolInput as { command?: unknown } | null | undefined)?.command;
+  if (typeof command !== 'string') return false;
+  const pattern = rule.slice(rule.indexOf('(') + 1, -1).trim();
+  const cmd = command.trim();
+  if (pattern === '' || cmd === '' || SHELL_CONTROL.test(cmd)) return false;
+  if (pattern.endsWith(':*')) {
+    const prefix = pattern.slice(0, -2);
+    return prefix !== '' && (cmd === prefix || cmd.startsWith(`${prefix} `));
+  }
+  return cmd === pattern;
+}
+
 export function decideTool(
   policy: ToolPolicySnapshot,
   workDir: string,
@@ -96,5 +119,8 @@ export function decideTool(
   for (const p of paths) {
     if (!isPathAllowed(p, policy.workDirSets)) return deny(`path ${p} is outside the allowed directories`);
   }
-  return allow('allowed by policy');
+  const preApproved = (policy.preApprovedTools ?? []).some((rule) =>
+    matchesPreApproved(rule, toolName, toolInput),
+  );
+  return preApproved ? { ...allow('allowed by policy'), preApproved: true } : allow('allowed by policy');
 }

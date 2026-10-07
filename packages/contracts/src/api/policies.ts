@@ -7,12 +7,111 @@ const absolutePath = z
   .string()
   .refine((p) => p.startsWith('/') && !p.includes('\0'), 'must be an absolute path');
 
+export const PermissionRisk = z.enum(['low', 'medium', 'high']);
+export type PermissionRisk = z.infer<typeof PermissionRisk>;
+
+/** Built-in sets of tool rules that run without asking. Claude tool rule syntax. */
+export const PERMISSION_PRESETS = [
+  {
+    id: 'web-read',
+    label: 'Web read',
+    description: 'Search the web and fetch pages (WebSearch, WebFetch).',
+    tools: ['WebSearch', 'WebFetch'],
+    risk: 'low',
+  },
+  {
+    id: 'edit-files',
+    label: 'Edit files',
+    description: 'Create and change files (Edit, Write, MultiEdit, NotebookEdit).',
+    tools: ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'],
+    risk: 'medium',
+  },
+  {
+    id: 'shell-git',
+    label: 'Shell: git',
+    description: 'Run git commands.',
+    tools: ['Bash(git:*)'],
+    risk: 'medium',
+  },
+  {
+    id: 'shell-node',
+    label: 'Shell: npm and node',
+    description: 'Run npm, npx and node commands.',
+    tools: ['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)'],
+    risk: 'medium',
+  },
+  {
+    id: 'shell-curl',
+    label: 'Network via curl',
+    description: 'Run curl commands.',
+    tools: ['Bash(curl:*)'],
+    risk: 'medium',
+  },
+  {
+    id: 'shell-any',
+    label: 'Shell: any command',
+    description: 'Run any shell command without asking. Gives the agent full control of the machine.',
+    tools: ['Bash'],
+    risk: 'high',
+  },
+] as const satisfies readonly {
+  id: string;
+  label: string;
+  description: string;
+  tools: readonly string[];
+  risk: PermissionRisk;
+}[];
+export type PermissionPresetId = (typeof PERMISSION_PRESETS)[number]['id'];
+export const PermissionPresetIdSchema = z.enum(
+  PERMISSION_PRESETS.map((p) => p.id) as [PermissionPresetId, ...PermissionPresetId[]],
+);
+
+/** Expands preset ids to tool rules; unknown ids are ignored. */
+export function expandPresets(ids: readonly string[] | undefined): string[] {
+  const out = new Set<string>();
+  for (const preset of PERMISSION_PRESETS) {
+    if (ids?.includes(preset.id)) for (const t of preset.tools) out.add(t);
+  }
+  return [...out];
+}
+
+function ruleName(rule: string): string {
+  const i = rule.indexOf('(');
+  return i < 0 ? rule : rule.slice(0, i);
+}
+function nameMatches(pattern: string, tool: string): boolean {
+  return pattern.endsWith('*') ? tool.startsWith(pattern.slice(0, -1)) : pattern === tool;
+}
+
+/**
+ * Effective pre-approved rules: presets plus custom rules, minus anything a bare denied tool
+ * (or an identical denied rule) covers, limited to tools the allowlist permits when it is set.
+ */
+export function resolvePreApproved(p: {
+  presets?: readonly string[] | undefined;
+  preApprovedTools?: readonly string[] | undefined;
+  deniedTools?: readonly string[] | undefined;
+  allowedTools?: readonly string[] | undefined;
+}): string[] {
+  const all = new Set([...expandPresets(p.presets), ...(p.preApprovedTools ?? [])]);
+  return [...all].filter((rule) => {
+    const name = ruleName(rule);
+    for (const d of p.deniedTools ?? []) {
+      if (d === rule) return false;
+      if (!d.includes('(') && nameMatches(d, name)) return false;
+    }
+    return !p.allowedTools || p.allowedTools.some((a) => nameMatches(ruleName(a), name));
+  });
+}
+
 // Single source of truth for policy rules; the server's policy domain imports this schema.
 export const PolicyRules = z.strictObject({
   workDirs: z.array(absolutePath).optional(),
   maxMode: Mode.optional(),
   allowedTools: z.array(z.string().min(1)).optional(),
   deniedTools: z.array(z.string().min(1)).optional(),
+  preApprovedTools: z.array(z.string().min(1)).optional(),
+  presets: z.array(PermissionPresetIdSchema).optional(),
   dailyTokenBudget: z.number().int().nonnegative().optional(),
   maxRunMinutes: z.number().int().positive().optional(),
   allowedAccountIds: z.array(z.string().min(1)).optional(),
@@ -104,6 +203,8 @@ export const EffectivePolicyDto = z.object({
   maxMode: Mode,
   allowedTools: z.array(z.string()).optional(),
   deniedTools: z.array(z.string()),
+  preApprovedTools: z.array(z.string()).optional(),
+  presets: z.array(z.string()).optional(),
   dailyTokenBudget: z.number().optional(),
   maxRunMinutes: z.number().optional(),
   allowedAccountIds: z.array(z.string()).optional(),

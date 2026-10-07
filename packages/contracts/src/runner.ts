@@ -47,6 +47,8 @@ export const RunSpec = z.object({
   systemPrompt: z.string().optional(),
   allowedTools: z.array(z.string()).optional(),
   deniedTools: z.array(z.string()).optional(),
+  /** Effective pre-approved tool rules: granted without asking. */
+  preApprovedTools: z.array(z.string()).optional(),
   configDir: z.string(),
   skillsDir: z.string().optional(),
   /** Claude MCP config file attached to goal (leader) runs. */

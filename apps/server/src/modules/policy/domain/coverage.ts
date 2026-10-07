@@ -38,6 +38,15 @@ export function describePolicy(
             ? 'Named tool dispatch; does not confine side effects of an allowed shell. CLI hook-runner crashes remain outside our control.'
             : 'No agent-band pre-tool hook for this adapter.',
       });
+    } else if (name === 'preApprovedTools' || name === 'presets') {
+      coverage = provider.capabilities.runtimeToolEnforcement ? 'runtime-hook' : 'cli-sandbox';
+      details.push({
+        mechanism: coverage,
+        scope:
+          coverage === 'runtime-hook'
+            ? 'Passed to Claude as allowed tool rules and granted explicitly by the pre-tool hook; denied and disallowed tools still win.'
+            : 'Web and curl rules enable network access in the Codex workspace-write sandbox; other rules are not enforced.',
+      });
     } else if (name === 'maxMode') {
       coverage = 'cli-sandbox';
       details.push({

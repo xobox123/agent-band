@@ -707,6 +707,36 @@ describe('Policies screen', () => {
   });
 });
 
+describe('Policy form pre-approved tools', () => {
+  it('saves presets and custom rules and warns about shell-any', async () => {
+    const routes: Routes = {
+      'GET /policies': list([policyRow]),
+      'POST /policies': { ...policyDetail },
+    };
+    const calls = mount(routes, <PoliciesScreen />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Create policy' }));
+    const dialog = screen.getByRole('dialog', { name: 'Create policy' });
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Web' } });
+    expect(within(dialog).getByText('Allowed without asking')).toBeInTheDocument();
+    expect(within(dialog).getByText('low risk')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Web read/ }));
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Shell: any command/ }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(/any shell command/);
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Shell: any command/ }));
+    fireEvent.change(within(dialog).getByLabelText(/^Custom allowed rules/), {
+      target: { value: 'Bash(make:*)\n\nBash(ls:*)' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create policy' }));
+    await waitFor(() => {
+      expect(lastBody(calls, 'POST', '/policies')).toMatchObject({
+        name: 'Web',
+        rules: { presets: ['web-read'], preApprovedTools: ['Bash(make:*)', 'Bash(ls:*)'] },
+      });
+    });
+  });
+});
+
 describe('Skills screen', () => {
   const skill = {
     id: ID(70),

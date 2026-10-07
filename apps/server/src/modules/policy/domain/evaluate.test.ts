@@ -112,6 +112,8 @@ describe('mergePolicies is most-restrictive (property)', () => {
     if (r() < 0.5) rules.allowedAccountIds = subset(ids);
     if (r() < 0.5) rules.allowedTools = subset(tools);
     if (r() < 0.5) rules.deniedTools = subset(tools);
+    if (r() < 0.5) rules.preApprovedTools = subset(tools);
+    if (r() < 0.5) rules.presets = subset(['web-read', 'shell-git', 'shell-any'] as const);
     if (r() < 0.5) rules.dailyTokenBudget = Math.floor(r() * 100);
     if (r() < 0.5) rules.maxRunMinutes = 1 + Math.floor(r() * 60);
     if (r() < 0.5) rules.canDelegate = r() < 0.5;
@@ -158,6 +160,11 @@ describe('mergePolicies is most-restrictive (property)', () => {
       }
 
       expect(rank[after.maxMode]).toBeLessThanOrEqual(rank[before.maxMode]);
+      for (const key of ['preApprovedTools', 'presets'] as const) {
+        if (before[key] !== undefined) {
+          for (const v of after[key] ?? []) expect(before[key]).toContain(v);
+        }
+      }
       for (const t of before.deniedTools) expect(after.deniedTools).toContain(t);
       if (before.allowedTools) {
         expect(after.allowedTools).toBeDefined();

@@ -268,6 +268,13 @@ The baseline deprecates `--allowed-tools` in favor of the policy engine, and sup
 6. Implement `maxRunMinutes` in the runner using a deadline and process-tree/container cancellation. A hook timeout is a different timer, and a tool-call check cannot cancel an idle or already-running process.
 7. If policy requires a strict filesystem jail or guaranteed fail-closed network authorization, add a controlled executor boundary. Native defaults and prompt instructions are insufficient.
 
+## Pre-approved tools and presets (agent-band mapping)
+
+`presets` and `preApprovedTools` in a policy are "allowed without asking", separate from the exclusive `allowedTools` allowlist. The effective set is expand(presets) union preApprovedTools, minus rules covered by `deniedTools`, limited to `allowedTools` when it is set.
+
+- Claude: the effective rules are added to `--allowedTools`, so headless Claude does not auto-deny them in `acceptEdits`. The PreToolUse hook also prints an explicit `permissionDecision: allow` when the policy check passes and the call matches a pre-approved rule (`Tool`, or `Bash(prefix:*)` against the command; commands with `;`, `&`, `|`, backticks, `$(`, redirects or newlines never match a scoped Bash rule). Other allowed calls print nothing. Read-only runs keep only WebSearch and WebFetch so plan mode is not bypassed.
+- Codex: there are no per-tool rules. When the set contains WebSearch, WebFetch, `Bash(curl:*)` or `Bash`, `edit` mode runs with `-c sandbox_workspace_write.network_access=true`; other rules have no Codex effect.
+
 ## Policy matrix
 
 Cells describe the strongest verified native mechanism for the stated scope, not a completed agent-band adapter. `workDirs` means checking that the task's starting directory belongs to the configured absolute roots; that is admission only. Strict confinement of all reads/writes below those roots is **unverified** across the three baselines and must not be inferred from this row. `maxMode` means selecting/capping native modes, with read-only requiring the additional controls described above. Tool rows cover named dispatch boundaries, not all side effects of an allowed shell.

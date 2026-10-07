@@ -18,6 +18,8 @@ export interface EffectivePolicy {
   maxMode: Mode;
   allowedTools?: string[];
   deniedTools: string[];
+  preApprovedTools?: string[];
+  presets?: string[];
   dailyTokenBudget?: number;
   maxRunMinutes?: number;
   allowedAccountIds?: string[];
@@ -70,6 +72,8 @@ function mergePolicyValues(
   const denied = new Set<string>();
   let maxMode: Mode = 'full-auto';
   let allowedTools: string[] | undefined;
+  let preApprovedTools: string[] | undefined;
+  let presets: string[] | undefined;
   let allowedAccountIds: string[] | undefined;
   let allowedSkillIds: string[] | undefined;
   let dailyTokenBudget: number | undefined;
@@ -87,6 +91,8 @@ function mergePolicyValues(
     if (rules.maxMode !== undefined) maxMode = minMode(maxMode, rules.maxMode);
     for (const t of rules.deniedTools ?? []) denied.add(t);
     allowedTools = intersect(allowedTools, rules.allowedTools);
+    preApprovedTools = intersect(preApprovedTools, rules.preApprovedTools);
+    presets = intersect(presets, rules.presets);
     allowedAccountIds = intersect(allowedAccountIds, rules.allowedAccountIds);
     allowedSkillIds = intersect(allowedSkillIds, rules.allowedSkillIds);
     dailyTokenBudget = minNumber(dailyTokenBudget, rules.dailyTokenBudget);
@@ -118,6 +124,8 @@ function mergePolicyValues(
     maxMode,
     ...(allowedTools && { allowedTools }),
     deniedTools: [...denied],
+    ...(preApprovedTools && { preApprovedTools }),
+    ...(presets && { presets }),
     ...(dailyTokenBudget !== undefined && { dailyTokenBudget }),
     ...(maxRunMinutes !== undefined && { maxRunMinutes }),
     ...(allowedAccountIds && { allowedAccountIds }),

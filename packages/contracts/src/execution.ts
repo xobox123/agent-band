@@ -11,6 +11,8 @@ export type AuthorizeToolRequest = z.infer<typeof AuthorizeToolRequest>;
 export const AuthorizeToolResponse = z.object({
   decision: z.enum(['allow', 'deny']),
   reason: z.string(),
+  /** True when an allowed call matches a pre-approved rule, so the hook grants it explicitly. */
+  preApproved: z.boolean().optional(),
 });
 export type AuthorizeToolResponse = z.infer<typeof AuthorizeToolResponse>;
 
