@@ -15,3 +15,5 @@ export const forbidden = (reason: string): AppError => new AppError('forbidden',
 export const conflict = (code: string, msg: string): AppError => new AppError(code, 409, msg);
 export const invalid = (issues: unknown): AppError =>
   new AppError('validation_failed', 400, 'Request validation failed', issues);
+export const unprocessable = (code: string, msg: string, details?: unknown): AppError =>
+  new AppError(code, 422, msg, details);

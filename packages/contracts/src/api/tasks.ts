@@ -177,6 +177,8 @@ export const StartTasksBody = z
   .object({ ids: z.array(Id).min(1).max(200), when: StartWhen.default({ mode: 'now' }) })
   .strict();
 export type StartTasksBody = z.input<typeof StartTasksBody>;
+export const ToBacklogBody = z.object({ ids: z.array(Id).min(1).max(200) }).strict();
+export type ToBacklogBody = z.infer<typeof ToBacklogBody>;
 export const ApprovePlanBody = StartTaskBody;
 export const RejectPlanBody = z.object({ feedback: z.string().trim().min(1).max(4000) }).strict();
 export const AddPlanTaskBody = z

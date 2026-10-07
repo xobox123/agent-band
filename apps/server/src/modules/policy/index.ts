@@ -18,4 +18,4 @@ export {
   type Mode,
 } from './domain/rules.ts';
 export { evaluateRunStart, type Decision, type RunStartRequest } from './domain/evaluate.ts';
-export { isPathWithin } from './domain/paths.ts';
+export { isPathAllowed, isPathWithin } from './domain/paths.ts';
