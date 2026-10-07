@@ -6,14 +6,17 @@ import { runDto } from './dto.ts';
 export async function buildDashboard(c: Composition, actor: ActorContext): Promise<DashboardDto> {
   const db = c.database.db;
   const cursor = await c.cursor();
-  const [accounts, agents, running, queued, tokensToday, cachedTokensToday] = await Promise.all([
-    c.accounts.listAccounts(db, actor),
-    c.agents.listAgents(db, actor),
-    c.runs.listRuns(db, actor, { status: 'running' }),
-    c.tasks.listTasks(db, actor, { status: 'queued' }),
-    c.usage.tokensToday(db, actor, {}),
-    c.usage.cachedTokensToday(db, actor, {}),
-  ]);
+  const [accounts, agents, running, queued, tokensToday, cachedTokensToday, recentFailures, tokenBuckets] =
+    await Promise.all([
+      c.accounts.listAccounts(db, actor),
+      c.agents.listAgents(db, actor),
+      c.runs.listRuns(db, actor, { status: 'running' }),
+      c.tasks.listTasks(db, actor, { status: 'queued' }),
+      c.usage.tokensToday(db, actor, {}),
+      c.usage.cachedTokensToday(db, actor, {}),
+      c.runs.recentFailures(db, actor),
+      c.runs.hourlyTokens(db, actor),
+    ]);
 
   const accountRows = await Promise.all(
     accounts.map(async (account) => {
@@ -23,7 +26,16 @@ export async function buildDashboard(c: Composition, actor: ActorContext): Promi
         c.usage.cachedTokensToday(db, actor, { accountId: account.id }),
         c.usage.accountBlock(db, actor, account.id),
       ]);
+      const runningRuns = running.filter((r) => r.accountId === account.id).length;
+      const availabilityReason: DashboardDto['accounts'][number]['availabilityReason'] = blockedUntil
+        ? 'blocked'
+        : runningRuns >= account.limits.maxConcurrentRuns
+          ? 'concurrency_full'
+          : account.limits.dailyTokenBudget !== undefined && tokens >= account.limits.dailyTokenBudget
+            ? 'budget_exhausted'
+            : 'ok';
       return {
+        availabilityReason,
         account,
         windows,
         tokensToday: tokens,
@@ -53,6 +65,8 @@ export async function buildDashboard(c: Composition, actor: ActorContext): Promi
       return { agent, status, runningRunId: run?.id ?? null, tokensToday: agentTokens[i] ?? 0 };
     }),
     runningRuns: running.map(runDto),
+    recentFailures: recentFailures.map(runDto),
+    tokenBuckets,
     queuedCount: queued.length,
     tokensToday,
     cachedTokensToday,

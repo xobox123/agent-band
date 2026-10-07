@@ -15,45 +15,15 @@ import {
 } from '../domain/resolve.ts';
 import { skillAssignments, skills, skillVersions } from '../infra/schema.ts';
 
-export interface SkillVersionDto {
-  skillId: string;
-  version: number;
-  contentHash: string;
-  sizeBytes: number;
-  source: string;
-  origin: string | null;
-  createdBy: string;
-  createdAt: string;
-}
-
-export interface SkillDto {
-  id: string;
-  name: string;
-  description: string;
-  currentVersion: number;
-  createdBy: string;
-  createdAt: string;
-}
-
-export interface SkillDetailDto extends SkillDto {
-  versions: SkillVersionDto[];
-}
-
-export interface SkillAssignmentDto {
-  id: string;
-  skillId: string;
-  pinnedVersion: number | null;
-  scope: SkillScope;
-  createdBy: string;
-  createdAt: string;
-}
-
-export interface EffectiveSkill {
-  skillId: string;
-  name: string;
-  version: number;
-  contentHash: string;
-}
+import type {
+  SkillVersionDto,
+  SkillDto,
+  SkillDetailDto,
+  SkillAssignmentDto,
+  EffectiveSkillDto,
+} from '@agent-band/contracts';
+export type { SkillVersionDto, SkillDto, SkillDetailDto, SkillAssignmentDto } from '@agent-band/contracts';
+export type EffectiveSkill = EffectiveSkillDto;
 
 export interface SkillBundle {
   skillId: string;
@@ -379,7 +349,7 @@ export async function listSkillAssignments(
   db: Db,
   deps: ModuleDeps,
   actor: ActorContext,
-  filter: { skillId?: string } = {},
+  filter: { skillId?: string; agentGroupId?: string; agentId?: string } = {},
 ): Promise<SkillAssignmentDto[]> {
   await deps.authorizer.authorize(db, actor, 'read', {});
   const rows = await db
@@ -389,6 +359,12 @@ export async function listSkillAssignments(
       and(
         eq(skillAssignments.orgId, actor.orgId),
         filter.skillId ? eq(skillAssignments.skillId, filter.skillId) : undefined,
+        filter.agentId
+          ? and(eq(skillAssignments.scopeKind, 'agent'), eq(skillAssignments.scopeId, filter.agentId))
+          : undefined,
+        filter.agentGroupId
+          ? and(eq(skillAssignments.scopeKind, 'group'), eq(skillAssignments.scopeId, filter.agentGroupId))
+          : undefined,
       ),
     )
     .orderBy(asc(skillAssignments.createdAt));
@@ -416,7 +392,8 @@ export async function getEffectiveSkills(
             : undefined,
         ),
       ),
-    );
+    )
+    .orderBy(skillAssignments.scopeId, skillAssignments.id);
   const resolved = resolveAssignments(
     rows.map((r): AssignmentRow => ({
       skillId: r.skillId,
@@ -443,7 +420,19 @@ export async function getEffectiveSkills(
     const version = resolved.get(head.id) ?? head.currentVersion;
     const ver = vers.find((v) => v.skillId === head.id && v.version === version);
     if (!ver) throw notFound(`skill version ${head.name}@${version}`);
-    out.push({ skillId: head.id, name: head.name, version, contentHash: ver.contentHash });
+    const rank: Record<string, number> = { org: 0, group: 1, agent: 2 };
+    const origin = rows
+      .filter((r) => r.skillId === head.id)
+      .sort((a, b) => (rank[b.scopeKind] ?? 0) - (rank[a.scopeKind] ?? 0))[0];
+    if (!origin) throw new Error('Resolved skill has no assignment');
+    out.push({
+      skillId: head.id,
+      name: head.name,
+      version,
+      contentHash: ver.contentHash,
+      origin: columnsToScope(origin.scopeKind, origin.scopeId),
+      pinnedVersion: origin.pinnedVersion,
+    });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }

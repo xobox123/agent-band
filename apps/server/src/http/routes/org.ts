@@ -11,6 +11,7 @@ import {
   PrincipalQuery,
   RoleBindingDto,
   RoleBindingList,
+  RoleBindingQuery,
   SetOrgPolicyBody,
   TeamDto,
   TeamList,
@@ -116,10 +117,17 @@ export function orgRoutes(c: Composition): FastifyPluginCallbackZod {
 
     app.get(
       '/role-bindings',
-      { schema: { tags: ['org'], summary: 'List role bindings', response: { 200: RoleBindingList } } },
+      {
+        schema: {
+          tags: ['org'],
+          summary: 'List role bindings',
+          querystring: RoleBindingQuery,
+          response: { 200: RoleBindingList },
+        },
+      },
       async (req) => {
         const cursor = await c.cursor();
-        return { items: await c.org.listRoleBindings(db, await c.resolveActor(req)), cursor };
+        return { items: await c.org.listRoleBindings(db, await c.resolveActor(req), req.query), cursor };
       },
     );
 

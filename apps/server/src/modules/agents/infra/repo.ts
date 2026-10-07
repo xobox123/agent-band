@@ -6,27 +6,8 @@ import { agentGroupMembers, agentGroups, agents } from './schema.ts';
 export type AgentRow = typeof agents.$inferSelect;
 export type GroupRow = typeof agentGroups.$inferSelect;
 
-export interface AgentDto {
-  id: string;
-  orgId: string;
-  slug: string;
-  handle: string;
-  name: string;
-  avatar: string | null;
-  accountId: string;
-  model: string | null;
-  role: 'leader' | 'worker' | 'reviewer';
-  persona: string | null;
-  systemPrompt: string | null;
-  labels: string[];
-  groupIds: string[];
-  policyId: string | null;
-  enabled: boolean;
-  gitIdentity: { name: string; email: string };
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import type { AgentDto } from '@agent-band/contracts';
+export type { AgentDto } from '@agent-band/contracts';
 
 export interface AgentGroupDto {
   id: string;

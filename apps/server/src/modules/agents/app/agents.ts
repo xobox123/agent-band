@@ -59,7 +59,7 @@ export function createAgentUseCases(deps: AgentsDeps) {
         kind: 'agent',
         handle: agentHandle(v.slug),
         displayName: v.name,
-        ...(v.avatar ? { avatar: v.avatar } : {}),
+        ...(v.avatar ? { avatar: v.avatar.value } : {}),
       });
       const git = v.gitIdentity ?? defaultGitIdentity(v.name, v.slug);
       const now = new Date();
@@ -112,14 +112,49 @@ export function createAgentUseCases(deps: AgentsDeps) {
     input: UpdateAgentInput,
   ): Promise<AgentDto> {
     const v = parseInput(updateAgentSchema, input);
-    const current = await loadAgent(db, actor.orgId, id);
-    const groupIds = await groupIdsOfAgent(db, id);
-    await deps.authorizer.authorize(db, actor, 'agent.manage', { agentId: id, agentGroupIds: groupIds });
-    if (v.accountId !== undefined && v.accountId !== current.accountId) {
-      await requireAccount(db, actor.orgId, v.accountId);
-    }
-
     return withTx(db, async (tx) => {
+      await tx
+        .select({ id: agents.id })
+        .from(agents)
+        .where(and(eq(agents.orgId, actor.orgId), eq(agents.id, id)))
+        .for('update');
+      const current = await loadAgent(tx, actor.orgId, id);
+      const memberships = await tx
+        .select()
+        .from(agentGroupMembers)
+        .where(and(eq(agentGroupMembers.orgId, actor.orgId), eq(agentGroupMembers.agentId, id)));
+      const groupIds = memberships.map((m) => m.groupId);
+      await deps.authorizer.authorize(tx, actor, 'agent.manage', { agentId: id, agentGroupIds: groupIds });
+      if (v.accountId !== undefined && v.accountId !== current.accountId)
+        await requireAccount(tx, actor.orgId, v.accountId);
+      const desired = v.groupIds === undefined ? groupIds : [...new Set(v.groupIds)];
+      for (const groupId of new Set([...groupIds, ...desired])) {
+        if (groupIds.includes(groupId) === desired.includes(groupId)) continue;
+        await loadGroup(tx, actor.orgId, groupId);
+        await deps.authorizer.authorize(tx, actor, 'agent.manage', { agentGroupIds: [groupId] });
+        const added = desired.includes(groupId);
+        if (added) await tx.insert(agentGroupMembers).values({ orgId: actor.orgId, agentId: id, groupId });
+        else
+          await tx
+            .delete(agentGroupMembers)
+            .where(
+              and(
+                eq(agentGroupMembers.orgId, actor.orgId),
+                eq(agentGroupMembers.agentId, id),
+                eq(agentGroupMembers.groupId, groupId),
+              ),
+            );
+        const action = added ? 'agent_group.member_added' : 'agent_group.member_removed';
+        await deps.audit.append(tx, {
+          orgId: actor.orgId,
+          actorId: actor.principalId,
+          action,
+          targetType: 'agent_group',
+          targetId: groupId,
+          data: { agentId: id },
+        });
+        await publish(tx, action, { orgId: actor.orgId, groupId, agentId: id });
+      }
       const [row] = await tx
         .update(agents)
         .set({
@@ -148,7 +183,7 @@ export function createAgentUseCases(deps: AgentsDeps) {
         data: { changed: Object.keys(v) },
       });
       await publish(tx, 'agent.updated', { orgId: actor.orgId, agentId: id });
-      return agentToDto(row, groupIds);
+      return agentToDto(row, desired);
     });
   }
 

@@ -9,9 +9,12 @@ import type {
 } from '@agent-band/contracts';
 import type { Account, Agent, AgentGroup, AvatarSpec, Priority, Run, Task, TaskTarget } from './types.ts';
 
-/** Avatar is one string: http(s) image URL, an approved colour token such as `av-3`, or initials. */
-export function parseAvatar(value: string | null): AvatarSpec | null {
+/** Accepts structured agent avatars and legacy user avatar strings. */
+export function parseAvatar(
+  value: string | import('@agent-band/contracts').AgentAvatar | null,
+): AvatarSpec | null {
   if (!value) return null;
+  if (typeof value !== 'string') return { [value.kind]: value.value };
   if (/^https?:\/\//.test(value)) return { url: value };
   if (/^av-\d+$/.test(value)) return { color: value };
   return { initials: value.slice(0, 3) };

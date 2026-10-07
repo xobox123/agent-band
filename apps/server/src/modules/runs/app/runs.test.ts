@@ -215,3 +215,67 @@ it('audits tool use and rate limits but never plain events', async () => {
   });
   expect(deps.audit.entries.map((e) => e.action)).toEqual(['run.start', 'agent.tool_use']);
 });
+
+it('returns 24 rolling hourly buckets by event time, excluding cache, future and other org usage', async () => {
+  const run = await start();
+  const now = new Date('2026-10-07T12:34:00Z');
+  const from = new Date(now.getTime() - 24 * 3600000);
+  await database.db.insert(runEvents).values([
+    {
+      orgId: actor.orgId,
+      runId: run.id,
+      kind: 'usage',
+      ts: from,
+      payload: { kind: 'usage', inputTokens: 2, outputTokens: 3, cachedTokens: 999 },
+    },
+    {
+      orgId: actor.orgId,
+      runId: run.id,
+      kind: 'usage',
+      ts: new Date(from.getTime() + 3600000),
+      payload: { kind: 'usage', inputTokens: 7, outputTokens: 4, cachedTokens: 999 },
+    },
+    ...[new Date(from.getTime() - 1), now].map((ts) => ({
+      orgId: actor.orgId,
+      runId: run.id,
+      kind: 'usage' as const,
+      ts,
+      payload: { kind: 'usage' as const, inputTokens: 100, outputTokens: 100, cachedTokens: 0 },
+    })),
+    {
+      orgId: randomUUID(),
+      runId: run.id,
+      kind: 'usage',
+      ts: from,
+      payload: { kind: 'usage', inputTokens: 100, outputTokens: 100, cachedTokens: 0 },
+    },
+  ]);
+  const before = deps.audit.entries.length;
+  const buckets = await api.hourlyTokens(database.db, actor, now);
+  expect(buckets).toHaveLength(24);
+  expect(buckets[0]).toEqual({
+    start: from.toISOString(),
+    end: new Date(from.getTime() + 3600000).toISOString(),
+    tokens: 5,
+  });
+  expect(buckets[1]?.tokens).toBe(11);
+  expect(buckets.slice(2).every((b) => b.tokens === 0)).toBe(true);
+  expect(buckets[23]?.end).toBe(now.toISOString());
+  expect(deps.audit.entries).toHaveLength(before);
+});
+
+it('limits recent failures to ten finished runs, newest first and scoped to the organization', async () => {
+  const ids: string[] = [];
+  for (let i = 0; i < 12; i++) {
+    const run = await start();
+    ids.push(run.id);
+    await database.db.transaction((tx) =>
+      api.finishRun(tx, system, run.id, { status: 'failed', error: `failure ${i}` }),
+    );
+  }
+  const successful = await start();
+  await database.db.transaction((tx) => api.finishRun(tx, system, successful.id, { status: 'done' }));
+  const recent = await api.recentFailures(database.db, actor);
+  expect(recent.map((r) => r.id)).toEqual(ids.reverse().slice(0, 10));
+  expect(await api.recentFailures(database.db, testActor())).toEqual([]);
+});

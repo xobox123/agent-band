@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lt, lte, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lt, lte, or, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ActorContext } from '../../../platform/actor.ts';
 import type { Db } from '../../../platform/db.ts';
@@ -7,61 +7,15 @@ import type { Authorizer } from '../../../ports/index.ts';
 import { GENESIS_HASH, verifyChain, type AuditRow } from '../domain/hash.ts';
 import { auditEvents } from '../infra/schema.ts';
 
-export interface AuditEventDto {
-  seq: number;
-  orgId: string;
-  ts: string;
-  actorId: string;
-  action: string;
-  targetType: string;
-  targetId: string;
-  data: unknown;
-  prevHash: string;
-  hash: string;
-}
-
-export interface AuditFilter {
-  actorId?: string;
-  action?: string;
-  targetType?: string;
-  targetId?: string;
-  from?: string;
-  to?: string;
-  cursor?: number;
-  limit?: number;
-}
-
-export interface AuditExportFilter extends Omit<AuditFilter, 'cursor' | 'limit'> {
-  toSeq?: number;
-}
-
-export interface AuditRange {
-  fromSeq?: number;
-  toSeq?: number;
-}
-
-export interface VerifyResult {
-  ok: boolean;
-  brokenAtSeq?: number;
-  count: number;
-  fromSeq: number | null;
-  toSeq: number | null;
-}
-
-const isoDate = z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'invalid date');
-const seqNum = z.number().int().nonnegative();
-const filterSchema = z.object({
-  actorId: z.uuid().optional(),
-  action: z.string().min(1).optional(),
-  targetType: z.string().min(1).optional(),
-  targetId: z.string().min(1).optional(),
-  from: isoDate.optional(),
-  to: isoDate.optional(),
-  cursor: seqNum.optional(),
-  limit: z.number().int().min(1).max(200).optional(),
-});
-const exportSchema = filterSchema.omit({ cursor: true, limit: true }).extend({ toSeq: seqNum.optional() });
-const rangeSchema = z.object({ fromSeq: seqNum.optional(), toSeq: seqNum.optional() });
+import { AuditQuery, AuditExportQuery, AuditVerifyQuery, type AuditEventDto } from '@agent-band/contracts';
+export type { AuditEventDto } from '@agent-band/contracts';
+export type AuditFilter = Partial<z.output<typeof AuditQuery>>;
+export type AuditExportFilter = z.output<typeof AuditExportQuery>;
+export type AuditRange = z.output<typeof AuditVerifyQuery>;
+export type VerifyResult = import('@agent-band/contracts').AuditVerifyDto;
+const filterSchema = AuditQuery;
+const exportSchema = AuditExportQuery;
+const rangeSchema = AuditVerifyQuery;
 
 function parse<T>(schema: z.ZodType<T>, input: unknown): T {
   const r = schema.safeParse(input);
@@ -92,6 +46,10 @@ function toChainRow(r: Row): AuditRow {
 
 function filterConds(orgId: string, f: AuditExportFilter): SQL[] {
   const conds: SQL[] = [eq(auditEvents.orgId, orgId)];
+  if (f.involving) {
+    const involving = or(eq(auditEvents.actorId, f.involving), eq(auditEvents.targetId, f.involving));
+    if (involving) conds.push(involving);
+  }
   if (f.actorId) conds.push(eq(auditEvents.actorId, f.actorId));
   if (f.action) conds.push(eq(auditEvents.action, f.action));
   if (f.targetType) conds.push(eq(auditEvents.targetType, f.targetType));
@@ -116,7 +74,7 @@ export function createAudit(authorizer: Authorizer): {
   async function listAudit(db: Db, actor: ActorContext, input: AuditFilter) {
     const f = parse(filterSchema, input);
     await authorizer.authorize(db, actor, 'read', {});
-    const limit = f.limit ?? 50;
+    const limit = f.limit;
     const conds = filterConds(actor.orgId, f);
     if (f.cursor !== undefined) conds.push(lt(auditEvents.seq, f.cursor));
     const rows = await db

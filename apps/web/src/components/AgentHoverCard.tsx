@@ -8,7 +8,7 @@ export interface AgentHoverInfo {
   id: string;
   name: string;
   handle: string;
-  avatar: AvatarSpec | string | null;
+  avatar: AvatarSpec | import('@agent-band/contracts').AgentAvatar | string | null;
   model: string | null;
   role: string;
   /** running, idle, blocked or disabled. */

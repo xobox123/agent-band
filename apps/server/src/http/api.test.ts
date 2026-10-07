@@ -637,3 +637,272 @@ const EXPECTED_ROUTES = [
   'POST /api/v1/teams/{teamId}/members',
   'GET /api/v1/users',
 ].sort();
+
+describe('T12 API gaps', () => {
+  it('returns policy rule origins and provider-specific enforcement without auditing reads', async () => {
+    const { agent, account } = await seedAgent();
+    const before = (await call('GET', '/audit')).json().items.length;
+    const result = (await call('GET', `/agents/${agent.id}/effective-policy`)).json();
+    expect(result.rules.maxMode).toMatchObject({
+      value: 'edit',
+      setBy: { level: 'org', version: 1 },
+      coverage: 'cli-sandbox',
+    });
+    expect(result.rules.workDirs.coverageDetails).toContainEqual({
+      mechanism: 'runtime-hook',
+      scope: 'Paths in Claude Read/Edit/Write/Glob/Grep tool calls.',
+    });
+    expect((await call('GET', '/audit')).json().items).toHaveLength(before);
+    expect(account.provider).toBe('claude');
+  });
+
+  it('returns effective skill origins, winning pins and policy exclusions', async () => {
+    const { agent } = await seedAgent();
+    const skill = (
+      await call('POST', '/skills', {
+        name: 'example',
+        files: { 'SKILL.md': Buffer.from('# Example').toString('base64') },
+      })
+    ).json();
+    await call('POST', '/skill-assignments', { skillId: skill.id, scope: { org: true } });
+    await call('POST', '/skill-assignments', {
+      skillId: skill.id,
+      scope: { agentId: agent.id },
+      pinnedVersion: 1,
+    });
+    const effective = (await call('GET', `/agents/${agent.id}/effective-skills`)).json();
+    expect(effective.items).toHaveLength(1);
+    expect(effective.items[0]).toMatchObject({ origin: { agentId: agent.id }, pinnedVersion: 1, version: 1 });
+    expect(effective.excluded).toEqual([]);
+    const policy = (
+      await call('POST', '/policies', { name: 'no skills', rules: { allowedSkillIds: [] } })
+    ).json();
+    await call('PATCH', `/agents/${agent.id}`, { policyId: policy.id });
+    const excluded = (await call('GET', `/agents/${agent.id}/effective-skills`)).json();
+    expect(excluded.items).toEqual([]);
+    expect(excluded.excluded[0]).toMatchObject({
+      skillId: skill.id,
+      origin: { agentId: agent.id },
+      pinnedVersion: 1,
+      reason: 'allowedSkillIds',
+    });
+  });
+
+  it('sets group membership atomically, deduplicates and audits each actual change', async () => {
+    const { agent } = await seedAgent();
+    const a = (await call('POST', '/agent-groups', { name: 'a' })).json();
+    const b = (await call('POST', '/agent-groups', { name: 'b' })).json();
+    expect((await call('PATCH', `/agents/${agent.id}`, { groupIds: [a.id, a.id] })).json().groupIds).toEqual([
+      a.id,
+    ]);
+    expect(
+      (await call('PATCH', `/agents/${agent.id}`, { groupIds: [b.id], name: 'updated' })).json(),
+    ).toMatchObject({ groupIds: [b.id], name: 'updated' });
+    await call('PATCH', `/agents/${agent.id}`, { groupIds: [b.id] });
+    const events = (await call('GET', '/audit?targetType=agent_group'))
+      .json()
+      .items.filter((e: { action: string }) => e.action.startsWith('agent_group.member_'));
+    expect(events.map((e: { action: string }) => e.action)).toEqual([
+      'agent_group.member_added',
+      'agent_group.member_removed',
+      'agent_group.member_added',
+    ]);
+    expect(
+      (
+        await call('PATCH', `/agents/${agent.id}`, {
+          name: 'rollback',
+          groupIds: [a.id, '00000000-0000-4000-8000-000000000000'],
+        })
+      ).status,
+    ).toBe(404);
+    expect((await call('GET', `/agents/${agent.id}`)).json()).toMatchObject({
+      groupIds: [b.id],
+      name: 'updated',
+    });
+    expect(
+      (await call('GET', '/audit?targetType=agent_group'))
+        .json()
+        .items.filter((e: { action: string }) => e.action.startsWith('agent_group.member_')),
+    ).toHaveLength(3);
+    expect((await call('PATCH', `/agents/${agent.id}`, { groupIds: [] })).json().groupIds).toEqual([]);
+  });
+
+  it('rejects unauthorized membership changes without updating the agent', async () => {
+    const { agent } = await seedAgent();
+    const group = (await call('POST', '/agent-groups', { name: 'restricted' })).json();
+    api.as(await api.makeUser('user:viewer-gaps', 'viewer'));
+    expect((await call('PATCH', `/agents/${agent.id}`, { name: 'no', groupIds: [group.id] })).status).toBe(
+      403,
+    );
+    api.as(null);
+    expect((await call('GET', `/agents/${agent.id}`)).json()).toMatchObject({ name: 'alpha', groupIds: [] });
+  });
+
+  it('filters direct role bindings and skill assignments by both scope kinds', async () => {
+    const { agent } = await seedAgent();
+    const group = (await call('POST', '/agent-groups', { name: 'scope' })).json();
+    const me = (await call('GET', '/me')).json();
+    const skill = (
+      await call('POST', '/skills', {
+        name: 'scope-skill',
+        files: { 'SKILL.md': Buffer.from('# Scope').toString('base64') },
+      })
+    ).json();
+    for (const scope of [{ org: true }, { agentId: agent.id }, { agentGroupId: group.id }]) {
+      await call('POST', '/role-bindings', { subject: { userId: me.id }, role: 'viewer', scope });
+      await call('POST', '/skill-assignments', { skillId: skill.id, scope });
+    }
+    for (const [key, id] of [
+      ['agentId', agent.id],
+      ['agentGroupId', group.id],
+    ]) {
+      for (const path of ['/role-bindings', '/skill-assignments']) {
+        const rows = (await call('GET', `${path}?${key}=${id}`)).json().items;
+        expect(rows).toHaveLength(1);
+        expect(rows[0].scope).toEqual({ [key]: id });
+        expect(
+          (await call('GET', `${path}?agentId=${agent.id}&agentGroupId=${group.id}`)).json().items,
+        ).toEqual([]);
+        expect((await call('GET', `${path}?${key}=bad`)).status).toBe(400);
+      }
+    }
+  });
+
+  it('restricts provider IDs and publishes flat account field schemas', async () => {
+    const providers = (await call('GET', '/providers')).json().items;
+    expect(providers.map((p: { id: string }) => p.id)).toEqual([
+      'claude',
+      'openai',
+      'gemini',
+      'openai_compatible',
+    ]);
+    expect(providers[3].accountFields).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        baseUrl: { type: 'string' },
+        models: { type: 'array', items: { type: 'string' } },
+        wireApi: { type: 'string' },
+      },
+    });
+    expect(
+      (await call('POST', '/accounts', { name: 'unknown', provider: 'unknown', type: 'cli' })).status,
+    ).toBe(400);
+    expect((await call('GET', '/accounts?provider=unknown')).status).toBe(400);
+  });
+
+  it('filters audit by actor OR target, preserving other filters and paging', async () => {
+    const { agent } = await seedAgent();
+    await call('PATCH', `/agents/${agent.id}`, { name: 'Changed' });
+    const involved = (await call('GET', `/audit?involving=${agent.id}&limit=1`)).json();
+    expect(involved.items).toHaveLength(1);
+    expect(involved.items[0].action).toBe('agent.updated');
+    const older = (await call('GET', `/audit?involving=${agent.id}&cursor=${involved.nextCursor}`)).json();
+    expect(older.items.map((e: { action: string }) => e.action)).toEqual(['agent.created']);
+    const me = (await call('GET', '/me')).json();
+    const actorRows = (await call('GET', `/audit?involving=${me.id}&action=agent.updated`)).json().items;
+    expect(actorRows).toHaveLength(1);
+    expect(actorRows[0].actorId).toBe(me.id);
+    expect((await call('GET', `/audit?involving=${agent.id}&action=account.created`)).json().items).toEqual(
+      [],
+    );
+  });
+
+  it.each(['initials', 'color', 'url'])(
+    'round trips structured %s avatars and rejects free strings',
+    async (kind) => {
+      const { agent } = await seedAgent();
+      const value = kind === 'url' ? 'https://example.com/avatar.png' : kind === 'color' ? 'av-3' : 'AB';
+      const avatar = { kind, value };
+      expect((await call('PATCH', `/agents/${agent.id}`, { avatar })).json().avatar).toEqual(avatar);
+      expect((await call('GET', `/agents/${agent.id}`)).json().avatar).toEqual(avatar);
+      expect((await call('PATCH', `/agents/${agent.id}`, { avatar: value })).status).toBe(400);
+      expect(
+        (
+          await call('PATCH', `/agents/${agent.id}`, {
+            avatar: { kind: 'url', value: 'javascript:alert(1)' },
+          })
+        ).status,
+      ).toBe(400);
+      expect((await call('PATCH', `/agents/${agent.id}`, { avatar: null })).json().avatar).toBeNull();
+    },
+  );
+
+  it('accepts empty JSON for body-less POSTs and still rejects missing or malformed required bodies', async () => {
+    const { agent } = await seedAgent();
+    const schedule = (
+      await call('POST', '/schedules', {
+        name: 'empty',
+        cron: '* * * * *',
+        template: { title: 'Scheduled', prompt: 'Do it', target: { agentId: agent.id }, workDir: '/tmp' },
+      })
+    ).json();
+    const run = await api.app.inject({
+      method: 'POST',
+      url: `/api/v1/schedules/${schedule.id}/run-now`,
+      headers: { 'content-type': 'application/json' },
+      payload: '',
+    });
+    expect(run.statusCode, run.body).toBe(201);
+    const task = JSON.parse(run.body) as { id: string };
+    const cancelled = await api.app.inject({
+      method: 'POST',
+      url: `/api/v1/tasks/${task.id}/cancel`,
+      headers: { 'content-type': 'application/json' },
+      payload: '',
+    });
+    expect(cancelled.statusCode, cancelled.body).toBe(200);
+    for (const payload of ['', '{']) {
+      const required = await api.app.inject({
+        method: 'POST',
+        url: '/api/v1/agents',
+        headers: { 'content-type': 'application/json' },
+        payload,
+      });
+      expect(required.statusCode).toBe(400);
+    }
+    const malformed = await api.app.inject({
+      method: 'POST',
+      url: `/api/v1/schedules/${schedule.id}/run-now`,
+      headers: { 'content-type': 'application/json' },
+      payload: '{',
+    });
+    expect(malformed.statusCode).toBe(400);
+  });
+
+  it('reports all account availability reasons and includes dashboard feeds', async () => {
+    const { agent, account } = await seedAgent();
+    const dashboard = () => call('GET', '/dashboard');
+    expect((await dashboard()).json().accounts[0].availabilityReason).toBe('ok');
+    const run = await api.database.db.transaction((tx) =>
+      api.c.runs.startRun(tx, api.c.dispatcher, {
+        taskId: agent.id,
+        agentId: agent.id,
+        accountId: account.id,
+        workerId: 'test',
+        effectivePolicy: {},
+        skills: [],
+      }),
+    );
+    expect((await dashboard()).json().accounts[0].availabilityReason).toBe('concurrency_full');
+    await api.database.db.transaction(async (tx) => {
+      await api.c.runs.appendRunEvent(tx, api.c.dispatcher, run.id, {
+        kind: 'usage',
+        inputTokens: 3,
+        outputTokens: 2,
+        cachedTokens: 999,
+      });
+      await api.c.runs.finishRun(tx, api.c.dispatcher, run.id, { status: 'failed', error: 'test failure' });
+    });
+    await call('PATCH', `/accounts/${account.id}`, { limits: { dailyTokenBudget: 5, maxConcurrentRuns: 1 } });
+    expect((await dashboard()).json().accounts[0].availabilityReason).toBe('budget_exhausted');
+    await api.database.db.transaction((tx) =>
+      api.c.usage.blockAccount(tx, api.c.dispatcher, account.id, new Date(Date.now() + 60000)),
+    );
+    const result = (await dashboard()).json();
+    expect(result.accounts[0].availabilityReason).toBe('blocked');
+    expect(result.recentFailures.map((r: { id: string }) => r.id)).toEqual([run.id]);
+    expect(result.tokenBuckets).toHaveLength(24);
+    expect(result.tokenBuckets.reduce((sum: number, b: { tokens: number }) => sum + b.tokens, 0)).toBe(5);
+  });
+});

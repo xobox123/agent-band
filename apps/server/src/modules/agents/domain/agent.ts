@@ -8,49 +8,15 @@ export const labelsSchema = z
   .max(32)
   .refine((l) => new Set(l).size === l.length, 'labels must be unique');
 
-const gitIdentitySchema = z
-  .object({
-    name: z.string().trim().min(1).max(120),
-    email: z.email().max(254),
-  })
-  .strict();
-
-const optText = (max: number) => z.string().trim().max(max);
 const uuid = z.uuid();
-
-export const createAgentSchema = z
-  .object({
-    slug: z.string().regex(SLUG_RE, 'slug must be 1-63 lowercase letters, digits or hyphens'),
-    name: z.string().trim().min(1).max(120),
-    avatar: optText(2048).optional(),
-    accountId: uuid,
-    model: optText(200).optional(),
-    role: z.enum(['leader', 'worker', 'reviewer']).default('worker'),
-    persona: optText(4000).optional(),
-    systemPrompt: z.string().max(32000).optional(),
-    labels: labelsSchema.default([]),
-    groupIds: z.array(uuid).max(64).default([]),
-    policyId: uuid.optional(),
-    enabled: z.boolean().default(true),
-    gitIdentity: gitIdentitySchema.optional(),
-  })
-  .strict();
-
-export const updateAgentSchema = z
-  .object({
-    name: z.string().trim().min(1).max(120).optional(),
-    avatar: optText(2048).nullable().optional(),
-    accountId: uuid.optional(),
-    model: optText(200).nullable().optional(),
-    role: z.enum(['leader', 'worker', 'reviewer']).optional(),
-    persona: optText(4000).nullable().optional(),
-    systemPrompt: z.string().max(32000).nullable().optional(),
-    labels: labelsSchema.optional(),
-    policyId: uuid.nullable().optional(),
-    enabled: z.boolean().optional(),
-    gitIdentity: gitIdentitySchema.optional(),
-  })
-  .strict();
+export {
+  CreateAgentBody as createAgentSchema,
+  UpdateAgentBody as updateAgentSchema,
+} from '@agent-band/contracts';
+import {
+  CreateAgentBody as createAgentSchema,
+  UpdateAgentBody as updateAgentSchema,
+} from '@agent-band/contracts';
 
 const groupBase = {
   name: z.string().trim().min(1).max(120),

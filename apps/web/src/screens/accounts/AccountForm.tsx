@@ -1,3 +1,4 @@
+import { ProviderId } from '@agent-band/contracts';
 import type { AccountDto, CreateAccountBody, ProviderDto, UpdateAccountBody } from '@agent-band/contracts';
 import { useState } from 'react';
 import { Field, FormDialog } from '../../components/FormDialog.tsx';
@@ -104,7 +105,7 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
     } else {
       onCreate({
         name: name.trim(),
-        provider: providerId,
+        provider: ProviderId.parse(providerId),
         type,
         providerConfig: providerConfig(),
         labels: splitList(labels),

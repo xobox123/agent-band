@@ -1,6 +1,15 @@
 import { z } from 'zod';
 import { Id, IsoDate, Labels, QueryBool, listOf } from './common.ts';
 
+export const AgentAvatar = z
+  .object({ kind: z.enum(['initials', 'color', 'url']), value: z.string().trim().max(2048) })
+  .strict()
+  .refine(
+    (a) => a.kind !== 'url' || z.url({ protocol: /^https$/ }).safeParse(a.value).success,
+    'avatar URL must use HTTPS',
+  );
+export type AgentAvatar = z.infer<typeof AgentAvatar>;
+
 export const AgentRole = z.enum(['leader', 'worker', 'reviewer']);
 const GitIdentity = z.object({ name: z.string().trim().min(1).max(120), email: z.email().max(254) }).strict();
 
@@ -10,7 +19,7 @@ export const AgentDto = z.object({
   slug: z.string(),
   handle: z.string(),
   name: z.string(),
-  avatar: z.string().nullable(),
+  avatar: AgentAvatar.nullable(),
   accountId: Id,
   model: z.string().nullable(),
   role: AgentRole,
@@ -32,7 +41,7 @@ export const CreateAgentBody = z
   .object({
     slug: z.string().regex(/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/),
     name: z.string().trim().min(1).max(120),
-    avatar: z.string().trim().max(2048).optional(),
+    avatar: AgentAvatar.optional(),
     accountId: Id,
     model: z.string().trim().max(200).optional(),
     role: AgentRole.default('worker'),
@@ -50,13 +59,14 @@ export type CreateAgentBody = z.input<typeof CreateAgentBody>;
 export const UpdateAgentBody = z
   .object({
     name: z.string().trim().min(1).max(120).optional(),
-    avatar: z.string().trim().max(2048).nullable().optional(),
+    avatar: AgentAvatar.nullable().optional(),
     accountId: Id.optional(),
     model: z.string().trim().max(200).nullable().optional(),
     role: AgentRole.optional(),
     persona: z.string().trim().max(4000).nullable().optional(),
     systemPrompt: z.string().max(32000).nullable().optional(),
     labels: Labels.optional(),
+    groupIds: z.array(Id).max(64).optional(),
     policyId: Id.nullable().optional(),
     enabled: z.boolean().optional(),
     gitIdentity: GitIdentity.optional(),
@@ -99,6 +109,7 @@ export const UpdateGroupBody = z
     name: z.string().trim().min(1).max(120).optional(),
     description: z.string().trim().max(2000).optional(),
     labels: Labels.optional(),
+    groupIds: z.array(Id).max(64).optional(),
     policyId: Id.nullable().optional(),
   })
   .strict();

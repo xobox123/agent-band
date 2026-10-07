@@ -166,12 +166,26 @@ async function addTeamMember(db: Db, actor: ActorContext, input: unknown): Promi
   });
 }
 
-async function listRoleBindings(db: Db, actor: ActorContext): Promise<RoleBindingDto[]> {
+async function listRoleBindings(
+  db: Db,
+  actor: ActorContext,
+  filter: import('@agent-band/contracts').RoleBindingQuery = {},
+): Promise<RoleBindingDto[]> {
   await authorize(db, actor, 'read', {});
   const rows = await db
     .select()
     .from(roleBindings)
-    .where(eq(roleBindings.orgId, actor.orgId))
+    .where(
+      and(
+        eq(roleBindings.orgId, actor.orgId),
+        filter.agentId
+          ? and(eq(roleBindings.scopeType, 'agent'), eq(roleBindings.scopeId, filter.agentId))
+          : undefined,
+        filter.agentGroupId
+          ? and(eq(roleBindings.scopeType, 'agentGroup'), eq(roleBindings.scopeId, filter.agentGroupId))
+          : undefined,
+      ),
+    )
     .orderBy(asc(roleBindings.createdAt));
   return rows.map(bindingToDto);
 }

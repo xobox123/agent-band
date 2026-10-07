@@ -139,3 +139,14 @@ describe('Avatar and LimitBar', () => {
     expect(screen.getByRole('img', { name: '5h: No snapshot' })).toBeInTheDocument();
   });
 });
+
+it('renders structured agent avatar URLs, colors and initials', () => {
+  const { rerender } = render(
+    <Avatar name="Test" avatar={{ kind: 'url', value: 'https://example.com/a.png' }} />,
+  );
+  expect(screen.getByRole('img', { name: 'Test' })).toHaveAttribute('src', 'https://example.com/a.png');
+  rerender(<Avatar name="Test" avatar={{ kind: 'initials', value: 'ZZ' }} />);
+  expect(screen.getByRole('img', { name: 'Test' })).toHaveTextContent('ZZ');
+  rerender(<Avatar name="Test" avatar={{ kind: 'color', value: 'av-3' }} />);
+  expect(screen.getByRole('img', { name: 'Test' })).toHaveStyle({ background: 'var(--av-3)' });
+});

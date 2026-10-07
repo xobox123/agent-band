@@ -63,7 +63,11 @@ export const SkillAssignmentDto = z.object({
 });
 export type SkillAssignmentDto = z.infer<typeof SkillAssignmentDto>;
 export const SkillAssignmentList = listOf(SkillAssignmentDto);
-export const SkillAssignmentQuery = z.object({ skillId: Id.optional() });
+export const SkillAssignmentQuery = z.object({
+  skillId: Id.optional(),
+  agentGroupId: Id.optional(),
+  agentId: Id.optional(),
+});
 
 export const AssignSkillBody = z
   .object({ skillId: Id, scope: SkillScope, pinnedVersion: z.number().int().positive().optional() })
@@ -71,10 +75,15 @@ export const AssignSkillBody = z
 export type AssignSkillBody = z.infer<typeof AssignSkillBody>;
 
 export const EffectiveSkillDto = z.object({
+  origin: SkillScope,
+  pinnedVersion: z.number().int().nullable(),
   skillId: Id,
   name: z.string(),
   version: z.number().int(),
   contentHash: z.string(),
 });
 export type EffectiveSkillDto = z.infer<typeof EffectiveSkillDto>;
-export const EffectiveSkillList = listOf(EffectiveSkillDto);
+export type EffectiveSkillList = z.infer<typeof EffectiveSkillList>;
+export const EffectiveSkillList = listOf(EffectiveSkillDto).extend({
+  excluded: z.array(EffectiveSkillDto.extend({ reason: z.literal('allowedSkillIds') })),
+});

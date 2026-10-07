@@ -1,3 +1,4 @@
+export { describePolicy } from './domain/coverage.ts';
 export {
   createPolicy,
   getEffectivePolicy,

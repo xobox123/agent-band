@@ -38,7 +38,7 @@ export function AgentForm({
 }: Props) {
   const [name, setName] = useState(agent?.name ?? '');
   const [slug, setSlug] = useState(agent?.slug ?? '');
-  const [avatar, setAvatar] = useState(agent?.avatar ?? '');
+  const [avatar, setAvatar] = useState(agent?.avatar?.value ?? '');
   const [persona, setPersona] = useState(agent?.persona ?? '');
   const [accountId, setAccountId] = useState(agent?.accountId ?? accounts[0]?.id ?? '');
   const [model, setModel] = useState(agent?.model ?? '');
@@ -62,13 +62,18 @@ export function AgentForm({
 
   const git = gitName !== '' && gitEmail !== '' ? { gitIdentity: { name: gitName, email: gitEmail } } : {};
 
+  const structuredAvatar: import('@agent-band/contracts').AgentAvatar = {
+    kind: /^https:\/\//.test(avatar.trim()) ? 'url' : /^av-\d+$/.test(avatar.trim()) ? 'color' : 'initials',
+    value: avatar.trim(),
+  };
   const submit = () => {
     setTouched(true);
     if (invalid) return;
     if (agent) {
       onUpdate(agent.id, {
         name: name.trim(),
-        avatar: avatar.trim() === '' ? null : avatar.trim(),
+        avatar: avatar.trim() === '' ? null : structuredAvatar,
+        groupIds,
         accountId,
         model: model.trim() === '' ? null : model.trim(),
         role,
@@ -88,7 +93,7 @@ export function AgentForm({
         labels: splitList(labels),
         groupIds,
         enabled,
-        ...(avatar.trim() ? { avatar: avatar.trim() } : {}),
+        ...(avatar.trim() ? { avatar: structuredAvatar } : {}),
         ...(model.trim() ? { model: model.trim() } : {}),
         ...(persona.trim() ? { persona: persona.trim() } : {}),
         ...(systemPrompt ? { systemPrompt } : {}),
@@ -239,24 +244,22 @@ export function AgentForm({
           }}
         />
       </Field>
-      {agent ? null : (
-        <fieldset className="wide">
-          <legend className="form-label">Groups</legend>
-          {groups.length === 0 ? <span className="dim">No groups</span> : null}
-          {groups.map((g) => (
-            <label key={g.id} className="inline-field">
-              <input
-                type="checkbox"
-                checked={groupIds.includes(g.id)}
-                onChange={() => {
-                  setGroupIds((cur) => toggleIn(cur, g.id));
-                }}
-              />
-              {g.name}
-            </label>
-          ))}
-        </fieldset>
-      )}
+      <fieldset className="wide">
+        <legend className="form-label">Groups</legend>
+        {groups.length === 0 ? <span className="dim">No groups</span> : null}
+        {groups.map((g) => (
+          <label key={g.id} className="inline-field">
+            <input
+              type="checkbox"
+              checked={groupIds.includes(g.id)}
+              onChange={() => {
+                setGroupIds((cur) => toggleIn(cur, g.id));
+              }}
+            />
+            {g.name}
+          </label>
+        ))}
+      </fieldset>
       <label className="inline-field">
         <input
           type="checkbox"

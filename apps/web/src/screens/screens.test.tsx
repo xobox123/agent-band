@@ -77,6 +77,7 @@ describe('Dashboard', () => {
     },
     [`GET /agents/${ID(1)}`]: agentDto(),
     [`GET /agents/${ID(1)}/effective-policy`]: {
+      rules: {},
       workDirSets: [],
       maxMode: 'edit',
       deniedTools: [],
@@ -147,6 +148,15 @@ describe('Agents screen', () => {
     'GET /runs': list([]),
     [`GET /policies/${POLICY_ID}`]: policyDetail,
     [`GET /agents/${ID(1)}/effective-policy`]: {
+      rules: {
+        maxMode: {
+          value: 'edit',
+          setBy: { level: 'org', policyId: POLICY_ID, version: 2 },
+          contributors: [],
+          coverage: 'cli-sandbox',
+          coverageDetails: [],
+        },
+      },
       workDirSets: [['/work']],
       maxMode: 'edit',
       deniedTools: ['Bash(rm *)'],
@@ -173,8 +183,8 @@ describe('Agents screen', () => {
     const policy = await within(details).findByRole('table', { name: 'Effective policy' });
     const maxMode = within(policy).getByText('maxMode').closest('tr') as HTMLElement;
     expect(maxMode).toHaveTextContent('edit');
-    expect(maxMode).toHaveTextContent('org: Org baseline v2 (edit)');
-    expect(within(policy).getByText('allowedTools').closest('tr')).toHaveTextContent('Not set at any level');
+    expect(maxMode).toHaveTextContent(`org: ${POLICY_ID} v2`);
+    expect(maxMode).toHaveTextContent('cli-sandbox');
     const skills = await within(details).findByRole('table', { name: 'Effective skills' });
     expect(within(skills).getByText('review')).toBeInTheDocument();
   });
