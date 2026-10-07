@@ -237,7 +237,10 @@ export function createApi(fetchImpl?: typeof fetch) {
       toBacklog: (ids: string[]) => send<Page<TaskDto>>('POST', '/tasks/to-backlog', { ids }),
       start: (ids: string[], when: StartWhen) => send<Page<TaskDto>>('POST', '/tasks/start', { ids, when }),
       diff: (id: string) => get<TaskDiffDto>(`/tasks/${id}/diff`),
-      approveReview: (id: string) => send<TaskDto>('POST', `/tasks/${id}/review/approve`),
+      approveReview: (id: string, overrideReason?: string) =>
+        overrideReason
+          ? send<TaskDto>('POST', `/tasks/${id}/review/approve`, { overrideReason })
+          : send<TaskDto>('POST', `/tasks/${id}/review/approve`),
       rejectReview: (id: string, feedback: string) =>
         send<TaskDto>('POST', `/tasks/${id}/review/reject`, { feedback }),
       requestReview: (id: string, body: { prompt?: string } = {}) =>

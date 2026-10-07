@@ -78,6 +78,8 @@ export function createProjects(deps: ProjectsDeps) {
             worktreesRoot,
             checks: v.checks,
             keepWorktrees: v.keepWorktrees,
+            reviewerTarget: v.reviewerTarget ?? null,
+            autoMergeOnApprove: v.autoMergeOnApprove,
             createdBy: actor.principalId,
           })
           .returning();
