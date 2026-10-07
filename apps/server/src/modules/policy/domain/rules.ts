@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 export type Mode = 'read-only' | 'edit' | 'full-auto';
 
 const MODE_ORDER: readonly Mode[] = ['read-only', 'edit', 'full-auto'];
@@ -8,34 +6,8 @@ export function minMode(a: Mode, b: Mode): Mode {
   return MODE_ORDER.indexOf(a) <= MODE_ORDER.indexOf(b) ? a : b;
 }
 
-const ModeSchema = z.enum(['read-only', 'edit', 'full-auto']);
-const absolutePath = z
-  .string()
-  .refine((p) => p.startsWith('/') && !p.includes('\0'), 'must be an absolute path');
-
-export const PolicyRules = z.strictObject({
-  workDirs: z.array(absolutePath).optional(),
-  maxMode: ModeSchema.optional(),
-  allowedTools: z.array(z.string().min(1)).optional(),
-  deniedTools: z.array(z.string().min(1)).optional(),
-  dailyTokenBudget: z.number().int().nonnegative().optional(),
-  maxRunMinutes: z.number().int().positive().optional(),
-  allowedAccountIds: z.array(z.string().min(1)).optional(),
-  allowedSkillIds: z.array(z.string().min(1)).optional(),
-  allowAccountFailover: z.boolean().optional(),
-  canDelegate: z.boolean().optional(),
-  delegateTargets: z
-    .strictObject({
-      agentIds: z.array(z.string().min(1)).optional(),
-      labels: z.array(z.string().min(1)).optional(),
-      groupIds: z.array(z.string().min(1)).optional(),
-    })
-    .optional(),
-  maxSubtasks: z.number().int().positive().optional(),
-  maxRounds: z.number().int().positive().optional(),
-  treeTokenBudget: z.number().int().positive().optional(),
-});
-export type PolicyRules = z.infer<typeof PolicyRules>;
+export { PolicyRules } from '@agent-band/contracts';
+import type { PolicyRules } from '@agent-band/contracts';
 
 export type DelegateTargets = NonNullable<PolicyRules['delegateTargets']>;
 
