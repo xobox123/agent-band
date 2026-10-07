@@ -13,14 +13,19 @@ interface Props {
   /** Reset text such as "resets in 4d 13h"; a dimmed placeholder is shown when missing. */
   reset?: string | null | undefined;
   resetTitle?: string | undefined;
+  /** Table-cell variant: bar and percent only, the reset time moves into the tooltip. */
+  compact?: boolean | undefined;
 }
 
 /** One limit row: label | bar | percent | reset text. Every limit in the app renders through this grid. */
-export function LimitBar({ name, value, label, title, marker, stale, reset, resetTitle }: Props) {
+export function LimitBar({ name, value, label, title, marker, stale, reset, resetTitle, compact }: Props) {
   const pct = value === null ? null : Math.min(100, Math.max(0, value));
   const tone = pct === null ? 'ok' : pct >= 90 ? 'crit' : pct >= 70 ? 'warn' : 'ok';
   return (
-    <div className={`limit-row${stale ? ' limit-stale' : ''}`} title={title}>
+    <div
+      className={`limit-row${compact ? ' limit-row-compact' : ''}${stale ? ' limit-stale' : ''}`}
+      title={title}
+    >
       <span className="limit-name" title={name}>
         {name}
       </span>
@@ -57,9 +62,11 @@ export function LimitBar({ name, value, label, title, marker, stale, reset, rese
       <span className={`limit-text${pct === null ? ' dim' : ''}`}>
         {pct === null ? '–' : `${String(Math.round(pct))}%`}
       </span>
-      <span className={`limit-reset${reset ? '' : ' dim limit-reset-missing'}`} title={resetTitle}>
-        {reset ?? 'no reset info'}
-      </span>
+      {compact ? null : (
+        <span className={`limit-reset${reset ? '' : ' dim limit-reset-missing'}`} title={resetTitle}>
+          {reset ?? 'no reset info'}
+        </span>
+      )}
     </div>
   );
 }

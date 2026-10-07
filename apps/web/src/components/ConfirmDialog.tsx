@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Dialog } from './Dialog.tsx';
 import { useEscape } from '../hooks/useEscape.ts';
 
 interface Props {
@@ -48,32 +49,24 @@ export function ConfirmDialog({
   };
 
   return (
-    <div className="overlay">
-      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" onKeyDown={trap}>
-        <h2 id="dialog-title" className="dialog-title">
-          {title}
-        </h2>
-        <p>{message}</p>
-        {error ? (
-          <p className="form-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <div className="dialog-actions">
-          <button type="button" className="btn" ref={cancelRef} onClick={onCancel}>
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            className="btn btn-danger"
-            ref={confirmRef}
-            disabled={busy}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </button>
-        </div>
+    <Dialog labelledBy="dialog-title" onClose={onCancel} onKeyDown={trap}>
+      <h2 id="dialog-title" className="dialog-title">
+        {title}
+      </h2>
+      <p>{message}</p>
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="dialog-actions">
+        <button type="button" className="btn" ref={cancelRef} onClick={onCancel}>
+          {cancelLabel}
+        </button>
+        <button type="button" className="btn btn-danger" ref={confirmRef} disabled={busy} onClick={onConfirm}>
+          {confirmLabel}
+        </button>
       </div>
-    </div>
+    </Dialog>
   );
 }

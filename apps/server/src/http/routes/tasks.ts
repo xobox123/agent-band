@@ -11,6 +11,7 @@ import {
   RejectPlanBody,
   StartTaskBody,
   StartTasksBody,
+  ToBacklogBody,
   ReorderTaskBody,
   RunEventList,
   RunEventsQuery,
@@ -29,6 +30,7 @@ import type { Composition } from '../../composition.ts';
 import { goalDto, runDto, runEventDto, taskDto } from '../dto.ts';
 import { conflict, invalid } from '../../platform/errors.ts';
 import { planStart } from '../start-when.ts';
+import { assertWorkDirAllowed } from '../work-dir.ts';
 
 export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
   const db = c.database.db;
@@ -117,6 +119,7 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
           if (leader.role !== 'leader')
             throw invalid([{ path: 'target', message: 'a goal needs an agent with role leader' }]);
         }
+        if (body.workDir) await assertWorkDirAllowed(c, actor, body.target, body.workDir);
         const task = await c.tasks.createTask(db, actor, {
           ...body,
           ...(runAt ? { runAt: new Date(runAt) } : {}),
@@ -199,6 +202,8 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
         const actor = await c.resolveActor(req);
         const current = await c.tasks.getTask(db, actor, req.params.id);
         const { runAt, ...rest } = req.body;
+        if (current.status === 'draft' && rest.workDir)
+          await assertWorkDirAllowed(c, actor, rest.target ?? current.target, rest.workDir);
         if (current.status === 'draft')
           return dto(
             actor,
@@ -245,6 +250,41 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
         const plan = await planStart(c, actor, found, req.body.when);
         const started = await c.tasks.startTasks(db, actor, req.body.ids, plan);
         return { items: await dtos(actor, started), nextCursor: null, cursor: await c.cursor() };
+      },
+    );
+
+    app.post(
+      '/tasks/to-backlog',
+      {
+        schema: {
+          tags: ['tasks'],
+          summary: 'Move failed, denied, cancelled or rate-limited tasks back to the backlog (all or none)',
+          body: ToBacklogBody,
+          response: { 200: TaskList },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        const moved = await c.tasks.moveToBacklog(db, actor, req.body.ids);
+        return { items: await dtos(actor, moved), nextCursor: null, cursor: await c.cursor() };
+      },
+    );
+
+    app.post(
+      '/tasks/:id/to-backlog',
+      {
+        schema: {
+          tags: ['tasks'],
+          summary: 'Move a failed, denied, cancelled or rate-limited task back to the backlog',
+          params: IdParams,
+          response: { 200: TaskDto },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        const [moved] = await c.tasks.moveToBacklog(db, actor, [req.params.id]);
+        if (!moved) throw new Error('to-backlog returned no task');
+        return dto(actor, moved);
       },
     );
 

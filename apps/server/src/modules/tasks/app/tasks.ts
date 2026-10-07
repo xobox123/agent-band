@@ -204,6 +204,7 @@ export function createTasks(deps: TasksDeps) {
   }
 
   const openStatuses = ['draft', 'scheduled', 'queued', 'claimed', 'running', 'rate_limited'] as const;
+  const backlogSources: Task['status'][] = ['failed', 'denied', 'cancelled', 'rate_limited'];
   const isOpen = (status: Task['status']): boolean => (openStatuses as readonly string[]).includes(status);
 
   async function treeOf(db: DbOrTx, orgId: string, rootTaskId: string): Promise<Task[]> {
@@ -665,6 +666,48 @@ export function createTasks(deps: TasksDeps) {
           await cancelOpen(tx, actor, task.id, 'goal cancelled');
         }
         return cancelled;
+      });
+    },
+    /** Moves failed, denied, cancelled or rate-limited tasks back to the backlog; all or none. */
+    async moveToBacklog(db: Db, actor: ActorContext, ids: string[]): Promise<Task[]> {
+      const unique = [...new Set(ids)];
+      return db.transaction(async (tx) => {
+        const rows = await tx
+          .select()
+          .from(tasks)
+          .where(and(eq(tasks.orgId, actor.orgId), inArray(tasks.id, unique)))
+          .orderBy(asc(tasks.id))
+          .for('update');
+        if (rows.length !== unique.length) throw notFound('task');
+        for (const t of rows) {
+          if (!backlogSources.includes(t.status))
+            throw conflict('task_not_restorable', `${t.key} is ${t.status}, it cannot move to the backlog`);
+          if (t.kind === 'goal' || t.rootTaskId)
+            throw conflict('task_in_goal', `${t.key} belongs to a goal and cannot move to the backlog`);
+          await deps.authorizer.authorize(tx, actor, 'task.write', resource(t.target));
+        }
+        const moved = new Map<string, Task>();
+        for (const t of rows)
+          moved.set(
+            t.id,
+            await update(
+              tx,
+              actor,
+              t.id,
+              {
+                status: 'draft',
+                error: null,
+                eligibility: null,
+                runAt: null,
+                resumeAt: null,
+                startAfterReset: false,
+                workerId: null,
+                attempt: 1,
+              },
+              'task.to_backlog',
+            ),
+          );
+        return unique.flatMap((id) => moved.get(id) ?? []);
       });
     },
     async getTask(db: Db, actor: ActorContext, id: string): Promise<Task> {

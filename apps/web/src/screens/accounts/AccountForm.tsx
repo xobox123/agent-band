@@ -75,6 +75,18 @@ interface Props {
   onCancel: () => void;
 }
 
+/** Maps server validation paths of an account body to the field names of the form. */
+function accountFieldAlias(path: string): string {
+  const fixed: Record<string, string> = {
+    'limits.maxConcurrentRuns': 'concurrent',
+    'limits.dailyTokenBudget': 'budget',
+    'limits.dailyCostBudgetUsd': 'costBudget',
+    'limits.stopAt.fiveHourPercent': 'stop5h',
+    'limits.stopAt.weeklyPercent': 'stopWeek',
+  };
+  return fixed[path] ?? (path.startsWith('providerConfig.') ? `cfg.${path.slice(15)}` : path);
+}
+
 export function AccountForm({ account, providers, pending, error, onCreate, onUpdate, onCancel }: Props) {
   const [name, setName] = useState(account?.name ?? '');
   const [providerId, setProviderId] = useState(account?.provider ?? providers[0]?.id ?? '');
@@ -102,7 +114,6 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
   const [stop5h, setStop5h] = useState(String(account?.limits.stopAt?.fiveHourPercent ?? ''));
   const [stopWeek, setStopWeek] = useState(String(account?.limits.stopAt?.weeklyPercent ?? ''));
   const [concurrent, setConcurrent] = useState(String(account?.limits.maxConcurrentRuns ?? 1));
-  const [touched, setTouched] = useState(false);
 
   const specs = fieldSpecs(provider?.accountFields);
   const methods = methodsOf(provider);
@@ -110,21 +121,25 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
   const secretLabel = provider?.secretField ?? 'API key';
   const isCliHarness = providerId === 'claude' || providerId === 'openai';
 
-  let invalid: string | null = null;
-  if (name.trim() === '') invalid = 'Name is required.';
-  else if (!provider) invalid = 'Select a provider.';
-  else if (specs.some((s) => s.required && s.kind !== 'boolean' && (config[s.name] ?? '') === '')) {
-    invalid = 'Fill in all required provider fields.';
-  } else if (!/^[1-9]\d*$/.test(concurrent)) invalid = 'Max concurrent runs must be a positive integer.';
-  else if (budget !== '' && !/^[1-9]\d*$/.test(budget))
-    invalid = 'Daily token budget must be a positive integer.';
-  else if (costBudget !== '' && !(Number(costBudget) > 0))
-    invalid = 'Daily cost budget must be a positive number.';
-  else if (
-    [stop5h, stopWeek].some((v) => v !== '' && !(/^\d{1,3}$/.test(v) && Number(v) >= 1 && Number(v) <= 100))
-  )
-    invalid = 'Stop thresholds must be between 1 and 100.';
-  else if (!account && type === 'api' && isCliHarness && secret.trim() === '') invalid = 'Enter the API key.';
+  const errors: Record<string, string> = {};
+  if (name.trim() === '') errors['name'] = 'Name is required.';
+  if (!provider) errors['provider'] = 'Select a provider.';
+  for (const spec of specs)
+    if (spec.required && spec.kind !== 'boolean' && (config[spec.name] ?? '') === '')
+      errors[`cfg.${spec.name}`] = `${spec.name} is required.`;
+  if (!/^[1-9]\d*$/.test(concurrent))
+    errors['concurrent'] = 'Max concurrent runs must be a positive integer.';
+  if (budget !== '' && !/^[1-9]\d*$/.test(budget))
+    errors['budget'] = 'Daily token budget must be a positive integer.';
+  if (costBudget !== '' && !(Number(costBudget) > 0))
+    errors['costBudget'] = 'Daily cost budget must be a positive number.';
+  const thresholdBad = (v: string) =>
+    v !== '' && !(/^\d{1,3}$/.test(v) && Number(v) >= 1 && Number(v) <= 100);
+  if (type === 'cli' && isCliHarness && thresholdBad(stop5h)) errors['stop5h'] = 'Must be between 1 and 100.';
+  if (type === 'cli' && isCliHarness && thresholdBad(stopWeek))
+    errors['stopWeek'] = 'Must be between 1 and 100.';
+  if (!account && type === 'api' && isCliHarness && secret.trim() === '')
+    errors['secret'] = 'Enter the API key.';
 
   const providerConfig = () => {
     const out: Record<string, unknown> = {};
@@ -171,8 +186,6 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
   };
 
   const submit = () => {
-    setTouched(true);
-    if (invalid) return;
     if (account) {
       onUpdate(account.id, {
         name: name.trim(),
@@ -218,11 +231,12 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
       submitLabel={account ? 'Save account' : 'Create account'}
       pending={pending}
       error={error}
-      invalid={touched ? invalid : null}
+      errors={errors}
+      fieldAlias={accountFieldAlias}
       onSubmit={submit}
       onCancel={onCancel}
     >
-      <Field label="Name">
+      <Field label="Name" name="name">
         <input
           className="field"
           value={name}
@@ -233,6 +247,7 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
       </Field>
       <Field
         label="Provider"
+        name="provider"
         help={
           provider?.adapterEnabled === false ? 'Execution is not available for this provider yet.' : undefined
         }
@@ -345,6 +360,7 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
           >
             <summary>Advanced</summary>
             <Field
+              name="configDir"
               label="Config directory"
               help="Where the CLI stores this account's login. Not a project folder."
             >
@@ -361,7 +377,12 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
         </>
       ) : null}
       {specs.map((s) => (
-        <Field key={s.name} label={s.name} help={s.kind === 'list' ? 'Comma separated.' : undefined}>
+        <Field
+          key={s.name}
+          name={`cfg.${s.name}`}
+          label={s.name}
+          help={s.kind === 'list' ? 'Comma separated.' : undefined}
+        >
           {s.kind === 'enum' ? (
             <select
               className="field"
@@ -392,6 +413,7 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
       {showSecret ? (
         <>
           <Field
+            name="secret"
             label={secretLabel}
             help={
               account?.hasSecret
@@ -434,7 +456,7 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
           ) : null}
         </>
       ) : null}
-      <Field label="Labels" help="Comma separated.">
+      <Field name="labels" label="Labels" help="Comma separated.">
         <input
           className="field"
           value={labels}
@@ -443,7 +465,7 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
           }}
         />
       </Field>
-      <Field label="Daily token budget" help="Blank means no budget.">
+      <Field name="budget" label="Daily token budget" help="Blank means no budget.">
         <input
           className="field"
           inputMode="numeric"
@@ -454,7 +476,11 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
         />
       </Field>
       {type === 'api' ? (
-        <Field label="Daily cost budget (USD)" help="Blank means no budget. New runs stop when it is spent.">
+        <Field
+          name="costBudget"
+          label="Daily cost budget (USD)"
+          help="Blank means no budget. New runs stop when it is spent."
+        >
           <input
             className="field"
             inputMode="decimal"
@@ -467,7 +493,7 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
       ) : null}
       {type === 'cli' && isCliHarness ? (
         <>
-          <Field label="Stop new work at (5h %)" help="Keeps a reserve for your own use.">
+          <Field name="stop5h" label="Stop new work at (5h %)" help="Keeps a reserve for your own use.">
             <input
               className="field"
               inputMode="numeric"
@@ -477,7 +503,7 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
               }}
             />
           </Field>
-          <Field label="Stop new work at (weekly %)" help="Keeps a reserve for your own use.">
+          <Field name="stopWeek" label="Stop new work at (weekly %)" help="Keeps a reserve for your own use.">
             <input
               className="field"
               inputMode="numeric"
@@ -489,7 +515,7 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
           </Field>
         </>
       ) : null}
-      <Field label="Max concurrent runs">
+      <Field name="concurrent" label="Max concurrent runs">
         <input
           className="field"
           inputMode="numeric"

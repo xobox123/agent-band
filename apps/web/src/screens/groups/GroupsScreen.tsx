@@ -34,22 +34,20 @@ function GroupForm({
   const [description, setDescription] = useState(group?.description ?? '');
   const [labels, setLabels] = useState((group?.labels ?? []).join(', '));
   const [policyId, setPolicyId] = useState(group?.policyId ?? '');
-  const [touched, setTouched] = useState(false);
-  const invalid = name.trim() === '' ? 'Name is required.' : null;
+  const errors: Record<string, string> = name.trim() === '' ? { name: 'Name is required.' } : {};
   return (
     <FormDialog
       title={group ? `Edit ${group.name}` : 'Create group'}
       submitLabel={group ? 'Save group' : 'Create group'}
       pending={pending}
       error={error}
-      invalid={touched ? invalid : null}
+      errors={errors}
       onCancel={onCancel}
       onSubmit={() => {
-        setTouched(true);
-        if (!invalid) onSubmit({ name: name.trim(), description, labels: splitList(labels), policyId });
+        onSubmit({ name: name.trim(), description, labels: splitList(labels), policyId });
       }}
     >
-      <Field label="Name" help="A shared group name.">
+      <Field label="Name" name="name" help="A shared group name.">
         <input
           className="field"
           value={name}
@@ -58,7 +56,7 @@ function GroupForm({
           }}
         />
       </Field>
-      <Field label="Labels" help="Comma separated.">
+      <Field label="Labels" name="labels" help="Comma separated.">
         <input
           className="field"
           value={labels}
@@ -68,7 +66,7 @@ function GroupForm({
         />
       </Field>
       <div className="wide form-field">
-        <Field label="Description" help="Describe the group's purpose.">
+        <Field label="Description" name="description" help="Describe the group's purpose.">
           <textarea
             className="field"
             rows={2}
@@ -79,7 +77,7 @@ function GroupForm({
           />
         </Field>
       </div>
-      <Field label="Policy" help="Adds restrictions to every member.">
+      <Field label="Policy" name="policyId" help="Adds restrictions to every member.">
         <select
           className="field"
           value={policyId}

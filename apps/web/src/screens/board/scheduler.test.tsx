@@ -74,7 +74,7 @@ describe('Board scheduler support', () => {
     fireEvent.change(within(dialog).getByLabelText(/^Label/), { target: { value: 'gpu' } });
 
     fireEvent.change(within(dialog).getByLabelText(/^Run at/), { target: { value: '2020-01-01T10:00' } });
-    expect(within(dialog).getByRole('button', { name: 'Create and start' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Create and start' })).toBeEnabled();
     fireEvent.blur(within(dialog).getByLabelText(/^Run at/));
     expect(within(dialog).getByText('Run at must be in the future.')).toBeInTheDocument();
     expect(createTask).not.toHaveBeenCalled();

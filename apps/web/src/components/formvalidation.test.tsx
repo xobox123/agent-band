@@ -46,10 +46,10 @@ function Demo({ serverError }: { serverError?: unknown }) {
 }
 
 describe('form validation', () => {
-  it('marks required fields and lists what is missing next to the disabled button', () => {
+  it('marks required fields and lists what is missing next to the submit button', () => {
     render(<Demo />);
     expect(screen.getByLabelText(/^Name/)).toHaveAttribute('aria-required', 'true');
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
     const hint = screen.getByRole('button', { name: 'Missing: Name, Agent' });
     expect(screen.getByLabelText(/^Name/)).not.toHaveAttribute('aria-invalid');
     fireEvent.click(hint);
@@ -101,5 +101,53 @@ describe('form validation', () => {
     expect(screen.getByText('already taken')).toBeInTheDocument();
     expect(screen.getByLabelText(/^Name/)).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByLabelText(/^Agent/)).toHaveAttribute('aria-invalid', 'true');
+  });
+});
+
+describe('submitting an incomplete form', () => {
+  it('reveals every error on click instead of silently doing nothing', () => {
+    render(<Demo />);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByLabelText(/^Name/)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText(/^Agent/)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Select an agent.')).toBeInTheDocument();
+  });
+});
+
+describe('server errors without details', () => {
+  it('maps a known error code to its field', () => {
+    const error = new ApiError({
+      status: 422,
+      code: 'work_dir_outside_policy',
+      message: 'Folder /x is outside the allowed directories.',
+    });
+    expect(fieldErrors(error)).toEqual({ workDir: 'Folder /x is outside the allowed directories.' });
+    expect(fieldErrors(error, undefined, { work_dir_outside_policy: 'folder' })).toEqual({
+      folder: 'Folder /x is outside the allowed directories.',
+    });
+  });
+
+  it('shows messages for fields the form does not have at the bottom', () => {
+    const error = new ApiError({
+      status: 400,
+      code: 'validation_failed',
+      message: 'Request validation failed',
+      details: [{ path: ['nowhere'], message: 'bad value' }],
+    });
+    render(<Demo serverError={error} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('nowhere: bad value');
+  });
+
+  it('clears a server field error once that field is edited', () => {
+    const error = new ApiError({
+      status: 400,
+      code: 'validation_failed',
+      message: 'x',
+      details: [{ path: ['name'], message: 'already taken' }],
+    });
+    render(<Demo serverError={error} />);
+    expect(screen.getByText('already taken')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'z' } });
+    expect(screen.queryByText('already taken')).not.toBeInTheDocument();
   });
 });

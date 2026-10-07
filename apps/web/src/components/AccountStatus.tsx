@@ -4,7 +4,7 @@ import { errorMessage } from '../api/client.ts';
 import { useApi } from '../api/context.tsx';
 import { useNow } from '../hooks/useNow.ts';
 import { ago, isStale, planLabel, resetsIn } from '../lib/account.ts';
-import { copyText, formatTime } from '../lib/format.ts';
+import { copyText, formatCost, formatTime } from '../lib/format.ts';
 import { LimitBar } from './LimitBar.tsx';
 
 /** Logged-in dot, email, organization, plan, auth method and the time of the last check. */
@@ -56,37 +56,87 @@ interface LimitsProps {
   updatedAt: string | null;
 }
 
+interface WindowBarProps {
+  account: AccountDto;
+  windows: LimitWindowDto[];
+  window: '5h' | 'weekly';
+  stale: boolean;
+  now: number;
+  compact?: boolean;
+}
+
+/** One limit window of an account; shared by the detail panel and the compact table cell. */
+function WindowBar({ account, windows, window: w, stale, now, compact }: WindowBarProps) {
+  const stopAt = account.limits.stopAt;
+  const win = windows.find((x) => x.window === w);
+  const reset = resetsIn(win?.resetsAt, now);
+  const marker = w === '5h' ? stopAt?.fiveHourPercent : stopAt?.weeklyPercent;
+  const tip = [
+    w === '5h' ? '5h window' : 'Weekly window',
+    win?.resetsAt ? `resets ${formatTime(win.resetsAt)}` : 'no reset info',
+    marker === undefined ? null : `stops new work at ${String(marker)}%`,
+    stale ? 'stale' : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+  return (
+    <LimitBar
+      name={compact ? (w === '5h' ? '5h' : 'wk') : w === '5h' ? '5h window' : 'Weekly window'}
+      value={win ? win.usedPercent : null}
+      label={`${account.name} ${w}`}
+      title={compact ? tip : win?.resetsAt ? `Resets ${formatTime(win.resetsAt)}` : undefined}
+      marker={marker}
+      stale={stale}
+      reset={reset ? `resets ${reset}` : null}
+      resetTitle={win?.resetsAt ? formatTime(win.resetsAt) : undefined}
+      compact={compact}
+    />
+  );
+}
+
 /** The 5h and weekly bars with reset times, a stale dimming and the reserve markers. */
 export function AccountLimits({ account, windows, updatedAt }: LimitsProps) {
   const now = useNow();
   const stale = isStale(updatedAt, now);
-  const stopAt = account.limits.stopAt;
   return (
     <>
       <div className="limit-rows">
-        {(['5h', 'weekly'] as const).map((w) => {
-          const win = windows.find((x) => x.window === w);
-          const reset = resetsIn(win?.resetsAt, now);
-          return (
-            <LimitBar
-              key={w}
-              name={w === '5h' ? '5h window' : 'Weekly window'}
-              value={win ? win.usedPercent : null}
-              label={`${account.name} ${w}`}
-              title={win?.resetsAt ? `Resets ${formatTime(win.resetsAt)}` : undefined}
-              marker={w === '5h' ? stopAt?.fiveHourPercent : stopAt?.weeklyPercent}
-              stale={stale}
-              reset={reset ? `resets ${reset}` : null}
-              resetTitle={win?.resetsAt ? formatTime(win.resetsAt) : undefined}
-            />
-          );
-        })}
+        {(['5h', 'weekly'] as const).map((w) => (
+          <WindowBar key={w} account={account} windows={windows} window={w} stale={stale} now={now} />
+        ))}
       </div>
       <p className="dim limit-updated">
         {updatedAt ? `Updated ${ago(updatedAt, now)}` : 'Limits not read yet'}
         {stale && updatedAt ? <span> (stale)</span> : null}
       </p>
     </>
+  );
+}
+
+/** Table cell: two stacked mini bars for subscriptions, spend against budget for API accounts. */
+export function AccountLimitsCompact({
+  account,
+  windows,
+  updatedAt,
+  costToday,
+}: LimitsProps & { costToday: number | null }) {
+  const now = useNow();
+  if (account.type === 'api') {
+    const budget = account.limits.dailyCostBudgetUsd;
+    const spent = costToday ?? 0;
+    return (
+      <span title={budget === undefined ? 'No daily cost budget' : `Daily cost budget $${String(budget)}`}>
+        {budget === undefined ? formatCost(spent) : `${formatCost(spent)} / ${formatCost(budget)}`}
+      </span>
+    );
+  }
+  const stale = isStale(updatedAt, now);
+  return (
+    <div className="limit-cell" aria-label={`${account.name} limits`}>
+      {(['5h', 'weekly'] as const).map((w) => (
+        <WindowBar key={w} account={account} windows={windows} window={w} stale={stale} now={now} compact />
+      ))}
+    </div>
   );
 }
 

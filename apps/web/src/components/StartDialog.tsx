@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { StartWhen } from '@agent-band/contracts';
 import { errorMessage } from '../api/client.ts';
+import { Dialog } from './Dialog.tsx';
 import { useEscape } from '../hooks/useEscape.ts';
 import { localToIso } from '../lib/schedule.ts';
 
@@ -65,50 +66,48 @@ export function StartDialog({ title, subject, confirmLabel = 'Start', onConfirm,
   );
 
   return (
-    <div className="overlay">
-      <div className="dialog dialog-form" role="dialog" aria-modal="true" aria-label={title}>
-        <h2 className="dialog-title">{title}</h2>
-        <p className="dim">{`Start ${subject}:`}</p>
-        <div className="radio-group" role="radiogroup" aria-label="When to start">
-          {option('now', 'Start now')}
-          {option('at', 'Start at a chosen time')}
-          {choice === 'at' ? (
-            <input
-              className="field"
-              type="datetime-local"
-              aria-label="Start time"
-              value={at}
-              onChange={(e) => {
-                setAt(e.target.value);
-              }}
-            />
-          ) : null}
-          {option(
-            'limit_reset',
-            "Start when the account's limit window resets",
-            'Uses the latest usage snapshot of the target agent account. Without one, it starts now.',
-          )}
-        </div>
-        {error ? (
-          <p className="form-error" role="alert">
-            {errorMessage(error)}
-          </p>
+    <Dialog label={title} className="dialog-form" onClose={onCancel}>
+      <h2 className="dialog-title">{title}</h2>
+      <p className="dim">{`Start ${subject}:`}</p>
+      <div className="radio-group" role="radiogroup" aria-label="When to start">
+        {option('now', 'Start now')}
+        {option('at', 'Start at a chosen time')}
+        {choice === 'at' ? (
+          <input
+            className="field"
+            type="datetime-local"
+            aria-label="Start time"
+            value={at}
+            onChange={(e) => {
+              setAt(e.target.value);
+            }}
+          />
         ) : null}
-        {invalid ? <p className="form-hint dim">{invalid}</p> : null}
-        <div className="dialog-actions">
-          <button type="button" className="btn" onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={pending || Boolean(invalid)}
-            onClick={submit}
-          >
-            {confirmLabel}
-          </button>
-        </div>
+        {option(
+          'limit_reset',
+          "Start when the account's limit window resets",
+          'Uses the latest usage snapshot of the target agent account. Without one, it starts now.',
+        )}
       </div>
-    </div>
+      {error ? (
+        <p className="form-error" role="alert">
+          {errorMessage(error)}
+        </p>
+      ) : null}
+      {invalid ? <p className="form-hint dim">{invalid}</p> : null}
+      <div className="dialog-actions">
+        <button type="button" className="btn" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={pending || Boolean(invalid)}
+          onClick={submit}
+        >
+          {confirmLabel}
+        </button>
+      </div>
+    </Dialog>
   );
 }

@@ -3,8 +3,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeApi, TEST_SECRET, type TestApi } from './test-helpers.ts';
 
 let api: TestApi;
+let ws = '';
 beforeEach(async () => {
   api = await makeApi();
+  ws = (await api.app.inject({ method: 'GET', url: '/api/v1/organization' })).json<{
+    workspaceRoot: string;
+  }>().workspaceRoot;
 });
 afterEach(async () => {
   await api.close();
@@ -141,7 +145,7 @@ describe('goals', () => {
       await call('POST', '/agents', { slug: 'boss', name: 'boss', accountId: account.id, role: 'leader' })
     ).json();
     const worker = (await call('POST', '/agents', { slug: 'wk', name: 'wk', accountId: account.id })).json();
-    const body = { title: 'Goal', prompt: 'Ship', workDir: '/work', target: { agentId: leader.id } };
+    const body = { title: 'Goal', prompt: 'Ship', workDir: `${ws}/w`, target: { agentId: leader.id } };
 
     const bad = await call('POST', '/tasks', { ...body, target: { agentId: worker.id }, kind: 'goal' });
     expect(bad.status).toBe(400);
@@ -239,7 +243,7 @@ describe('policies and skills', () => {
 describe('tasks, runs and dashboard', () => {
   it('runs the task flow', async () => {
     const { agent } = await seedAgent();
-    const body = { title: 'Fix', prompt: 'Do it', workDir: '/work', target: { agentId: agent.id } };
+    const body = { title: 'Fix', prompt: 'Do it', workDir: `${ws}/w`, target: { agentId: agent.id } };
     const t1 = (await call('POST', '/tasks', body)).json();
     const t2 = (await call('POST', '/tasks', { ...body, title: 'Second' })).json();
     expect(t1.key).toMatch(/-1$/);
@@ -268,7 +272,12 @@ describe('tasks, runs and dashboard', () => {
   it('lists runs, events after an id, and builds the dashboard', async () => {
     const { agent, account } = await seedAgent();
     const task = (
-      await call('POST', '/tasks', { title: 'T', prompt: 'p', workDir: '/w', target: { agentId: agent.id } })
+      await call('POST', '/tasks', {
+        title: 'T',
+        prompt: 'p',
+        workDir: `${ws}/w`,
+        target: { agentId: agent.id },
+      })
     ).json();
     const sys = api.c.dispatcher;
     const db = api.database.db;
@@ -323,7 +332,7 @@ describe('schedules and scheduled tasks', () => {
 
   it('creates a scheduled task with runAt and shows it on the board', async () => {
     const { agent } = await seedAgent();
-    const body = { title: 'Later', prompt: 'p', workDir: '/work', target: { agentId: agent.id } };
+    const body = { title: 'Later', prompt: 'p', workDir: `${ws}/w`, target: { agentId: agent.id } };
     const runAt = new Date(Date.now() + 3_600_000).toISOString();
     const created = await call('POST', '/tasks', { ...body, runAt, maxAttempts: 4 });
     expect(created.status).toBe(201);
@@ -521,7 +530,7 @@ describe('cross-cutting', () => {
     const denied = await call('POST', '/tasks', {
       title: 'x',
       prompt: 'y',
-      workDir: '/w',
+      workDir: `${ws}/w`,
       target: { agentId: agent.id },
     });
     expect(denied.status).toBe(403);
@@ -645,6 +654,8 @@ const EXPECTED_ROUTES = [
   'PATCH /api/v1/tasks/{id}',
   'DELETE /api/v1/tasks/{id}',
   'POST /api/v1/tasks/start',
+  'POST /api/v1/tasks/to-backlog',
+  'POST /api/v1/tasks/{id}/to-backlog',
   'POST /api/v1/tasks/{id}/start',
   'POST /api/v1/tasks/{id}/cancel',
   'POST /api/v1/tasks/{id}/reorder',

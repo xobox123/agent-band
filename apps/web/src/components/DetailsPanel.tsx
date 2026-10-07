@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import { useRef } from 'react';
 import type { ReactNode } from 'react';
+import { CloseButton } from './CloseButton.tsx';
 import { useEscape } from '../hooks/useEscape.ts';
 import { useWorkspace } from '../layout/WorkspaceContext.tsx';
 
@@ -26,9 +27,7 @@ export function DetailsPanel({ title, subtitle, onClose, banner, footer, childre
           <h2 className="details-title">{title}</h2>
           {subtitle ? <div className="dim">{subtitle}</div> : null}
         </div>
-        <button type="button" className="btn btn-icon" aria-label="Close details" onClick={onClose}>
-          ✕
-        </button>
+        <CloseButton onClick={onClose} />
       </header>
       {banner ? <div className="details-banner">{banner}</div> : null}
       <div className="details-body">{children}</div>

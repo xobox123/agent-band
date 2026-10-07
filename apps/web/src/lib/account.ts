@@ -49,6 +49,38 @@ export function resetsIn(iso: string | null | undefined, now: number): string | 
   return `in ${String(Math.floor(h / 24))}d ${String(h % 24)}h`;
 }
 
+/** Key of the provider identity behind an account (email and organization), or null when unknown. */
+export function identityKey(account: {
+  provider: string;
+  providerIdentity: string | null;
+  connection: { loggedIn: boolean; email: string | null; orgName: string | null } | null;
+}): string | null {
+  const c = account.connection;
+  const who =
+    account.providerIdentity?.trim() || (c?.loggedIn && c.email ? `${c.email}|${c.orgName ?? ''}` : '');
+  return who ? `${account.provider}:${who.toLowerCase()}` : null;
+}
+
+/** For every account that shares its provider identity with another, the other accounts' names. */
+type Identified = Parameters<typeof identityKey>[0] & { id: string; name: string };
+
+export function duplicateIdentities(accounts: Identified[]): Map<string, string[]> {
+  const byKey = new Map<string, Identified[]>();
+  for (const a of accounts) {
+    const key = identityKey(a);
+    if (key) byKey.set(key, [...(byKey.get(key) ?? []), a]);
+  }
+  const out = new Map<string, string[]>();
+  for (const group of byKey.values())
+    if (group.length > 1)
+      for (const a of group)
+        out.set(
+          a.id,
+          group.filter((b) => b.id !== a.id).map((b) => b.name),
+        );
+  return out;
+}
+
 export function slugify(name: string): string {
   return (
     name

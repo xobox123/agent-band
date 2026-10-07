@@ -76,26 +76,49 @@ export class ApiError extends Error {
   }
 }
 
+/** Server error codes that belong to one form field; forms may add their own through `codeFields`. */
+export const CODE_FIELDS: Record<string, string> = {
+  work_dir_outside_policy: 'workDir',
+  slug_taken: 'slug',
+  handle_taken: 'handle',
+  team_exists: 'name',
+  policy_name_taken: 'name',
+  group_name_taken: 'name',
+  skill_name_taken: 'name',
+  already_member: 'userId',
+};
+
 /**
- * Field messages from a validation_failed problem. Accepts zod-style `path` (array or dotted string) and
- * JSON-pointer `instancePath`; `alias` may rename a path to the form's field name.
+ * Field messages from a problem response. Accepts zod-style `path` (array or dotted string) and
+ * JSON-pointer `instancePath` details; `alias` may rename a path to the form's field name. Known error
+ * codes map to a field when the problem has no details.
  */
-export function fieldErrors(error: unknown, alias?: (path: string) => string): Record<string, string> {
+export function fieldErrors(
+  error: unknown,
+  alias?: (path: string) => string,
+  codeFields?: Record<string, string>,
+): Record<string, string> {
   const out: Record<string, string> = {};
-  if (!(error instanceof ApiError) || !Array.isArray(error.details)) return out;
-  for (const item of error.details as unknown[]) {
-    if (typeof item !== 'object' || item === null) continue;
-    const i = item as { path?: unknown; instancePath?: unknown; message?: unknown };
-    const raw = Array.isArray(i.path)
-      ? i.path.join('.')
-      : typeof i.path === 'string'
-        ? i.path
-        : typeof i.instancePath === 'string'
-          ? i.instancePath.replace(/^\//, '').replace(/\//g, '.')
-          : '';
-    if (raw === '' || typeof i.message !== 'string') continue;
-    const name = alias ? alias(raw) : raw;
-    out[name] ??= i.message;
+  if (!(error instanceof ApiError)) return out;
+  if (Array.isArray(error.details)) {
+    for (const item of error.details as unknown[]) {
+      if (typeof item !== 'object' || item === null) continue;
+      const i = item as { path?: unknown; instancePath?: unknown; message?: unknown };
+      const raw = Array.isArray(i.path)
+        ? i.path.join('.')
+        : typeof i.path === 'string'
+          ? i.path
+          : typeof i.instancePath === 'string'
+            ? i.instancePath.replace(/^\//, '').replace(/\//g, '.')
+            : '';
+      if (raw === '' || typeof i.message !== 'string') continue;
+      const name = alias ? alias(raw) : raw;
+      out[name] ??= i.message;
+    }
+  }
+  if (Object.keys(out).length === 0) {
+    const field = { ...CODE_FIELDS, ...codeFields }[error.code];
+    if (field) out[field] = error.message;
   }
   return out;
 }
@@ -206,6 +229,7 @@ export function createApi(fetchImpl?: typeof fetch) {
       cancel: (id: string) => send<TaskDto>('POST', `/tasks/${id}/cancel`),
       update: (id: string, body: UpdateTaskBody) => send<TaskDto>('PATCH', `/tasks/${id}`, body),
       remove: (id: string) => send<undefined>('DELETE', `/tasks/${id}`),
+      toBacklog: (ids: string[]) => send<Page<TaskDto>>('POST', '/tasks/to-backlog', { ids }),
       start: (ids: string[], when: StartWhen) => send<Page<TaskDto>>('POST', '/tasks/start', { ids, when }),
     },
 
