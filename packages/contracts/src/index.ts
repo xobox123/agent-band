@@ -6,6 +6,7 @@ export {
   MCP_SERVER_NAME,
   MCP_TOOLS_ALLOW,
   RUN_ID_HEADER,
+  RUN_TOKEN_ENV,
   RUN_TOKEN_HEADER,
 } from './execution.ts';
 export * from './api/index.ts';

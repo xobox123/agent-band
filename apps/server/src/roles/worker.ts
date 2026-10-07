@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import {
   MCP_TOOLS_ALLOW,
+  RUN_TOKEN_ENV,
   type NormalizedEvent,
   type ProviderAdapter,
   type RunHandle,
@@ -33,6 +34,7 @@ import {
   revokeRunAuth,
   stableHash,
   writeClaudePlugin,
+  mcpUrl,
   writeMcpConfig,
 } from '../execution/index.ts';
 import { FRESH_SNAPSHOT_MS } from '../modules/usage/index.ts';
@@ -180,8 +182,8 @@ export function createWorker(deps: WorkerDeps): Worker {
     const policy = await deps.policy.forAgent(deps.db, orgId, agent.id);
     if (task.kind === 'goal' && agent.role !== 'leader')
       return { reasons: [`agent ${agent.handle}: goals need an agent with role leader`] };
-    // Only Claude can be given the delegation MCP server per run (see the capability matrix).
-    if (task.kind === 'goal' && !(skillsLoadable && account.provider === 'claude'))
+    // Claude gets the delegation MCP server through a config file, Codex through -c overrides.
+    if (task.kind === 'goal' && account.provider !== 'claude' && account.provider !== 'openai')
       return {
         reasons: [
           `agent ${agent.handle}: leader agents are not supported on provider ${account.provider} yet`,
@@ -406,10 +408,15 @@ export function createWorker(deps: WorkerDeps): Worker {
       const isGoal = task.kind === 'goal';
       const mcpConfigPath = join(dir, 'mcp.json');
       let resumeSessionId: string | undefined;
+      let mcpServerUrl: string | undefined;
       if (isGoal) {
-        await writeMcpConfig({ path: mcpConfigPath, port: deps.apiPort, runId: run.id, token });
         const goal = await deps.tasks.getGoalState(deps.db, orgId, task.id);
-        if (goal?.status === 'continuing' && goal.leaderSessionId) resumeSessionId = goal.leaderSessionId;
+        if (c.account.provider === 'openai') {
+          mcpServerUrl = mcpUrl(deps.apiPort, run.id);
+        } else {
+          await writeMcpConfig({ path: mcpConfigPath, port: deps.apiPort, runId: run.id, token });
+          if (goal?.status === 'continuing' && goal.leaderSessionId) resumeSessionId = goal.leaderSessionId;
+        }
       }
       const systemPrompt = [
         systemPromptOf(c.agent),
@@ -425,7 +432,8 @@ export function createWorker(deps: WorkerDeps): Worker {
         mode: c.mode,
         ...(c.agent.model ? { model: c.agent.model } : {}),
         ...(systemPrompt ? { systemPrompt } : {}),
-        ...(isGoal ? { mcpConfigPath } : {}),
+        ...(isGoal && !mcpServerUrl ? { mcpConfigPath } : {}),
+        ...(mcpServerUrl ? { mcpServerUrl } : {}),
         ...(resumeSessionId ? { resumeSessionId } : {}),
         ...(c.policy.allowedTools ? { allowedTools: c.policy.allowedTools } : {}),
         ...(c.policy.deniedTools.length ? { deniedTools: c.policy.deniedTools } : {}),
@@ -435,7 +443,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         gitIdentity: c.agent.gitIdentity,
         agentId: c.agent.id,
         env: {
-          AGENT_BAND_RUN_TOKEN: token,
+          [RUN_TOKEN_ENV]: token,
           // Only for api accounts, only in the spawned process environment; never logged or recorded.
           ...(c.account.type === 'api' && c.account.secret
             ? { [c.account.provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY']: c.account.secret }

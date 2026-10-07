@@ -56,6 +56,10 @@ export async function writeClaudePlugin(opts: {
   }
 }
 
+/** URL of the delegation MCP server; the run id is bound to the URL and must match the token's run. */
+export const mcpUrl = (port: number, runId: string): string =>
+  `http://127.0.0.1:${port}/api/v1/mcp?runId=${encodeURIComponent(runId)}`;
+
 /** Writes the Claude MCP config that attaches the delegation server to one leader run. */
 export async function writeMcpConfig(opts: {
   path: string;

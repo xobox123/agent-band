@@ -47,7 +47,7 @@ import {
   unassignSkill,
 } from './modules/skills/index.ts';
 import { createDelegation, createGoalApproval, createOrchestrator } from './modules/delegation/index.ts';
-import { verifyRunToken } from './execution/app/run-auth.ts';
+import { findRunIdByToken, verifyRunToken } from './execution/app/run-auth.ts';
 import { createEffectivePolicySource } from './execution/app/sources.ts';
 import { createRuns } from './modules/runs/index.ts';
 import { createScheduler } from './modules/scheduler/index.ts';
@@ -231,6 +231,7 @@ export async function createComposition(opts: CompositionOptions) {
     orchestrator,
     goalApproval,
     audit,
+    findRunIdByToken,
   };
 }
 

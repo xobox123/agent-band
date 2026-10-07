@@ -22,6 +22,7 @@ import {
 } from '../../components/AccountStatus.tsx';
 import { planLabel } from '../../lib/account.ts';
 import { formatCost } from '../../lib/format.ts';
+import { CliDiagnostics } from './CliDiagnostics.tsx';
 import { AccountForm, type FollowUp } from './AccountForm.tsx';
 
 export function AccountsScreen() {
@@ -124,6 +125,7 @@ export function AccountsScreen() {
         </button>
       </Toolbar>
       <div className="screen-body">
+        <CliDiagnostics />
         <Resource state={state} errorMessage="Could not load accounts. Retry.">
           {() =>
             rows.length === 0 ? (

@@ -1,12 +1,15 @@
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
+  MCP_SERVER_NAME,
   MCP_TOOLS_ALLOW,
+  RUN_TOKEN_ENV,
   type NormalizedEvent,
   type ProviderAdapter,
   type RunHandle,
   RunSpec,
 } from '@agent-band/contracts';
+import { cliCommand, missingCliMessage, withCliPath } from './cli-locator.ts';
 import { parseClaudeLine, parseCodexLine } from './parsers.ts';
 import { eventQueue, spawnJsonLines } from './process.ts';
 import { readCodexRateLimits } from './rollout.ts';
@@ -55,11 +58,27 @@ export function claudeArgs(s: RunSpec): string[] {
   if (s.mcpConfigPath !== undefined) args.push('--strict-mcp-config');
   return args;
 }
+/**
+ * Per-run config for the delegation server, passed with -c so the user's config.toml is never
+ * written. The token is read by Codex from the env var named here and never appears in argv.
+ * default_tools_approval_mode=approve keeps the server's tools from being rejected in headless mode.
+ */
+export function codexMcpOverrides(url: string): string[] {
+  const key = `mcp_servers.${MCP_SERVER_NAME}`;
+  return [
+    `${key}.url=${JSON.stringify(url)}`,
+    `${key}.bearer_token_env_var=${JSON.stringify(RUN_TOKEN_ENV)}`,
+    `${key}.default_tools_approval_mode="approve"`,
+    `${key}.required=true`,
+    `${key}.startup_timeout_sec=30`,
+  ].flatMap((v) => ['-c', v]);
+}
 export function codexArgs(s: RunSpec): string[] {
   return [
     'exec',
     '--json',
     '--skip-git-repo-check',
+    ...(s.mcpServerUrl !== undefined ? codexMcpOverrides(s.mcpServerUrl) : []),
     '-s',
     { 'read-only': 'read-only', edit: 'workspace-write', 'full-auto': 'danger-full-access' }[s.mode],
     ...(s.model !== undefined ? ['-m', s.model] : []),
@@ -71,10 +90,11 @@ export class ClaudeAdapter implements ProviderAdapter {
   start(s: RunSpec): RunHandle {
     return spawnJsonLines(
       {
-        cmd: 'claude',
+        cmd: cliCommand('claude'),
         args: claudeArgs(s),
         cwd: s.workDir,
-        env: { ...process.env, ...runEnv(s, this.provider) },
+        env: withCliPath('claude', { ...process.env, ...runEnv(s, this.provider) }),
+        missingMessage: missingCliMessage('claude'),
       },
       parseClaudeLine,
     );
@@ -86,10 +106,11 @@ export class CodexAdapter implements ProviderAdapter {
     let threadId: string | undefined;
     return spawnJsonLines(
       {
-        cmd: 'codex',
+        cmd: cliCommand('codex'),
         args: codexArgs(s),
         cwd: s.workDir,
-        env: { ...process.env, ...runEnv(s, this.provider) },
+        env: withCliPath('codex', { ...process.env, ...runEnv(s, this.provider) }),
+        missingMessage: missingCliMessage('codex'),
       },
       (line) => {
         const events = parseCodexLine(line);

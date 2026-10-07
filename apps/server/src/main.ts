@@ -1,9 +1,17 @@
 import { ConfigError, loadConfig } from './platform/config.ts';
+import { CliLocator } from './runner/index.ts';
 import { start } from './server.ts';
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const server = await start(config);
+  const cliLocator = new CliLocator({ overrides: config.cliBins });
+  for (const [name, d] of Object.entries(await cliLocator.detectAll()))
+    console.log(
+      d.binary
+        ? `${name}: ${d.binary} (${d.version ?? 'unknown version'}, ${d.source})`
+        : `${name}: ${d.error}`,
+    );
+  const server = await start(config, { cliLocator });
 
   const shutdown = (): void => {
     server.stop().then(

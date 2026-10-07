@@ -28,7 +28,13 @@ export function eventQueue() {
   };
 }
 export function spawnJsonLines(
-  spec: { cmd: string; args: string[]; cwd: string; env: Record<string, string | undefined> },
+  spec: {
+    cmd: string;
+    args: string[];
+    cwd: string;
+    env: Record<string, string | undefined>;
+    missingMessage?: string;
+  },
   parseLine: (line: string) => NormalizedEvent[],
   onExit?: () => Promise<NormalizedEvent[]>,
 ): RunHandle {
@@ -65,7 +71,7 @@ export function spawnJsonLines(
     queue.push({ kind: 'stderr', text });
   });
   child.on('error', (err: NodeJS.ErrnoException) => {
-    error = err.code === 'ENOENT' ? `${spec.cmd} not found in PATH` : err.message;
+    error = err.code === 'ENOENT' ? (spec.missingMessage ?? `${spec.cmd} not found in PATH`) : err.message;
     queue.push({ kind: 'error', message: error });
   });
   const done = new Promise<Awaited<RunHandle['done']>>((resolve) => {

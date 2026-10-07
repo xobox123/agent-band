@@ -44,10 +44,17 @@ export function mcpRoutes(c: Composition): FastifyPluginCallbackZod {
       '/mcp',
       { schema: { tags: ['execution'], summary: 'MCP server with the delegation tools (run token auth)' } },
       async (req, reply) => {
-        const runId = header(req.headers[RUN_ID_HEADER]);
-        const token = header(req.headers[RUN_TOKEN_HEADER]);
+        const bearer = /^Bearer\s+(\S+)$/i.exec(header(req.headers.authorization))?.[1] ?? '';
+        const token = header(req.headers[RUN_TOKEN_HEADER]) || bearer;
+        const queryRunId = (req.query as { runId?: unknown } | undefined)?.runId;
         const body: unknown = req.body;
         const first = Array.isArray(body) ? undefined : (body as RpcRequest | null | undefined);
+        // Codex sends only a bearer token: the run is found by the token, and a runId in the URL must agree.
+        const runId =
+          header(req.headers[RUN_ID_HEADER]) || (await c.findRunIdByToken(c.database.db, token)) || '';
+        if (typeof queryRunId === 'string' && queryRunId && runId && queryRunId !== runId) {
+          return reply.code(401).send(rpcError(first?.id, -32001, 'Run id does not match the credentials'));
+        }
         if (!runId || !token) {
           return reply.code(401).send(rpcError(first?.id, -32001, 'Missing run credentials'));
         }
