@@ -25,7 +25,9 @@ import {
   truncateBytes,
   type createTasks,
   type Task,
+  type TaskReview,
 } from '../modules/tasks/index.ts';
+import type { ProjectRuns } from '../modules/projects/index.ts';
 import type { createUsage } from '../modules/usage/index.ts';
 import { evaluateRunStart, type EffectivePolicy } from '../modules/policy/index.ts';
 import {
@@ -64,6 +66,8 @@ export interface WorkerDeps {
   agents: Pick<ReturnType<typeof createAgentUseCases>, 'getAgent' | 'listAgents'>;
   accounts: { getAccountForRun(db: Db, orgId: string, id: string): Promise<AccountForRun> };
   orgSettings: OrgSettings;
+  /** Git worktrees, checks and review data for project tasks; without it project tasks run in place. */
+  projectRuns?: ProjectRuns;
   policy: EffectivePolicySource;
   skills: EffectiveSkillsSource;
   adapterFor(account: AccountForRun): ProviderAdapter | undefined;
@@ -397,6 +401,7 @@ export function createWorker(deps: WorkerDeps): Worker {
     try {
       const adapter = deps.adapterFor(c.account);
       if (!adapter) throw new Error(`no adapter for provider ${c.account.provider}`);
+      if (task.branch) await deps.projectRuns?.prepare(deps.db, task);
       if (c.skillsLoadable) {
         const skills = [];
         for (const s of c.skills) {
@@ -496,7 +501,18 @@ export function createWorker(deps: WorkerDeps): Worker {
         result.error ??
         (result.exitCode !== 0 && !entry.userCancelled ? `exit code ${result.exitCode}` : undefined);
       if (result.exitCode === 0 && !result.error) failure = undefined;
+      const succeeded = !failure && !timedOut && !forceStop && !entry.userCancelled;
+      let review: TaskReview | undefined;
+      if (succeeded && task.branch && task.kind !== 'goal' && deps.projectRuns) {
+        review = await deps.projectRuns.finalize(deps.db, task, c.agent.gitIdentity, (check) =>
+          append(run.id, {
+            kind: 'stderr',
+            text: `[check] ${check.command} exited ${check.exitCode} after ${check.durationMs} ms\n${check.output}`,
+          }),
+        );
+      }
       await finish(task, run, {
+        ...(review && { review }),
         status:
           timedOut || forceStop ? 'failed' : entry.userCancelled ? 'cancelled' : failure ? 'failed' : 'done',
         exitCode: result.exitCode,
@@ -509,6 +525,7 @@ export function createWorker(deps: WorkerDeps): Worker {
               : undefined,
         userCancelled: entry.userCancelled,
       });
+      if (succeeded && task.branch && task.kind === 'goal') await finalizeGoal(task, c, run.id);
     } catch (err) {
       log('error', `run ${run.id} failed`, err);
       handle?.cancel();
@@ -523,8 +540,29 @@ export function createWorker(deps: WorkerDeps): Worker {
     } finally {
       clearTimeout(timer);
       await removeRunDir(dir).catch(() => undefined);
+      if (entry.userCancelled && task.branch)
+        await deps.projectRuns?.cleanup(deps.db, task).catch((err: unknown) => {
+          log('warn', `could not clean up the worktree of ${task.key}`, err);
+        });
       // A finished run frees account capacity for waiting tasks.
       recheck();
+    }
+  }
+
+  /** A completed project goal gets its review once the leader reports success; its subtasks were merged before. */
+  async function finalizeGoal(task: Task, c: Candidate, runId: string): Promise<void> {
+    try {
+      const goal = await deps.tasks.getGoalState(deps.db, orgId, task.id);
+      if (goal?.status !== 'completed' || !deps.projectRuns) return;
+      const review = await deps.projectRuns.finalize(deps.db, task, c.agent.gitIdentity, (check) =>
+        append(runId, {
+          kind: 'stderr',
+          text: `[check] ${check.command} exited ${check.exitCode} after ${check.durationMs} ms\n${check.output}`,
+        }),
+      );
+      await deps.db.transaction((tx) => deps.tasks.setReview(tx, d, task.id, review));
+    } catch (err) {
+      log('error', `could not prepare the review of goal ${task.key}`, err);
     }
   }
 
@@ -565,6 +603,7 @@ export function createWorker(deps: WorkerDeps): Worker {
       exitCode: number | null;
       error: string | undefined;
       userCancelled: boolean;
+      review?: TaskReview;
     },
   ): Promise<void> {
     // The account block recorded from the run's rate-limit events decides when the task may resume.
@@ -604,6 +643,7 @@ export function createWorker(deps: WorkerDeps): Worker {
             : {},
         );
         if (taskStatus !== 'rate_limited') await recordTaskOutcome(tx, task, finished, r.error);
+        if (taskStatus === 'done' && r.review) await deps.tasks.setReview(tx, d, task.id, r.review);
       } catch (err) {
         // The task was cancelled by a user while the run was ending.
         if (!isConflict(err)) throw err;

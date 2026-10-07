@@ -37,6 +37,7 @@ export const CreateTask = z.object({
   dependsOn: z.array(z.uuid()).max(50).default([]),
   draft: z.boolean().default(false),
   approval: z.enum(goalApprovals).default('auto'),
+  projectId: z.uuid().optional(),
 });
 export type CreateTaskInput = z.input<typeof CreateTask>;
 export const boardColumns = [

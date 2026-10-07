@@ -24,6 +24,7 @@ import {
   type TaskOutcome,
   type TaskResult,
 } from '../domain/goal.ts';
+import type { TaskReview } from '../domain/review.ts';
 export const taskKeySeq = pgTable('task_key_seq', {
   orgId: uuid('org_id').primaryKey(),
   seq: integer('seq').notNull().default(0),
@@ -58,6 +59,10 @@ export const tasks = pgTable(
     dependsOn: uuid('depends_on').array().notNull().default([]),
     result: jsonb('result').$type<TaskResult>(),
     eligibility: jsonb('eligibility').$type<Eligibility>(),
+    projectId: uuid('project_id'),
+    branch: text('branch'),
+    baseBranch: text('base_branch'),
+    review: jsonb('review').$type<TaskReview>(),
     createdBy: uuid('created_by').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -69,6 +74,7 @@ export const tasks = pgTable(
     index('tasks_resume_at').on(t.status, t.resumeAt),
     index('tasks_root').on(t.orgId, t.rootTaskId),
     index('tasks_schedule').on(t.orgId, t.scheduleId),
+    index('tasks_project').on(t.orgId, t.projectId),
     check('tasks_priority', sql`${t.priority} between 0 and 3`),
   ],
 );

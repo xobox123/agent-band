@@ -72,6 +72,15 @@ export interface OrgSettings {
   }>;
 }
 
+/** Project data other modules need, owned by the projects module. */
+export interface ProjectLookup {
+  get(
+    db: DbOrTx,
+    orgId: string,
+    id: string,
+  ): Promise<{ id: string; repoPath: string; defaultBranch: string; worktreesRoot: string } | undefined>;
+}
+
 /** Effective policy of an agent (org + groups + agent merged), owned by the policy module. */
 export interface EffectivePolicySource {
   forAgent(db: DbOrTx, orgId: string, agentId: string): Promise<EffectivePolicy>;

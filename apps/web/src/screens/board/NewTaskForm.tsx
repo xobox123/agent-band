@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Field, FormDialog } from '../../components/FormDialog.tsx';
-import type { Agent, AgentGroup, NewTask, Task, TaskPatch } from '../../data/types.ts';
+import type { Agent, AgentGroup, NewTask, ProjectOption, Task, TaskPatch } from '../../data/types.ts';
 import { isoToLocal, localToIso } from '../../lib/schedule.ts';
 import {
   EMPTY_TASK_FIELDS,
@@ -12,9 +12,30 @@ import {
 } from './TaskFields.tsx';
 import type { TaskFieldsValue } from './TaskFields.tsx';
 
+const LAST_PROJECT_KEY = 'agent-band:last-project';
+
+function lastProject(projects: ProjectOption[]): string {
+  try {
+    const id = window.localStorage.getItem(LAST_PROJECT_KEY);
+    return id && projects.some((p) => p.id === id) ? id : '';
+  } catch {
+    return '';
+  }
+}
+
+function rememberProject(id: string): void {
+  try {
+    if (id) window.localStorage.setItem(LAST_PROJECT_KEY, id);
+  } catch {
+    // The choice is only a convenience.
+  }
+}
+
 interface CreateProps {
   agents: Agent[];
   groups: AgentGroup[];
+  /** Projects a task can run in; the last used one is preselected. */
+  projects?: ProjectOption[] | undefined;
   onSubmit: (task: NewTask) => Promise<void>;
   onCancel: () => void;
   /** Edit a backlog task instead of creating one. */
@@ -25,6 +46,7 @@ interface CreateProps {
 interface EditProps {
   agents: Agent[];
   groups: AgentGroup[];
+  projects?: undefined;
   task: Task;
   onSave: (patch: TaskPatch) => Promise<void>;
   onCancel: () => void;
@@ -70,6 +92,8 @@ export function NewTaskForm(props: Props) {
   const { agents, groups, onCancel } = props;
   const editing = props.task;
   const [fields, setFields] = useState<TaskFieldsValue>(() => initialFields(editing));
+  const projects = props.projects ?? [];
+  const [projectId, setProjectId] = useState(() => lastProject(projects));
   const [kind, setKind] = useState<'task' | 'goal'>('task');
   const [approval, setApproval] = useState(true);
   const [runAt, setRunAt] = useState(() => (editing?.runAt ? isoToLocal(editing.runAt) : ''));
@@ -97,17 +121,19 @@ export function NewTaskForm(props: Props) {
     if (!props.onSubmit) return;
     const submit = props.onSubmit;
     const iso = localToIso(runAt);
-    run(() =>
-      submit({
+    run(() => {
+      rememberProject(projectId);
+      return submit({
         ...toNewTask(fields),
+        ...(projectId ? { projectId } : {}),
         ...(iso ? { runAt: iso } : {}),
         maxAttempts: attempts,
         draft,
         ...(goal
           ? { kind: 'goal' as const, approval: approval ? ('required' as const) : ('auto' as const) }
           : {}),
-      }),
-    );
+      });
+    });
   };
 
   const save = () => {
@@ -187,6 +213,28 @@ export function NewTaskForm(props: Props) {
           </span>
         </div>
       ) : null}
+      {editing || projects.length === 0 ? null : (
+        <Field
+          label="Project"
+          help="The task gets its own git worktree and branch in the project's repository."
+        >
+          <select
+            className="field"
+            aria-label="Project"
+            value={projectId}
+            onChange={(e) => {
+              setProjectId(e.target.value);
+            }}
+          >
+            <option value="">No project</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {`${p.name} (${p.defaultBranch})`}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       <TaskFields value={fields} onChange={setFields} agents={pickable} groups={groups} />
       <Field label="Run at (optional)" name="runAt" help="Leave blank to run as soon as it is started.">
         <input

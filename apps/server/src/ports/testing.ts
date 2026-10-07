@@ -19,6 +19,7 @@ import type {
   OrgSettings,
   PolicyBindings,
   PrincipalRegistry,
+  ProjectLookup,
 } from './index.ts';
 
 export class FakeAuthorizer implements Authorizer {
@@ -95,6 +96,16 @@ export class FakeOrgSettings implements OrgSettings {
   }
   get(): ReturnType<OrgSettings['get']> {
     return Promise.resolve(this.settings);
+  }
+}
+
+export class FakeProjectLookup implements ProjectLookup {
+  readonly projects = new Map<
+    string,
+    { id: string; repoPath: string; defaultBranch: string; worktreesRoot: string }
+  >();
+  get(_db: unknown, _orgId: string, id: string): ReturnType<ProjectLookup['get']> {
+    return Promise.resolve(this.projects.get(id));
   }
 }
 

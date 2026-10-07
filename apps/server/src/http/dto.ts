@@ -1,4 +1,12 @@
-import type { GoalStateDto, RunDto, RunEventDto, ScheduleDto, TaskDto } from '@agent-band/contracts';
+import type {
+  GoalStateDto,
+  ProjectDto,
+  RunDto,
+  RunEventDto,
+  ScheduleDto,
+  TaskDto,
+} from '@agent-band/contracts';
+import type { Project } from '../modules/projects/index.ts';
 import type { Run, RunEvent } from '../modules/runs/index.ts';
 import type { Schedule } from '../modules/scheduler/index.ts';
 import type { GoalState, Task } from '../modules/tasks/index.ts';
@@ -33,9 +41,30 @@ export function taskDto(t: Task): TaskDto {
     result: t.result,
     latestRun: null,
     eligibilityReason: t.eligibility?.reason ?? null,
+    projectId: t.projectId,
+    branch: t.branch,
+    baseBranch: t.baseBranch,
+    review: t.review,
     createdBy: t.createdBy,
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
+  };
+}
+
+export function projectDto(p: Project): ProjectDto {
+  return {
+    id: p.id,
+    orgId: p.orgId,
+    name: p.name,
+    slug: p.slug,
+    repoPath: p.repoPath,
+    defaultBranch: p.defaultBranch,
+    worktreesRoot: p.worktreesRoot,
+    checks: p.checks,
+    keepWorktrees: p.keepWorktrees,
+    createdBy: p.createdBy,
+    createdAt: p.createdAt.toISOString(),
+    updatedAt: p.updatedAt.toISOString(),
   };
 }
 

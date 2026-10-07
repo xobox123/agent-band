@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { DetailsPanel } from '../../components/DetailsPanel.tsx';
 import { LimitBar } from '../../components/LimitBar.tsx';
 import { StatusDot } from '../../components/StatusDot.tsx';
@@ -7,6 +8,7 @@ import { exactCount } from './format.ts';
 import { CANCELLABLE, PRIORITIES, restorable, startable } from './model.ts';
 import type { BacklogApi, TaskView } from './model.ts';
 import { PlanReview } from './PlanReview.tsx';
+import { ChangesTab, hasChanges } from './ChangesTab.tsx';
 
 interface Props {
   view: TaskView;
@@ -53,6 +55,8 @@ export function TaskDetails({
   plan,
 }: Props) {
   const { task, run, account } = view;
+  const [tab, setTab] = useState<'details' | 'changes'>('details');
+  const showChanges = hasChanges(task);
   const copy = () => {
     void navigator.clipboard.writeText(task.id).catch(() => undefined);
   };
@@ -151,91 +155,117 @@ export function TaskDetails({
         </>
       }
     >
-      <dl className="kv">
-        <Row label="Status">
-          <StatusDot kind="task" value={task.status} />
-        </Row>
-        <Row label="ID">
-          <span className="mono">{task.id}</span>{' '}
-          <button type="button" className="btn" onClick={copy}>
-            Copy
-          </button>
-        </Row>
-        <Row label="Priority">{`P${String(task.priority)}`}</Row>
-        {task.runAt ? (
-          <Row label="Run at">
-            {new Date(task.runAt).toLocaleString()}
-            {task.startAfterReset ? ' (after limit reset)' : ''}
-          </Row>
-        ) : null}
-        {view.proposedBy ? <Row label="Proposed by">{view.proposedBy}</Row> : null}
-        {task.resumeAt ? (
-          <Row label="Resumes at">{`${formatClock(task.resumeAt)} (attempt ${String(task.attempt)}/${String(task.maxAttempts)})`}</Row>
-        ) : null}
-        {task.scheduleId ? (
-          <Row label="Schedule">
-            <a href="#/schedules">Open schedules</a>
-          </Row>
-        ) : null}
-        <Row label="Assignee / target">{view.assignee}</Row>
-        <Row label="Folder">
-          <span className="mono">{task.workDir}</span>
-        </Row>
-        <Row label="Created by">{task.createdBy}</Row>
-        <Row label="Updated">
-          <time dateTime={task.updatedAt} title={task.updatedAt}>
-            {new Date(task.updatedAt).toLocaleString()}
-          </time>
-        </Row>
-        <Row label="Elapsed">{view.elapsed(now)}</Row>
-        <Row label="Tokens">
-          {run
-            ? `Input ${exactCount(run.inputTokens ?? 0)}, output ${exactCount(run.outputTokens ?? 0)}, cached ${exactCount(run.cachedTokens ?? 0)}`
-            : 'Unknown'}
-        </Row>
-        {account ? (
-          <Row label="Account budget">
-            <LimitBar
-              name="Daily tokens"
-              value={budgetPct}
-              label={`${account.name} daily tokens`}
-              title={`${exactCount(account.tokensToday)} tokens today`}
-              reset="resets daily"
-            />
-          </Row>
-        ) : null}
-      </dl>
-      {plan ? (
-        <PlanReview
-          leader={plan.leader}
-          round={view.goal?.round ?? 1}
-          items={plan.items}
-          titleOf={plan.titleOf}
-          busy={plan.busy}
-          error={plan.error}
-          onApprove={plan.onApprove}
-          onRequestChanges={plan.onRequestChanges}
-          onAdd={plan.onAdd}
-          onEdit={backlog.edit}
-          onRemove={backlog.remove}
-        />
+      {showChanges ? (
+        <div className="tabs" role="tablist" aria-label="Task sections">
+          {(['details', 'changes'] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              className="tab"
+              aria-selected={tab === id}
+              onClick={() => {
+                setTab(id);
+              }}
+            >
+              {id === 'details' ? 'Details' : 'Changes'}
+            </button>
+          ))}
+        </div>
       ) : null}
-      {task.noEligibleReason ? (
+      {showChanges && tab === 'changes' ? <ChangesTab task={task} /> : null}
+      <div hidden={showChanges && tab === 'changes'}>
+        <dl className="kv">
+          <Row label="Status">
+            <StatusDot kind="task" value={task.status} />
+          </Row>
+          <Row label="ID">
+            <span className="mono">{task.id}</span>{' '}
+            <button type="button" className="btn" onClick={copy}>
+              Copy
+            </button>
+          </Row>
+          <Row label="Priority">{`P${String(task.priority)}`}</Row>
+          {task.runAt ? (
+            <Row label="Run at">
+              {new Date(task.runAt).toLocaleString()}
+              {task.startAfterReset ? ' (after limit reset)' : ''}
+            </Row>
+          ) : null}
+          {view.proposedBy ? <Row label="Proposed by">{view.proposedBy}</Row> : null}
+          {task.resumeAt ? (
+            <Row label="Resumes at">{`${formatClock(task.resumeAt)} (attempt ${String(task.attempt)}/${String(task.maxAttempts)})`}</Row>
+          ) : null}
+          {task.scheduleId ? (
+            <Row label="Schedule">
+              <a href="#/schedules">Open schedules</a>
+            </Row>
+          ) : null}
+          <Row label="Assignee / target">{view.assignee}</Row>
+          <Row label="Folder">
+            <span className="mono">{task.workDir}</span>
+          </Row>
+          {task.branch ? (
+            <Row label="Branch">
+              <span className="mono">{task.branch}</span>
+            </Row>
+          ) : null}
+          <Row label="Created by">{task.createdBy}</Row>
+          <Row label="Updated">
+            <time dateTime={task.updatedAt} title={task.updatedAt}>
+              {new Date(task.updatedAt).toLocaleString()}
+            </time>
+          </Row>
+          <Row label="Elapsed">{view.elapsed(now)}</Row>
+          <Row label="Tokens">
+            {run
+              ? `Input ${exactCount(run.inputTokens ?? 0)}, output ${exactCount(run.outputTokens ?? 0)}, cached ${exactCount(run.cachedTokens ?? 0)}`
+              : 'Unknown'}
+          </Row>
+          {account ? (
+            <Row label="Account budget">
+              <LimitBar
+                name="Daily tokens"
+                value={budgetPct}
+                label={`${account.name} daily tokens`}
+                title={`${exactCount(account.tokensToday)} tokens today`}
+                reset="resets daily"
+              />
+            </Row>
+          ) : null}
+        </dl>
+        {plan ? (
+          <PlanReview
+            leader={plan.leader}
+            round={view.goal?.round ?? 1}
+            items={plan.items}
+            titleOf={plan.titleOf}
+            busy={plan.busy}
+            error={plan.error}
+            onApprove={plan.onApprove}
+            onRequestChanges={plan.onRequestChanges}
+            onAdd={plan.onAdd}
+            onEdit={backlog.edit}
+            onRemove={backlog.remove}
+          />
+        ) : null}
+        {task.noEligibleReason ? (
+          <section>
+            <h3 className="section-title">No eligible agent</h3>
+            <p>{task.noEligibleReason}</p>
+          </section>
+        ) : null}
+        {task.error ? (
+          <section>
+            <h3 className="section-title">Error</h3>
+            <p>{task.error}</p>
+          </section>
+        ) : null}
         <section>
-          <h3 className="section-title">No eligible agent</h3>
-          <p>{task.noEligibleReason}</p>
+          <h3 className="section-title">Prompt</h3>
+          <pre className="prompt">{task.prompt}</pre>
         </section>
-      ) : null}
-      {task.error ? (
-        <section>
-          <h3 className="section-title">Error</h3>
-          <p>{task.error}</p>
-        </section>
-      ) : null}
-      <section>
-        <h3 className="section-title">Prompt</h3>
-        <pre className="prompt">{task.prompt}</pre>
-      </section>
+      </div>
     </DetailsPanel>
   );
 }
