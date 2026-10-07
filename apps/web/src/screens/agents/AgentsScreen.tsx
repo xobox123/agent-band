@@ -1,3 +1,4 @@
+import { Badge } from '../../components/Badge.tsx';
 import type { AgentDto } from '@agent-band/contracts';
 import { useState } from 'react';
 import { errorMessage } from '../../api/client.ts';
@@ -104,7 +105,12 @@ export function AgentsScreen() {
       id: 'enabled',
       header: 'Enabled',
       sortValue: (a) => String(a.enabled),
-      cell: (a) => <StatusDot kind="agent" value={a.enabled ? 'enabled' : 'disabled'} />,
+      cell: (a) => (
+        <>
+          <StatusDot kind="agent" value={a.enabled ? 'enabled' : 'disabled'} />
+          {a.paused ? <Badge tone="warn">Paused</Badge> : null}
+        </>
+      ),
     },
     { id: 'account', header: 'Account', cell: (a) => accountOf(a.accountId)?.name ?? 'Deleted account' },
     {
@@ -253,6 +259,20 @@ export function AgentsScreen() {
                   }}
                 >
                   {selectedAgent.enabled ? 'Disable' : 'Enable'}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={mutation.pending}
+                  onClick={() => {
+                    void mutation
+                      .run(() => api.agents.setPaused(selectedAgent.id, !selectedAgent.paused))
+                      .then(() => {
+                        state.reload();
+                      });
+                  }}
+                >
+                  {selectedAgent.paused ? 'Resume' : 'Pause'}
                 </button>
                 <button
                   type="button"

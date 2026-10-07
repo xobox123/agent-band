@@ -187,6 +187,29 @@ export function createAgentUseCases(deps: AgentsDeps) {
     });
   }
 
+  async function setAgentPaused(db: Db, actor: ActorContext, id: string, paused: boolean): Promise<AgentDto> {
+    return withTx(db, async (tx) => {
+      await loadAgent(tx, actor.orgId, id);
+      const groupIds = await groupIdsOfAgent(tx, id);
+      await deps.authorizer.authorize(tx, actor, 'agent.manage', { agentId: id, agentGroupIds: groupIds });
+      const [row] = await tx
+        .update(agents)
+        .set({ paused, updatedAt: new Date() })
+        .where(and(eq(agents.orgId, actor.orgId), eq(agents.id, id), isNull(agents.deletedAt)))
+        .returning();
+      if (!row) throw notFound('Agent');
+      await deps.audit.append(tx, {
+        orgId: actor.orgId,
+        actorId: actor.principalId,
+        action: paused ? 'agent.pause' : 'agent.resume',
+        targetType: 'agent',
+        targetId: id,
+      });
+      await publish(tx, 'agent.updated', { orgId: actor.orgId, agentId: id });
+      return agentToDto(row, groupIds);
+    });
+  }
+
   /** Soft delete: the row and its principal stay for audit and run history. */
   async function deleteAgent(db: Db, actor: ActorContext, id: string): Promise<void> {
     const current = await loadAgent(db, actor.orgId, id);
@@ -249,7 +272,7 @@ export function createAgentUseCases(deps: AgentsDeps) {
     return agentToDto(row, groupIds);
   }
 
-  return { createAgent, updateAgent, deleteAgent, listAgents, getAgent };
+  return { createAgent, updateAgent, setAgentPaused, deleteAgent, listAgents, getAgent };
 }
 
 /** Used by the accounts module to refuse deleting an account that live agents still use. */

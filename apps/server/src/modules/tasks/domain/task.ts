@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { GoalLimitsInput } from './goal.ts';
+import { GoalLimitsInput, goalApprovals } from './goal.ts';
 export const taskStatuses = [
+  'draft',
   'scheduled',
   'queued',
   'claimed',
@@ -21,7 +22,9 @@ export type TaskTarget = z.infer<typeof TaskTarget>;
 export const CreateTask = z.object({
   title: z.string().min(1),
   prompt: z.string().min(1),
-  workDir: z.string().startsWith('/'),
+  workDir: z.string().startsWith('/').optional(),
+  /** Folder name under the workspace root when workDir is omitted (default: the task key). */
+  workDirSlug: z.string().min(1).max(100).optional(),
   target: TaskTarget,
   priority: z.number().int().min(0).max(3).default(2),
   rank: z.number().default(0),
@@ -31,9 +34,13 @@ export const CreateTask = z.object({
   maxAttempts: z.number().int().min(1).max(20).default(3),
   kind: z.enum(['task', 'goal']).default('task'),
   goalLimits: GoalLimitsInput.optional(),
+  dependsOn: z.array(z.uuid()).max(50).default([]),
+  draft: z.boolean().default(false),
+  approval: z.enum(goalApprovals).default('auto'),
 });
 export type CreateTaskInput = z.input<typeof CreateTask>;
 export const boardColumns = [
+  'draft',
   'scheduled',
   'queued',
   'running',
@@ -52,3 +59,19 @@ export function resource(target: TaskTarget) {
       ? { agentGroupIds: [target.agentGroupId] }
       : {};
 }
+
+export const UpdateDraft = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    prompt: z.string().min(1).max(100_000),
+    workDir: z.string().startsWith('/').max(4096),
+    target: TaskTarget,
+    priority: z.number().int().min(0).max(3),
+    mode: z.enum(['read-only', 'edit', 'full-auto']).nullable(),
+    runAt: z.date().nullable(),
+    maxAttempts: z.number().int().min(1).max(20),
+    dependsOn: z.array(z.uuid()).max(50),
+  })
+  .partial()
+  .strict();
+export type UpdateDraftInput = z.input<typeof UpdateDraft>;

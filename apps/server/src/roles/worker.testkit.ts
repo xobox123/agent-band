@@ -47,7 +47,8 @@ export async function makeKit(existing?: Database) {
     accountExists: accountUc.accountExists,
   });
   const groupUc = createGroupUseCases(deps);
-  const tasks = createTasks({ ...deps, orgSettings: new FakeOrgSettings() });
+  const orgSettings = new FakeOrgSettings();
+  const tasks = createTasks({ ...deps, orgSettings });
   const runs = createRuns(deps);
   const usage = createUsage({
     ...deps,
@@ -89,9 +90,11 @@ export async function makeKit(existing?: Database) {
         ...input,
       });
     },
+    orgSettings,
     workerDeps(overrides: Partial<WorkerDeps> = {}): WorkerDeps {
       return {
         db,
+        orgSettings,
         dispatcher,
         workerId: 'worker-1',
         slots: 4,

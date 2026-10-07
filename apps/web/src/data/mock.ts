@@ -5,8 +5,10 @@ import type {
   Agent,
   AgentGroup,
   BoardEvent,
+  GoalInfo,
   Priority,
   Run,
+  StartWhen,
   Task,
   TaskStatus,
   TaskTarget,
@@ -28,6 +30,7 @@ const accounts: Account[] = [
     provider: 'claude',
     dailyTokenBudget: 2_000_000,
     tokensToday: 1_240_000,
+    paused: false,
   },
   {
     id: 'acc-codex',
@@ -35,8 +38,16 @@ const accounts: Account[] = [
     provider: 'codex',
     dailyTokenBudget: 1_000_000,
     tokensToday: 310_000,
+    paused: false,
   },
-  { id: 'acc-api', name: 'Anthropic API', provider: 'api', dailyTokenBudget: null, tokensToday: 88_000 },
+  {
+    id: 'acc-api',
+    name: 'Anthropic API',
+    provider: 'api',
+    dailyTokenBudget: null,
+    tokensToday: 88_000,
+    paused: false,
+  },
 ];
 
 const groups: AgentGroup[] = [
@@ -53,6 +64,7 @@ const agentSeeds: AgentSeed[] = [
     handle: 'agent:ada',
     role: 'leader',
     enabled: true,
+    paused: false,
     accountId: 'acc-claude',
     model: 'claude-opus',
     labels: ['backend', 'review'],
@@ -65,6 +77,7 @@ const agentSeeds: AgentSeed[] = [
     handle: 'agent:linus',
     role: 'worker',
     enabled: true,
+    paused: false,
     accountId: 'acc-codex',
     model: null,
     labels: ['backend', 'infra'],
@@ -77,6 +90,7 @@ const agentSeeds: AgentSeed[] = [
     handle: 'agent:grace',
     role: 'worker',
     enabled: true,
+    paused: false,
     accountId: 'acc-claude',
     model: 'claude-sonnet',
     labels: ['frontend'],
@@ -89,6 +103,7 @@ const agentSeeds: AgentSeed[] = [
     handle: 'agent:margaret',
     role: 'reviewer',
     enabled: true,
+    paused: false,
     accountId: 'acc-api',
     model: null,
     labels: ['qa', 'review'],
@@ -113,10 +128,80 @@ interface Seed {
   runAtInMin?: number;
   scheduleId?: string;
   attempt?: number;
+  kind?: Task['kind'];
+  proposed?: boolean;
+  parentKey?: string;
+  afterReset?: boolean;
+  dependsOnKeys?: string[];
   updatedMinAgo: number;
 }
 
 const seeds: Seed[] = [
+  {
+    key: 'AB-50',
+    title: 'Add rate limit headers to the public API',
+    status: 'draft',
+    priority: 2,
+    target: { type: 'label', label: 'backend' },
+    updatedMinAgo: 4,
+  },
+  {
+    key: 'AB-51',
+    title: 'Dark mode contrast pass for the board',
+    status: 'draft',
+    priority: 3,
+    target: { type: 'agent', agentId: 'ag-grace' },
+    updatedMinAgo: 8,
+  },
+  {
+    key: 'AB-52',
+    title: 'Triage the open flaky test list',
+    status: 'draft',
+    priority: 1,
+    target: { type: 'group', agentGroupId: 'grp-qa' },
+    updatedMinAgo: 12,
+  },
+  {
+    key: 'AB-60',
+    title: 'Migrate the billing service to the new contracts',
+    status: 'done',
+    kind: 'goal',
+    priority: 1,
+    target: { type: 'agent', agentId: 'ag-ada' },
+    updatedMinAgo: 2,
+  },
+  {
+    key: 'AB-61',
+    title: 'Extract billing types into packages/contracts',
+    status: 'draft',
+    proposed: true,
+    parentKey: 'AB-60',
+    priority: 1,
+    target: { type: 'agent', agentId: 'ag-linus' },
+    updatedMinAgo: 2,
+  },
+  {
+    key: 'AB-62',
+    title: 'Switch the billing routes to the shared zod schemas',
+    status: 'draft',
+    proposed: true,
+    parentKey: 'AB-60',
+    dependsOnKeys: ['AB-61'],
+    priority: 1,
+    target: { type: 'agent', agentId: 'ag-linus' },
+    updatedMinAgo: 2,
+  },
+  {
+    key: 'AB-63',
+    title: 'Review the billing migration diff',
+    status: 'draft',
+    proposed: true,
+    parentKey: 'AB-60',
+    dependsOnKeys: ['AB-62'],
+    priority: 2,
+    target: { type: 'agent', agentId: 'ag-margaret' },
+    updatedMinAgo: 2,
+  },
   {
     key: 'AB-41',
     title: 'Nightly dependency audit and advisory report',
@@ -309,6 +394,15 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
   let runs: Run[] = [];
   let cursor = 1;
   let nextRank = 1;
+  let goalStates: GoalInfo[] = [
+    {
+      rootTaskId: 'task-ab-60',
+      status: 'awaiting_approval',
+      approval: 'required',
+      round: 1,
+      leaderAgentId: 'ag-ada',
+    },
+  ];
 
   seeds.forEach((s, i) => {
     const id = `task-${s.key.toLowerCase()}`;
@@ -345,6 +439,12 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
       rank: nextRank++,
       target: s.target,
       workDir: '/Users/dev/agent-band',
+      mode: null,
+      kind: s.kind ?? 'task',
+      parentTaskId: s.parentKey ? `task-${s.parentKey.toLowerCase()}` : null,
+      proposed: s.proposed ?? false,
+      dependsOn: (s.dependsOnKeys ?? []).map((k) => `task-${k.toLowerCase()}`),
+      startAfterReset: s.afterReset ?? false,
       runId,
       runAt: s.runAtInMin ? iso(t0 + s.runAtInMin * MIN) : null,
       scheduleId: s.scheduleId ?? null,
@@ -380,6 +480,17 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
   };
   const replace = (next: Task) => {
     tasks = tasks.map((x) => (x.id === next.id ? next : x));
+  };
+
+  const startOne = (t: Task, when: StartWhen, stamp: string) => {
+    const at = when.mode === 'at' ? when.at : when.mode === 'limit_reset' ? iso(now() + 95 * MIN) : null;
+    replace({
+      ...t,
+      status: at ? 'scheduled' : 'queued',
+      runAt: at,
+      startAfterReset: when.mode === 'limit_reset',
+      updatedAt: stamp,
+    });
   };
 
   const tick = () => {
@@ -440,6 +551,8 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
           }),
           accounts,
           groups,
+          goals: goalStates.map((g) => ({ ...g })),
+          org: { paused: false, workspaceRoot: '/Users/dev/agent-band/workspaces' },
         }),
       );
     },
@@ -485,16 +598,23 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
       await delay();
       const stamp = iso(now());
       const key = `AB-${String(100 + tasks.length)}`;
+      const goal = input.kind === 'goal';
       tasks.push({
         id: `task-${key.toLowerCase()}`,
         key,
         title: input.title,
         prompt: input.prompt,
-        status: input.runAt ? 'scheduled' : 'queued',
+        status: input.draft ? 'draft' : input.runAt ? 'scheduled' : 'queued',
         priority: input.priority,
         rank: nextRank++,
         target: input.target,
-        workDir: input.workDir,
+        workDir: input.workDir ?? `/Users/dev/agent-band/workspaces/${key}`,
+        mode: input.mode ?? null,
+        kind: goal ? 'goal' : 'task',
+        parentTaskId: null,
+        proposed: false,
+        dependsOn: [],
+        startAfterReset: false,
         runId: null,
         runAt: input.runAt ?? null,
         scheduleId: null,
@@ -504,6 +624,86 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
         error: null,
         noEligibleReason: null,
         createdBy: 'user:local',
+        createdAt: stamp,
+        updatedAt: stamp,
+      });
+      if (goal)
+        goalStates.push({
+          rootTaskId: `task-${key.toLowerCase()}`,
+          status: 'planning',
+          approval: input.approval ?? 'auto',
+          round: 1,
+          leaderAgentId: input.target.type === 'agent' ? input.target.agentId : null,
+        });
+      emit();
+    },
+    async startTasks(ids, when) {
+      await delay();
+      const found = ids.map(findTask);
+      const bad = found.find((t) => t.status !== 'draft' || t.proposed);
+      if (bad) throw new Error(`${bad.key} cannot be started.`);
+      const stamp = iso(now());
+      for (const t of found) startOne(t, when, stamp);
+      emit();
+    },
+    async updateTask(taskId, patch) {
+      await delay();
+      const task = findTask(taskId);
+      if (task.status !== 'draft') throw new Error('Only backlog tasks can be edited.');
+      const { runAt, ...rest } = patch;
+      replace({
+        ...task,
+        ...rest,
+        ...(runAt !== undefined ? { runAt } : {}),
+        updatedAt: iso(now()),
+      });
+      emit();
+    },
+    async deleteTask(taskId) {
+      await delay();
+      const task = findTask(taskId);
+      if (task.status !== 'draft') throw new Error('Only backlog tasks can be deleted.');
+      tasks = tasks
+        .filter((x) => x.id !== taskId)
+        .map((x) => ({ ...x, dependsOn: x.dependsOn.filter((d) => d !== taskId) }));
+      emit();
+    },
+    async approvePlan(goalId, when) {
+      await delay();
+      const stamp = iso(now());
+      const plan = tasks.filter((x) => x.parentTaskId === goalId && x.proposed && x.status === 'draft');
+      if (plan.length === 0) throw new Error('The plan has no subtasks.');
+      for (const t of plan) startOne(t, when, stamp);
+      goalStates = goalStates.map((g) => (g.rootTaskId === goalId ? { ...g, status: 'waiting' } : g));
+      emit();
+    },
+    async rejectPlan(goalId, feedback) {
+      await delay();
+      if (feedback.trim() === '') throw new Error('Feedback is required.');
+      tasks = tasks.filter((x) => !(x.parentTaskId === goalId && x.proposed && x.status === 'draft'));
+      goalStates = goalStates.map((g) =>
+        g.rootTaskId === goalId ? { ...g, status: 'continuing', round: g.round + 1 } : g,
+      );
+      emit();
+    },
+    async addPlanTask(goalId, input) {
+      await delay();
+      const stamp = iso(now());
+      const key = `AB-${String(100 + tasks.length)}`;
+      tasks.push({
+        ...findTask(goalId),
+        id: `task-${key.toLowerCase()}`,
+        key,
+        title: input.title,
+        prompt: input.prompt,
+        status: 'draft',
+        kind: 'task',
+        parentTaskId: goalId,
+        proposed: true,
+        dependsOn: [],
+        priority: input.priority,
+        target: input.target,
+        runId: null,
         createdAt: stamp,
         updatedAt: stamp,
       });

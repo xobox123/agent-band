@@ -78,6 +78,7 @@ it('groups all board statuses, including claimed and denied', async () => {
   }
   const board = await api.boardView(database.db, actor);
   expect(Object.fromEntries(Object.entries(board).map(([k, v]) => [k, v.length]))).toEqual({
+    draft: 0,
     scheduled: 1,
     queued: 1,
     running: 2,

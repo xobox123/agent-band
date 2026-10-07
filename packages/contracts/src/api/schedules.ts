@@ -9,7 +9,8 @@ export const ScheduleTemplate = z
   .object({
     title: z.string().trim().min(1).max(200),
     prompt: z.string().min(1).max(100_000),
-    workDir: z.string().startsWith('/').max(4096),
+    /** Omit to use a folder under the workspace root named after the schedule. */
+    workDir: z.string().startsWith('/').max(4096).optional(),
     target: TaskTarget,
     priority: TaskPriority.default(2),
     mode: TaskMode.optional(),

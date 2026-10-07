@@ -27,6 +27,7 @@ export async function startWorker(
     apiPort: config.port,
     events: composition.events,
     audit: composition.ports.audit,
+    orgSettings: composition.ports.orgSettings,
     tasks: composition.tasks,
     runs: composition.runs,
     usage: composition.usage,

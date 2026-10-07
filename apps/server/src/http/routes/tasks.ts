@@ -1,9 +1,16 @@
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
+import { z } from 'zod';
 import {
+  AddPlanTaskBody,
+  ApprovePlanBody,
   BoardDto,
   CreateTaskBody,
   GoalList,
+  GoalStateDto,
   IdParams,
+  RejectPlanBody,
+  StartTaskBody,
+  StartTasksBody,
   ReorderTaskBody,
   RunEventList,
   RunEventsQuery,
@@ -20,7 +27,8 @@ import type { ActorContext } from '../../platform/actor.ts';
 import type { Task } from '../../modules/tasks/index.ts';
 import type { Composition } from '../../composition.ts';
 import { goalDto, runDto, runEventDto, taskDto } from '../dto.ts';
-import { invalid } from '../../platform/errors.ts';
+import { conflict, invalid } from '../../platform/errors.ts';
+import { planStart } from '../start-when.ts';
 
 export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
   const db = c.database.db;
@@ -181,17 +189,139 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
       {
         schema: {
           tags: ['tasks'],
-          summary: 'Change task priority (queued tasks only)',
+          summary: 'Edit a backlog (draft) task, or change the priority of a queued task',
           params: IdParams,
           body: UpdateTaskBody,
           response: { 200: TaskDto },
         },
       },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        const current = await c.tasks.getTask(db, actor, req.params.id);
+        const { runAt, ...rest } = req.body;
+        if (current.status === 'draft')
+          return dto(
+            actor,
+            await c.tasks.updateDraft(db, actor, req.params.id, {
+              ...rest,
+              ...(runAt !== undefined ? { runAt: runAt === null ? null : new Date(runAt) } : {}),
+            }),
+          );
+        if (Object.keys(req.body).length !== 1 || req.body.priority === undefined)
+          throw conflict('task_not_draft', 'Only draft tasks can be edited');
+        return dto(actor, await c.tasks.setTaskPriority(db, actor, req.params.id, req.body.priority));
+      },
+    );
+
+    app.delete(
+      '/tasks/:id',
+      {
+        schema: {
+          tags: ['tasks'],
+          summary: 'Delete a backlog (draft) task',
+          params: IdParams,
+          response: { 204: z.null() },
+        },
+      },
+      async (req, reply) => {
+        await c.tasks.deleteDraft(db, await c.resolveActor(req), req.params.id);
+        return reply.code(204).send(null);
+      },
+    );
+
+    app.post(
+      '/tasks/start',
+      {
+        schema: {
+          tags: ['tasks'],
+          summary: 'Start backlog tasks (all or none)',
+          body: StartTasksBody,
+          response: { 200: TaskList },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        const found = await Promise.all(req.body.ids.map((id) => c.tasks.getTask(db, actor, id)));
+        const plan = await planStart(c, actor, found, req.body.when);
+        const started = await c.tasks.startTasks(db, actor, req.body.ids, plan);
+        return { items: await dtos(actor, started), nextCursor: null, cursor: await c.cursor() };
+      },
+    );
+
+    app.post(
+      '/tasks/:id/start',
+      {
+        schema: {
+          tags: ['tasks'],
+          summary: 'Start a backlog task',
+          params: IdParams,
+          body: StartTaskBody,
+          response: { 200: TaskDto },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        const task = await c.tasks.getTask(db, actor, req.params.id);
+        const plan = await planStart(c, actor, [task], req.body.when);
+        const [started] = await c.tasks.startTasks(db, actor, [req.params.id], plan);
+        if (!started) throw new Error('start returned no task');
+        return dto(actor, started);
+      },
+    );
+
+    app.post(
+      '/goals/:id/approve',
+      {
+        schema: {
+          tags: ['tasks'],
+          summary: 'Approve the leader plan: queue its proposed subtasks',
+          params: IdParams,
+          body: ApprovePlanBody,
+          response: { 200: GoalStateDto },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        const tree = await c.tasks.listTree(db, actor.orgId, req.params.id);
+        const proposed = tree.filter((t) => t.status === 'draft' && t.proposed);
+        const plan = await planStart(c, actor, proposed, req.body.when);
+        return goalDto(await c.goalApproval.approvePlan(db, actor, req.params.id, plan));
+      },
+    );
+
+    app.post(
+      '/goals/:id/reject',
+      {
+        schema: {
+          tags: ['tasks'],
+          summary: 'Reject the leader plan with feedback; the leader plans again',
+          params: IdParams,
+          body: RejectPlanBody,
+          response: { 200: GoalStateDto },
+        },
+      },
       async (req) =>
-        dto(
-          await c.resolveActor(req),
-          await c.tasks.setTaskPriority(db, await c.resolveActor(req), req.params.id, req.body.priority),
+        goalDto(
+          await c.goalApproval.rejectPlan(db, await c.resolveActor(req), req.params.id, req.body.feedback),
         ),
+    );
+
+    app.post(
+      '/goals/:id/subtasks',
+      {
+        schema: {
+          tags: ['tasks'],
+          summary: 'Add a subtask to the plan awaiting approval',
+          params: IdParams,
+          body: AddPlanTaskBody,
+          response: { 201: TaskDto },
+        },
+      },
+      async (req, reply) => {
+        const actor = await c.resolveActor(req);
+        const task = await c.goalApproval.addPlanTask(db, actor, req.params.id, req.body);
+        return reply.code(201).send(await dto(actor, task));
+      },
     );
 
     app.post(
@@ -251,7 +381,7 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
         };
         const columns = await c.tasks.boardView(db, actor, {
           ...filter,
-          statuses: ['scheduled', 'queued', 'claimed', 'running', 'rate_limited'],
+          statuses: ['draft', 'scheduled', 'queued', 'claimed', 'running', 'rate_limited'],
         });
         const nextCursors = { done: null, failed: null, cancelled: null } as Record<
           'done' | 'failed' | 'cancelled',
@@ -274,6 +404,7 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
           cursor,
           nextCursors,
           columns: {
+            draft: column(columns.draft),
             scheduled: column(columns.scheduled),
             queued: column(columns.queued),
             running: column(columns.running),

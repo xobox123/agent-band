@@ -2,6 +2,7 @@ import type { AccountDto } from '@agent-band/contracts';
 import { useState } from 'react';
 import { errorMessage } from '../../api/client.ts';
 import { useApi } from '../../api/context.tsx';
+import { Badge } from '../../components/Badge.tsx';
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx';
 import { DetailsPanel } from '../../components/DetailsPanel.tsx';
 import { EmptyState } from '../../components/EmptyState.tsx';
@@ -36,7 +37,16 @@ export function AccountsScreen() {
   const providerName = (id: string) => state.data?.providers.find((p) => p.id === id)?.displayName ?? id;
 
   const columns: Column<AccountDto>[] = [
-    { id: 'name', header: 'Name', sortValue: (a) => a.name, cell: (a) => a.name },
+    {
+      id: 'name',
+      header: 'Name',
+      sortValue: (a) => a.name,
+      cell: (a) => (
+        <>
+          {a.name} {a.paused ? <Badge tone="warn">Paused</Badge> : null}
+        </>
+      ),
+    },
     {
       id: 'provider',
       header: 'Provider',
@@ -118,6 +128,20 @@ export function AccountsScreen() {
                 }}
               >
                 Edit
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={mutation.pending}
+                onClick={() => {
+                  void mutation
+                    .run(() => api.accounts.setPaused(account.id, !account.paused))
+                    .then(() => {
+                      state.reload();
+                    });
+                }}
+              >
+                {account.paused ? 'Resume' : 'Pause'}
               </button>
               <button
                 type="button"

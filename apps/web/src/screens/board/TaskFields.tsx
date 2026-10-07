@@ -29,25 +29,41 @@ export const EMPTY_TASK_FIELDS: TaskFieldsValue = {
   mode: '',
 };
 
-export function validateTaskFields(
-  input: Pick<
-    TaskFieldsValue,
-    'title' | 'prompt' | 'workDir' | 'targetType' | 'agentId' | 'label' | 'groupId'
-  >,
-): string | null {
-  if (input.title.trim() === '') return 'Title is required.';
-  if (input.prompt.trim() === '') return 'Prompt is required.';
+type FieldInput = Pick<
+  TaskFieldsValue,
+  'title' | 'prompt' | 'workDir' | 'targetType' | 'agentId' | 'label' | 'groupId'
+>;
+
+/** Inline validation messages keyed by field name. */
+export function taskFieldErrors(input: FieldInput): Record<string, string> {
+  const e: Record<string, string> = {};
+  if (input.title.trim() === '') e['title'] = 'Title is required.';
+  if (input.prompt.trim() === '') e['prompt'] = 'Prompt is required.';
   if (
-    !input.workDir.startsWith('/') ||
-    input.workDir.includes('\0') ||
-    input.workDir.split('/').includes('..')
-  ) {
-    return 'Work directory must be an absolute path without .. segments.';
-  }
-  if (input.targetType === 'agent' && input.agentId === '') return 'Select an agent.';
-  if (input.targetType === 'label' && input.label.trim() === '') return 'Enter a label.';
-  if (input.targetType === 'group' && input.groupId === '') return 'Select a group.';
-  return null;
+    input.workDir !== '' &&
+    (!input.workDir.startsWith('/') ||
+      input.workDir.includes('\0') ||
+      input.workDir.split('/').includes('..'))
+  )
+    e['workDir'] = 'Project folder must be an absolute path without .. segments.';
+  if (input.targetType === 'agent' && input.agentId === '') e['agentId'] = 'Select an agent.';
+  if (input.targetType === 'label' && input.label.trim() === '') e['label'] = 'Enter a label.';
+  if (input.targetType === 'group' && input.groupId === '') e['groupId'] = 'Select a group.';
+  return e;
+}
+
+export function validateTaskFields(input: FieldInput): string | null {
+  return Object.values(taskFieldErrors(input))[0] ?? null;
+}
+
+/** Maps a server validation path (task body or schedule template) to a form field name. */
+export function taskFieldAlias(targetType: TargetType) {
+  const targetName = { agent: 'agentId', label: 'label', group: 'groupId' }[targetType];
+  return (path: string): string => {
+    const p = path.replace(/^template\./, '');
+    if (p === 'target' || p.startsWith('target.')) return targetName;
+    return p;
+  };
 }
 
 export function toNewTask(value: TaskFieldsValue): NewTask {
@@ -60,7 +76,7 @@ export function toNewTask(value: TaskFieldsValue): NewTask {
   return {
     title: value.title.trim(),
     prompt: value.prompt,
-    workDir: value.workDir,
+    ...(value.workDir.trim() ? { workDir: value.workDir.trim() } : {}),
     target,
     priority: value.priority,
     ...(value.mode ? { mode: value.mode } : {}),
@@ -72,7 +88,7 @@ export function fromNewTask(task: NewTask): TaskFieldsValue {
     ...EMPTY_TASK_FIELDS,
     title: task.title,
     prompt: task.prompt,
-    workDir: task.workDir,
+    workDir: task.workDir ?? '',
     priority: task.priority,
     mode: task.mode ?? '',
     targetType: task.target.type,
@@ -96,7 +112,7 @@ export function TaskFields({ value, onChange, agents, groups }: Props) {
   };
   return (
     <>
-      <Field label="Title" help="A short description shown on the board.">
+      <Field label="Title" name="title" required help="A short description shown on the board.">
         <input
           className="field"
           value={value.title}
@@ -106,18 +122,8 @@ export function TaskFields({ value, onChange, agents, groups }: Props) {
           }}
         />
       </Field>
-      <Field label="Work directory" help="Must be inside the agent's effective policy work directories.">
-        <input
-          className="field mono"
-          value={value.workDir}
-          placeholder="/path/to/repo"
-          onChange={(e) => {
-            set('workDir', e.target.value);
-          }}
-        />
-      </Field>
       <div className="wide form-field">
-        <Field label="Prompt" help="Instructions passed to the agent.">
+        <Field label="Prompt" name="prompt" required help="Instructions passed to the agent.">
           <textarea
             className="field"
             rows={5}
@@ -142,7 +148,7 @@ export function TaskFields({ value, onChange, agents, groups }: Props) {
         </select>
       </Field>
       {value.targetType === 'agent' ? (
-        <Field label="Agent" help="An ineligible agent causes a denied task.">
+        <Field label="Agent" name="agentId" required help="An ineligible agent causes a denied task.">
           <select
             className="field"
             value={value.agentId}
@@ -160,7 +166,7 @@ export function TaskFields({ value, onChange, agents, groups }: Props) {
         </Field>
       ) : null}
       {value.targetType === 'label' ? (
-        <Field label="Label" help="Matching agents are evaluated individually.">
+        <Field label="Label" name="label" required help="Matching agents are evaluated individually.">
           <input
             className="field"
             value={value.label}
@@ -172,7 +178,12 @@ export function TaskFields({ value, onChange, agents, groups }: Props) {
         </Field>
       ) : null}
       {value.targetType === 'group' ? (
-        <Field label="Group" help="Uses an eligible member without silent cross-account failover.">
+        <Field
+          label="Group"
+          name="groupId"
+          required
+          help="Uses an eligible member without silent cross-account failover."
+        >
           <select
             className="field"
             value={value.groupId}
@@ -202,6 +213,23 @@ export function TaskFields({ value, onChange, agents, groups }: Props) {
           ))}
         </select>
       </Field>
+      <details className="advanced wide" open={value.workDir !== ''}>
+        <summary>Advanced: use an existing project folder</summary>
+        <Field
+          label="Project folder"
+          name="workDir"
+          help="Leave blank and the task gets its own folder under the workspace root. A folder outside the workspace root must be allowed by the agent's effective policy (work directories), otherwise the task is denied."
+        >
+          <input
+            className="field mono"
+            value={value.workDir}
+            placeholder="/path/to/repo"
+            onChange={(e) => {
+              set('workDir', e.target.value);
+            }}
+          />
+        </Field>
+      </details>
       <Field label="Mode (optional)" help="Capped by the effective maxMode; blank uses the effective cap.">
         <select
           className="field"

@@ -11,14 +11,7 @@ import { validateNewTask } from './NewTaskForm.tsx';
 function setup() {
   const mock = createMockDataSource({ live: false, latencyMs: 0 });
   const createTask = vi.fn((task: NewTask) => mock.createTask(task));
-  const source: BoardDataSource = {
-    load: (f) => mock.load(f),
-    subscribe: (fn) => mock.subscribe(fn),
-    reorder: (a, b) => mock.reorder(a, b),
-    setPriority: (a, b) => mock.setPriority(a, b),
-    cancel: (a) => mock.cancel(a),
-    createTask,
-  };
+  const source: BoardDataSource = { ...mock, createTask };
   render(
     <DataSourceProvider source={source}>
       <BoardScreen />
@@ -76,19 +69,20 @@ describe('Board scheduler support', () => {
     const dialog = screen.getByRole('dialog', { name: 'New task' });
     fireEvent.change(within(dialog).getByLabelText(/^Title/), { target: { value: 'Later' } });
     fireEvent.change(within(dialog).getByLabelText(/^Prompt/), { target: { value: 'Do it' } });
-    fireEvent.change(within(dialog).getByLabelText(/^Work directory/), { target: { value: '/w' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Project folder/), { target: { value: '/w' } });
     fireEvent.change(within(dialog).getByLabelText('Target type'), { target: { value: 'label' } });
     fireEvent.change(within(dialog).getByLabelText(/^Label/), { target: { value: 'gpu' } });
 
     fireEvent.change(within(dialog).getByLabelText(/^Run at/), { target: { value: '2020-01-01T10:00' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    expect(within(dialog).getByRole('button', { name: 'Create and start' })).toBeDisabled();
+    fireEvent.blur(within(dialog).getByLabelText(/^Run at/));
     expect(within(dialog).getByText('Run at must be in the future.')).toBeInTheDocument();
     expect(createTask).not.toHaveBeenCalled();
 
     const local = '2099-03-04T10:30';
     fireEvent.change(within(dialog).getByLabelText(/^Run at/), { target: { value: local } });
     fireEvent.change(within(dialog).getByLabelText(/^Max attempts/), { target: { value: '5' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create and start' }));
     await waitFor(() => {
       expect(createTask).toHaveBeenCalledWith({
         title: 'Later',
@@ -98,6 +92,7 @@ describe('Board scheduler support', () => {
         priority: 2,
         runAt: new Date(local).toISOString(),
         maxAttempts: 5,
+        draft: false,
       });
     });
   });

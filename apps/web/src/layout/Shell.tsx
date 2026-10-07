@@ -7,6 +7,7 @@ import { ALL_ITEMS, routeLabel } from '../router/routes.ts';
 import type { RouteId } from '../router/routes.ts';
 import { useTheme } from '../theme/useTheme.ts';
 import { Header } from './Header.tsx';
+import { PauseBanner } from './PauseBanner.tsx';
 import { IconRail } from './IconRail.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { WorkspaceContext } from './WorkspaceContext.tsx';
@@ -83,6 +84,7 @@ export function Shell({ children }: { children: (route: RouteId) => ReactNode })
           <Sidebar route={route} theme={theme} onToggleTheme={toggle} />
           <div className="workspace" ref={areaRef}>
             <Header title={routeLabel(route)} count={count} connection={connection} />
+            <PauseBanner />
             <div className="workspace-top">
               <main className="main" id="main">
                 {children(route)}

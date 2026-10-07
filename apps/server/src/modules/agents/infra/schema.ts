@@ -26,6 +26,7 @@ export const agents = pgTable(
     labels: text('labels').array().notNull().default([]),
     policyId: uuid('policy_id'),
     enabled: boolean('enabled').notNull().default(true),
+    paused: boolean('paused').notNull().default(false),
     gitName: text('git_name').notNull(),
     gitEmail: text('git_email').notNull(),
     createdBy: uuid('created_by').notNull(),

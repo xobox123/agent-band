@@ -15,6 +15,9 @@ import {
   orgUseCases,
 } from '../index.ts';
 import { getOrganization, setOrgPolicy, updateOrganization } from '../index.ts';
+import { tmpdir as osTmp } from 'node:os';
+import { join as pathJoin } from 'node:path';
+const TEST_OPTS = { workspaceRoot: pathJoin(osTmp(), 'agent-band-test-ws') };
 
 const at = <T>(v: T | undefined): T => {
   if (v === undefined) throw new Error('unexpected undefined');
@@ -31,7 +34,7 @@ async function setup() {
   const opened = await openTestDatabase();
   database = opened;
   const db = opened.db;
-  const boot = await bootstrapLocalOrg(db);
+  const boot = await bootstrapLocalOrg(db, TEST_OPTS);
   const audit = createAudit(authorizer);
   async function makeUser(handle: string): Promise<ActorContext> {
     const { id } = await withTx(db, (tx) =>
@@ -45,7 +48,7 @@ async function setup() {
 describe('bootstrapLocalOrg', () => {
   it('is idempotent and creates owner binding, local user and dispatcher', async () => {
     const { db, boot, audit } = await setup();
-    const again = await bootstrapLocalOrg(db);
+    const again = await bootstrapLocalOrg(db, TEST_OPTS);
     expect(again.orgId).toBe(boot.orgId);
     expect(again.localUser.principalId).toBe(boot.localUser.principalId);
     expect(again.dispatcher.principalId).toBe(boot.dispatcher.principalId);
@@ -69,7 +72,9 @@ describe('bootstrapLocalOrg', () => {
   it('survives concurrent bootstrap calls', async () => {
     const opened = await openTestDatabase();
     database = opened;
-    const results = await Promise.all(Array.from({ length: 5 }, () => bootstrapLocalOrg(opened.db)));
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => bootstrapLocalOrg(opened.db, TEST_OPTS)),
+    );
     expect(new Set(results.map((r) => r.orgId)).size).toBe(1);
   });
 });
@@ -232,7 +237,10 @@ describe('organization settings', () => {
     const org = await getOrganization(db, boot.orgId);
     expect(org.timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
     expect(org.policyId).toBeNull();
-    expect(await orgSettings.get(db, boot.orgId)).toEqual({ taskKeyPrefix: 'AB', timezone: org.timezone });
+    expect(await orgSettings.get(db, boot.orgId)).toMatchObject({
+      taskKeyPrefix: 'AB',
+      timezone: org.timezone,
+    });
   });
 
   it('updates settings with validation, authorization and audit', async () => {
@@ -243,7 +251,11 @@ describe('organization settings', () => {
       name: 'Acme',
     });
     expect(updated).toMatchObject({ timezone: 'Europe/Warsaw', taskKeyPrefix: 'XY', name: 'Acme' });
-    expect(await orgSettings.get(db, boot.orgId)).toEqual({ taskKeyPrefix: 'XY', timezone: 'Europe/Warsaw' });
+    expect(await orgSettings.get(db, boot.orgId)).toMatchObject({
+      taskKeyPrefix: 'XY',
+      timezone: 'Europe/Warsaw',
+      paused: false,
+    });
     await expect(updateOrganization(db, boot.localUser, { timezone: 'Mars/Base' })).rejects.toMatchObject({
       status: 400,
     });

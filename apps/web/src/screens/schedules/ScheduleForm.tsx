@@ -16,7 +16,8 @@ import {
   TaskFields,
   fromNewTask,
   toNewTask,
-  validateTaskFields,
+  taskFieldAlias,
+  taskFieldErrors,
 } from '../board/TaskFields.tsx';
 import type { TaskFieldsValue } from '../board/TaskFields.tsx';
 
@@ -74,7 +75,6 @@ export function ScheduleForm({
   const [enabled, setEnabled] = useState(schedule?.enabled ?? true);
   const [overlap, setOverlap] = useState<ScheduleOverlap>(schedule?.overlap ?? 'skip');
   const [fields, setFields] = useState<TaskFieldsValue>(() => initialFields(schedule));
-  const [touched, setTouched] = useState(false);
   const [preview, setPreview] = useState<Preview>({ state: 'idle' });
   const seq = useRef(0);
 
@@ -102,19 +102,19 @@ export function ScheduleForm({
     };
   }, [api, cron, zone]);
 
-  let invalid: string | null = null;
-  if (name.trim() === '') invalid = 'Name is required.';
-  else if (cron.trim() === '') invalid = 'Cron expression is required.';
-  else invalid = validateTaskFields(fields);
+  const errors: Record<string, string> = {};
+  if (name.trim() === '') errors['name'] = 'Name is required.';
+  if (cron.trim() === '') errors['cron'] = 'Cron expression is required.';
+  Object.assign(errors, taskFieldErrors(fields));
+  const invalid = Object.keys(errors).length > 0;
 
   const submit = () => {
-    setTouched(true);
     if (invalid) return;
     const task = toNewTask(fields);
     const template = {
       title: task.title,
       prompt: task.prompt,
-      workDir: task.workDir,
+      ...(task.workDir ? { workDir: task.workDir } : {}),
       target: toTargetDto(task.target),
       priority: task.priority,
       ...(task.mode ? { mode: task.mode } : {}),
@@ -148,11 +148,12 @@ export function ScheduleForm({
       submitLabel={schedule ? 'Save schedule' : 'Create schedule'}
       pending={pending}
       error={error}
-      invalid={touched ? invalid : null}
+      errors={errors}
+      fieldAlias={taskFieldAlias(fields.targetType)}
       onSubmit={submit}
       onCancel={onCancel}
     >
-      <Field label="Name">
+      <Field label="Name" name="name" required>
         <input
           className="field"
           value={name}
@@ -164,6 +165,8 @@ export function ScheduleForm({
       </Field>
       <Field
         label="Cron expression"
+        name="cron"
+        required
         help={`Five fields: minute hour day month weekday. ${describeCron(cron)}.`}
       >
         <input

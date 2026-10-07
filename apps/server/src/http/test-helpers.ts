@@ -25,9 +25,11 @@ export interface TestApi {
 export async function makeApi(opts: { heartbeatMs?: number; webDist?: string } = {}): Promise<TestApi> {
   const database = await openTestDatabase();
   let current: ActorContext | null = null;
+  const home = mkdtempSync(join(tmpdir(), 'ab-test-'));
   const c = await createComposition({
     database,
-    home: mkdtempSync(join(tmpdir(), 'ab-test-')),
+    home,
+    workspaceRoot: join(home, 'workspaces'),
     secretKey: fixedKeySource(Buffer.alloc(32, 7)),
     resolveActor: (req, local) => (current ? { ...current, requestId: req.id } : local),
   });

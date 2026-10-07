@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx';
+import { StartDialog } from '../../components/StartDialog.tsx';
 import { EmptyState } from '../../components/EmptyState.tsx';
 import { ErrorState } from '../../components/ErrorState.tsx';
 import { FilterInput } from '../../components/FilterInput.tsx';
 import { FilterSelect } from '../../components/FilterSelect.tsx';
 import { Toolbar } from '../../components/Toolbar.tsx';
 import { useDataSource } from '../../data/context.tsx';
-import type { BoardFilter, Priority, Task } from '../../data/types.ts';
+import type { BoardFilter, Priority, StartWhen, Task } from '../../data/types.ts';
 import { useEscape } from '../../hooks/useEscape.ts';
 import { useNow } from '../../hooks/useNow.ts';
 import { useItemCount, useWorkspace } from '../../layout/WorkspaceContext.tsx';
@@ -21,7 +22,8 @@ import { evaluateDrop } from './dnd.ts';
 import type { DropTarget } from './dnd.ts';
 import type { DndApi, DndHint } from './dndApi.ts';
 import { buildLookup, viewOf } from './model.ts';
-import type { TaskView } from './model.ts';
+import type { BacklogApi, TaskView } from './model.ts';
+import { errorMessage } from '../../api/client.ts';
 import { useBoard } from './useBoard.ts';
 
 const AGENT_HELP =
@@ -47,6 +49,14 @@ export function BoardScreen() {
   const [agentDetailsId, setAgentDetailsId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [startIds, setStartIds] = useState<string[] | null>(null);
+  const [approveId, setApproveId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [addToGoal, setAddToGoal] = useState<string | null>(null);
+  const [planBusy, setPlanBusy] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -129,6 +139,88 @@ export function BoardScreen() {
     setConfirmId(taskId);
   }, []);
   const confirmView = confirmId ? known.current.get(confirmId) : undefined;
+
+  const backlog: BacklogApi = useMemo(
+    () => ({
+      selected: checked,
+      toggle: (id) => {
+        setChecked((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+      },
+      start: (id) => {
+        setStartIds([id]);
+      },
+      edit: (id) => {
+        setEditId(id);
+      },
+      remove: (id) => {
+        setDeleteId(id);
+      },
+      review: (goalId) => {
+        setSelectedId(goalId);
+      },
+    }),
+    [checked],
+  );
+  // Selection only makes sense for tasks that are still in the backlog.
+  useEffect(() => {
+    if (!snapshot) return;
+    setChecked((prev) => {
+      const live = new Set(
+        snapshot.tasks.filter((t) => t.status === 'draft' && !t.proposed).map((t) => t.id),
+      );
+      const next = new Set([...prev].filter((id) => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [snapshot]);
+
+  const startNow = async (ids: string[], when: StartWhen) => {
+    await source.startTasks(ids, when);
+    setStartIds(null);
+    setChecked(new Set());
+    reload();
+  };
+  const planFor = (goal: TaskView | undefined) => {
+    if (!goal || goal.goal?.status !== 'awaiting_approval' || !snapshot) return undefined;
+    const lookup = buildLookup(snapshot);
+    const items = views.filter(
+      (v) => v.task.parentTaskId === goal.task.id && v.task.proposed && v.task.status === 'draft',
+    );
+    const guard = async (job: () => Promise<void>) => {
+      setPlanBusy(true);
+      setPlanError(null);
+      try {
+        await job();
+      } catch (e) {
+        setPlanError(errorMessage(e));
+      } finally {
+        setPlanBusy(false);
+        reload();
+      }
+    };
+    return {
+      items,
+      titleOf: (id: string) => lookup.tasks.get(id)?.title ?? id,
+      leader: goal.agent?.name ?? goal.assignee,
+      busy: planBusy,
+      error: planError,
+      onApprove: () => {
+        setApproveId(goal.task.id);
+      },
+      onRequestChanges: (feedback: string) => {
+        void guard(() => source.rejectPlan(goal.task.id, feedback));
+      },
+      onAdd: () => {
+        setAddToGoal(goal.task.id);
+      },
+    };
+  };
+  const editView = editId ? known.current.get(editId) : undefined;
+  const deleteView = deleteId ? known.current.get(deleteId) : undefined;
 
   // Drag and drop
   const dragRef = useRef<{ task: Task; laneKey: string } | null>(null);
@@ -248,6 +340,7 @@ export function BoardScreen() {
         selectedId={selectedId}
         pendingIds={pendingIds}
         dnd={dnd}
+        backlog={backlog}
         onOpen={setSelectedId}
         onSetPriority={onSetPriority}
         onCancel={onCancel}
@@ -268,6 +361,17 @@ export function BoardScreen() {
         >
           New task
         </button>
+        {checked.size > 0 ? (
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setStartIds([...checked]);
+            }}
+          >
+            {`Start selected (${String(checked.size)})`}
+          </button>
+        ) : null}
         <FilterInput
           label="Search tasks"
           placeholder="Search key or title (/)"
@@ -372,6 +476,8 @@ export function BoardScreen() {
           onCancel={onCancel}
           onSetPriority={onSetPriority}
           onOpenLogs={openLogs}
+          backlog={backlog}
+          plan={planFor(selectedView)}
         />
       ) : null}
       {creating ? (
@@ -385,6 +491,80 @@ export function BoardScreen() {
             await source.createTask(task);
             setCreating(false);
             reload();
+          }}
+        />
+      ) : null}
+      {editView ? (
+        <NewTaskForm
+          agents={snapshot?.agents ?? []}
+          groups={snapshot?.groups ?? []}
+          task={editView.task}
+          onCancel={() => {
+            setEditId(null);
+          }}
+          onSave={async (patch) => {
+            await source.updateTask(editView.task.id, patch);
+            setEditId(null);
+            reload();
+          }}
+        />
+      ) : null}
+      {addToGoal ? (
+        <NewTaskForm
+          agents={(snapshot?.agents ?? []).filter((a) => a.role !== 'leader')}
+          groups={snapshot?.groups ?? []}
+          onCancel={() => {
+            setAddToGoal(null);
+          }}
+          onSubmit={async (task) => {
+            await source.addPlanTask(addToGoal, task);
+            setAddToGoal(null);
+            reload();
+          }}
+        />
+      ) : null}
+      {startIds ? (
+        <StartDialog
+          title="Start tasks"
+          subject={
+            startIds.length === 1
+              ? (known.current.get(startIds[0] ?? '')?.task.key ?? 'the task')
+              : `${String(startIds.length)} tasks`
+          }
+          onCancel={() => {
+            setStartIds(null);
+          }}
+          onConfirm={(when) => startNow(startIds, when)}
+        />
+      ) : null}
+      {approveId ? (
+        <StartDialog
+          title="Approve plan"
+          subject="the proposed subtasks"
+          confirmLabel="Approve and start"
+          onCancel={() => {
+            setApproveId(null);
+          }}
+          onConfirm={async (when) => {
+            await source.approvePlan(approveId, when);
+            setApproveId(null);
+            reload();
+          }}
+        />
+      ) : null}
+      {deleteView ? (
+        <ConfirmDialog
+          title={`Delete ${deleteView.task.key}?`}
+          message={`Delete ${deleteView.task.key} from the backlog? This cannot be undone.`}
+          confirmLabel="Delete"
+          cancelLabel="Keep"
+          onCancel={() => {
+            setDeleteId(null);
+          }}
+          onConfirm={() => {
+            const id = deleteView.task.id;
+            setDeleteId(null);
+            void mutate(id, () => source.deleteTask(id));
           }}
         />
       ) : null}

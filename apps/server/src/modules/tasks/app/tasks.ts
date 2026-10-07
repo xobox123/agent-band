@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, ilike, inArray, isNotNull, lte, notInArray, sql } from 'drizzle-orm';
+import { mkdir } from 'node:fs/promises';
+import { join, posix } from 'node:path';
 import type { ActorContext } from '../../../platform/actor.ts';
 import type { Db } from '../../../platform/db.ts';
 import type { Tx } from '../../../platform/tx.ts';
@@ -9,11 +11,13 @@ import type { DbOrTx, ModuleDeps, OrgSettings } from '../../../ports/index.ts';
 import { formatTaskKey } from '../domain/key.ts';
 import {
   CreateTask,
+  UpdateDraft,
   boardColumn,
   boardColumns,
   resource,
   type CreateTaskInput,
   type TaskStatus,
+  type UpdateDraftInput,
 } from '../domain/task.ts';
 import {
   resolveGoalLimits,
@@ -38,6 +42,12 @@ export interface TaskFilter {
   text?: string;
   scheduleId?: string;
 }
+/** Overrides when a started draft becomes claimable. */
+export interface StartPlan {
+  runAt: Date;
+  /** The time is the reset of an account limit window. */
+  afterReset?: boolean;
+}
 /** Tree placement of a subtask; only the delegation module supplies it, after its own checks. */
 export interface ChildPlacement {
   kind: Exclude<TaskKind, 'goal'>;
@@ -45,6 +55,8 @@ export interface ChildPlacement {
   parentTaskId: string;
   depth: number;
   dependsOn: string[];
+  /** A leader's proposal under plan approval: created as a draft until a human approves the plan. */
+  proposed?: boolean;
 }
 
 export type TasksDeps = ModuleDeps & { orgSettings: OrgSettings; now?: () => Date };
@@ -141,9 +153,11 @@ export function createTasks(deps: TasksDeps) {
   ): Promise<Task> {
     const parsed = CreateTask.safeParse(input);
     if (!parsed.success) throw invalid(parsed.error.issues);
-    const { runAt, goalLimits, ...rest } = parsed.data;
+    const { runAt, goalLimits, draft, approval, workDir: givenDir, workDirSlug, ...rest } = parsed.data;
     if (goalLimits && rest.kind !== 'goal')
       throw invalid([{ path: 'goalLimits', message: 'only allowed for goals' }]);
+    if (approval === 'required' && rest.kind !== 'goal')
+      throw invalid([{ path: 'approval', message: 'only allowed for goals' }]);
     if (runAt && runAt.getTime() <= (deps.now?.() ?? new Date()).getTime())
       throw invalid([{ path: 'runAt', message: 'must be in the future' }]);
     if (!child) await deps.authorizer.authorize(tx, actor, 'task.write', resource(parsed.data.target));
@@ -156,16 +170,24 @@ export function createTasks(deps: TasksDeps) {
       .returning();
     if (!counter) throw new Error('Missing task counter');
     const id = randomUUID();
+    if (!child) await checkDependencies(tx, actor.orgId, id, rest.dependsOn);
+    const key = formatTaskKey(settings.taskKeyPrefix, counter.seq);
+    if (!givenDir && child) throw invalid([{ path: 'workDir', message: 'required for subtasks' }]);
+    const workDir =
+      givenDir ?? join(settings.workspaceRoot, (workDirSlug ?? key).replace(/[^a-zA-Z0-9._-]+/g, '-'));
+    if (!givenDir) await mkdir(workDir, { recursive: true, mode: 0o700 });
     const [task] = await tx
       .insert(tasks)
       .values({
         ...rest,
+        workDir,
         ...(child ?? {}),
         id,
         ...(rest.kind === 'goal' ? { rootTaskId: id } : {}),
         ...(runAt ? { runAt, status: 'scheduled' as const } : {}),
+        ...(draft || child?.proposed ? { status: 'draft' as const } : {}),
         orgId: actor.orgId,
-        key: formatTaskKey(settings.taskKeyPrefix, counter.seq),
+        key,
         createdBy: actor.principalId,
       })
       .returning();
@@ -176,11 +198,12 @@ export function createTasks(deps: TasksDeps) {
         orgId: actor.orgId,
         limits: resolveGoalLimits(goalLimits),
         goalPrompt: task.prompt,
+        approval,
       });
     return changed(tx, actor, task, child ? 'task.create_subtask' : 'task.create');
   }
 
-  const openStatuses = ['scheduled', 'queued', 'claimed', 'running', 'rate_limited'] as const;
+  const openStatuses = ['draft', 'scheduled', 'queued', 'claimed', 'running', 'rate_limited'] as const;
   const isOpen = (status: Task['status']): boolean => (openStatuses as readonly string[]).includes(status);
 
   async function treeOf(db: DbOrTx, orgId: string, rootTaskId: string): Promise<Task[]> {
@@ -224,6 +247,29 @@ export function createTasks(deps: TasksDeps) {
     return goal;
   }
 
+  function requeue(tx: Tx, actor: ActorContext, id: string, prompt: string): Promise<Task> {
+    return update(
+      tx,
+      actor,
+      id,
+      { status: 'queued', prompt, attempt: 1, workerId: null, error: null, resumeAt: null, runAt: null },
+      'task.continue',
+    );
+  }
+
+  async function removeDraft(tx: Tx, actor: ActorContext, task: Task): Promise<void> {
+    await tx.delete(tasks).where(where(actor, task.id));
+    if (task.kind === 'goal') await tx.delete(goalStates).where(eq(goalStates.rootTaskId, task.id));
+    const dependents = await tx
+      .update(tasks)
+      .set({ dependsOn: sql`array_remove(${tasks.dependsOn}, ${task.id}::uuid)` })
+      .where(and(eq(tasks.orgId, actor.orgId), sql`${task.id}::uuid = any(${tasks.dependsOn})`))
+      .returning({ id: tasks.id });
+    await audit(tx, actor, 'task.delete', task);
+    await publish(tx, 'task.updated', { orgId: actor.orgId, taskId: task.id });
+    for (const d of dependents) await publish(tx, 'task.updated', { orgId: actor.orgId, taskId: d.id });
+  }
+
   async function cancelOpen(
     tx: Tx,
     actor: ActorContext,
@@ -255,6 +301,59 @@ export function createTasks(deps: TasksDeps) {
     }
     return cancelled;
   }
+
+  const proposedDraft = (t: Task): boolean => t.status === 'draft' && t.proposed;
+
+  /** Status a draft takes when it is started: scheduled while its run time is ahead, queued otherwise. */
+  function startValues(task: Task, now: Date, plan?: StartPlan) {
+    const at = plan?.runAt ?? task.runAt;
+    return at && at.getTime() > now.getTime()
+      ? { status: 'scheduled' as const, runAt: at, startAfterReset: plan?.afterReset === true }
+      : { status: 'queued' as const, runAt: null, startAfterReset: false };
+  }
+
+  /** Rejects dependency lists that reference unknown tasks, the task itself or form a cycle. */
+  async function checkDependencies(tx: Tx, orgId: string, id: string, dependsOn: string[]): Promise<void> {
+    if (dependsOn.includes(id))
+      throw invalid([{ path: 'dependsOn', message: 'a task cannot depend on itself' }]);
+    const seen = new Set<string>();
+    let frontier = [...new Set(dependsOn)];
+    const known = new Set<string>();
+    while (frontier.length > 0) {
+      const rows = await tx
+        .select({ id: tasks.id, dependsOn: tasks.dependsOn })
+        .from(tasks)
+        .where(and(eq(tasks.orgId, orgId), inArray(tasks.id, frontier)));
+      for (const r of rows) known.add(r.id);
+      if (!dependsOn.every((d) => known.has(d)))
+        throw invalid([{ path: 'dependsOn', message: 'unknown task in dependsOn' }]);
+      const next: string[] = [];
+      for (const r of rows) {
+        seen.add(r.id);
+        for (const d of r.dependsOn) {
+          if (d === id) throw invalid([{ path: 'dependsOn', message: 'dependencies form a cycle' }]);
+          if (!seen.has(d)) next.push(d);
+        }
+      }
+      frontier = [...new Set(next)];
+    }
+  }
+
+  async function lockProposed(tx: Tx, orgId: string, rootTaskId: string): Promise<Task[]> {
+    return tx
+      .select()
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.orgId, orgId),
+          eq(tasks.rootTaskId, rootTaskId),
+          eq(tasks.status, 'draft'),
+          eq(tasks.proposed, true),
+        ),
+      )
+      .orderBy(asc(tasks.createdAt), asc(tasks.id))
+      .for('update');
+  }
   return {
     createTask(db: Db, actor: ActorContext, input: CreateTaskInput): Promise<Task> {
       return db.transaction((tx) => createIn(tx, actor, input));
@@ -263,6 +362,88 @@ export function createTasks(deps: TasksDeps) {
     /** Creates a subtask inside a goal tree. Callers (the delegation module) enforce the rules first. */
     createChildTask: (tx: Tx, actor: ActorContext, input: CreateTaskInput, placement: ChildPlacement) =>
       createIn(tx, actor, input, placement),
+
+    /** Edits a backlog task; queued and later tasks are immutable. */
+    async updateDraft(db: Db, actor: ActorContext, id: string, input: UpdateDraftInput): Promise<Task> {
+      const parsed = UpdateDraft.safeParse(input);
+      if (!parsed.success) throw invalid(parsed.error.issues);
+      const { runAt, ...patch } = parsed.data;
+      if (runAt && runAt.getTime() <= (deps.now?.() ?? new Date()).getTime())
+        throw invalid([{ path: 'runAt', message: 'must be in the future' }]);
+      return db.transaction(async (tx) => {
+        const task = await get(tx, actor, id);
+        if (task.status !== 'draft') throw conflict('task_not_draft', 'Only draft tasks can be edited');
+        await deps.authorizer.authorize(tx, actor, 'task.write', resource(task.target));
+        if (patch.target) await deps.authorizer.authorize(tx, actor, 'task.write', resource(patch.target));
+        if (patch.dependsOn) await checkDependencies(tx, actor.orgId, id, patch.dependsOn);
+        if (task.rootTaskId && task.kind !== 'goal' && patch.workDir) {
+          const [root] = await tx.select().from(tasks).where(where(actor, task.rootTaskId));
+          const base = root ? posix.normalize(root.workDir).replace(/\/+$/, '') : undefined;
+          const dir = posix.normalize(patch.workDir).replace(/\/+$/, '');
+          if (base !== undefined && dir !== base && !dir.startsWith(`${base}/`))
+            throw invalid([{ path: 'workDir', message: `must be inside the goal workDir ${root?.workDir}` }]);
+        }
+        return update(tx, actor, id, { ...patch, ...(runAt !== undefined ? { runAt } : {}) }, 'task.update');
+      });
+    },
+    async deleteDraft(db: Db, actor: ActorContext, id: string): Promise<void> {
+      await db.transaction(async (tx) => {
+        const task = await get(tx, actor, id);
+        if (task.status !== 'draft') throw conflict('task_not_draft', 'Only draft tasks can be deleted');
+        await deps.authorizer.authorize(tx, actor, 'task.write', resource(task.target));
+        await removeDraft(tx, actor, task);
+      });
+    },
+    /** Moves backlog tasks to the queue; all or none. */
+    async startTasks(
+      db: Db,
+      actor: ActorContext,
+      ids: string[],
+      planFor?: (t: Task) => StartPlan | undefined,
+    ): Promise<Task[]> {
+      const unique = [...new Set(ids)];
+      return db.transaction(async (tx) => {
+        const rows = await tx
+          .select()
+          .from(tasks)
+          .where(and(eq(tasks.orgId, actor.orgId), inArray(tasks.id, unique)))
+          .orderBy(asc(tasks.id))
+          .for('update');
+        if (rows.length !== unique.length) throw notFound('task');
+        const now = deps.now?.() ?? new Date();
+        for (const t of rows) {
+          if (t.status !== 'draft')
+            throw conflict('task_not_draft', `${t.key} is ${t.status}, only drafts can be started`);
+          if (t.proposed) throw conflict('task_proposed', `${t.key} is part of a plan awaiting approval`);
+          await deps.authorizer.authorize(tx, actor, 'task.write', resource(t.target));
+        }
+        const started = new Map<string, Task>();
+        for (const t of rows)
+          started.set(t.id, await update(tx, actor, t.id, startValues(t, now, planFor?.(t)), 'task.start'));
+        return unique.flatMap((id) => started.get(id) ?? []);
+      });
+    },
+    /** Queues every proposed subtask of a goal (plan approval). */
+    async startProposed(
+      tx: Tx,
+      actor: ActorContext,
+      rootTaskId: string,
+      planFor?: (t: Task) => StartPlan | undefined,
+    ): Promise<Task[]> {
+      const now = deps.now?.() ?? new Date();
+      const started: Task[] = [];
+      for (const t of await lockProposed(tx, actor.orgId, rootTaskId))
+        started.push(await update(tx, actor, t.id, startValues(t, now, planFor?.(t)), 'task.start'));
+      return started;
+    },
+    /** Removes the proposed subtasks of a goal (plan rejection) and returns them. */
+    async deleteProposed(tx: Tx, actor: ActorContext, rootTaskId: string): Promise<Task[]> {
+      const rows = await lockProposed(tx, actor.orgId, rootTaskId);
+      for (const t of rows) await removeDraft(tx, actor, t);
+      return rows;
+    },
+    countProposed: async (db: DbOrTx, orgId: string, rootTaskId: string): Promise<number> =>
+      (await treeOf(db, orgId, rootTaskId)).filter(proposedDraft).length,
     getGoalState: getGoal,
     lockGoalState: lockGoal,
     updateGoalState: patchGoal,
@@ -335,13 +516,11 @@ export function createTasks(deps: TasksDeps) {
     /** Puts a finished goal task back in the queue for its next leader turn. */
     async requeueGoalTask(tx: Tx, actor: ActorContext, id: string, prompt: string): Promise<Task> {
       system(actor);
-      return update(
-        tx,
-        actor,
-        id,
-        { status: 'queued', prompt, attempt: 1, workerId: null, error: null, resumeAt: null, runAt: null },
-        'task.continue',
-      );
+      return requeue(tx, actor, id, prompt);
+    },
+    /** Same as requeueGoalTask for a human decision (plan rejection); the caller authorizes. */
+    async requeueGoalTurn(tx: Tx, actor: ActorContext, id: string, prompt: string): Promise<Task> {
+      return requeue(tx, actor, id, prompt);
     },
     /** Forces the goal task into a terminal status when the goal ends outside a leader run. */
     async finishGoalTask(
@@ -364,12 +543,17 @@ export function createTasks(deps: TasksDeps) {
       system(actor);
       const goal = await lockGoal(tx, actor.orgId, rootTaskId);
       if (!goal || (goal.status !== 'planning' && goal.status !== 'continuing')) return goal;
+      if (turn.failure) await cancelOpen(tx, actor, rootTaskId, 'leader run failed', { only: proposedDraft });
+      const awaitingPlan =
+        !turn.failure &&
+        goal.approval === 'required' &&
+        (await lockProposed(tx, actor.orgId, rootTaskId)).length > 0;
       return patchGoal(tx, actor.orgId, rootTaskId, {
         leaderAgentId: turn.agentId,
         leaderSessionId: turn.sessionId ?? goal.leaderSessionId,
         ...(turn.failure
           ? { status: 'failed' as const, reason: `leader run failed: ${turn.failure}` }
-          : { status: 'waiting' as const }),
+          : { status: awaitingPlan ? ('awaiting_approval' as const) : ('waiting' as const) }),
       });
     },
     async addGoalNote(tx: Tx, orgId: string, rootTaskId: string, note: GoalNote): Promise<GoalState> {
@@ -510,6 +694,7 @@ export function createTasks(deps: TasksDeps) {
     ): Promise<Record<(typeof boardColumns)[number], Task[]>> {
       const result = await db.transaction((tx) => list(tx, actor, filter));
       const columns: Record<(typeof boardColumns)[number], Task[]> = {
+        draft: [],
         scheduled: [],
         queued: [],
         running: [],

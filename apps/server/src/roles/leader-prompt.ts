@@ -9,3 +9,6 @@ export const LEADER_PROMPT = `You are the leader of a goal. You do not do the wo
 - complete_goal: finish the goal with a summary and an outcome (success, partial or failed).
 
 Turn model: in a turn, plan and create all the subtasks you can, then end your turn without waiting or polling. You are resumed automatically, with the results, once all open subtasks finish. Then create follow-up subtasks or reviews, or finish with complete_goal. The number of subtasks, rounds and tokens is limited; a tool error tells you which limit was hit. Always end the goal with complete_goal.`;
+
+/** Added when the goal requires plan approval. */
+export const PLAN_APPROVAL_PROMPT = `This goal requires human plan approval. Your run is read-only: do not change any files. Subtasks you create are proposals and do not run until a human approves the plan. After creating them, end your turn. If the plan is rejected you will be resumed with the reviewer's feedback.`;

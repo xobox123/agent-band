@@ -34,6 +34,13 @@ export interface TickResult {
 
 const LOCK_KEY = 'agent-band:scheduler';
 
+const slugOf = (name: string): string =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'schedule';
+
 export function createScheduler(deps: SchedulerDeps) {
   const clock = () => deps.now?.() ?? new Date();
   const where = (actor: ActorContext, id: string) =>
@@ -65,7 +72,11 @@ export function createScheduler(deps: SchedulerDeps) {
   function system(actor: ActorContext) {
     if (actor.kind !== 'system') throw forbidden('System actor required');
   }
-  const templateInput = (t: ScheduleTemplate, scheduleId: string) => ({ ...t, scheduleId });
+  const templateInput = (t: ScheduleTemplate, scheduleId: string, name: string) => ({
+    ...t,
+    scheduleId,
+    workDirSlug: slugOf(name),
+  });
 
   async function fire(tx: Tx, actor: ActorContext, s: Schedule, now: Date): Promise<'fired' | 'skipped'> {
     const tz = await timezoneOf(tx, s.orgId, s.timezone);
@@ -80,7 +91,7 @@ export function createScheduler(deps: SchedulerDeps) {
       await changed(tx, actor, updated, 'schedule.skip', { reason: 'overlap' });
       return 'skipped';
     }
-    const task = await deps.tasks.createTask(tx, actor, templateInput(s.template, s.id));
+    const task = await deps.tasks.createTask(tx, actor, templateInput(s.template, s.id, s.name));
     const [updated] = await tx
       .update(schedules)
       .set({ lastFiredAt: now, lastTaskId: task.id, nextFireAt: next, updatedAt: now })
@@ -251,7 +262,11 @@ export function createScheduler(deps: SchedulerDeps) {
         await deps.authorizer.authorize(tx, actor, 'task.write', {});
         const current = await get(tx, actor, id);
         const now = clock();
-        const task = await deps.tasks.createTask(tx, actor, templateInput(current.template, id));
+        const task = await deps.tasks.createTask(
+          tx,
+          actor,
+          templateInput(current.template, id, current.name),
+        );
         const [schedule] = await tx
           .update(schedules)
           .set({ lastFiredAt: now, lastTaskId: task.id, updatedAt: now })

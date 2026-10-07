@@ -7,6 +7,9 @@ export const OrganizationDto = z.object({
   taskKeyPrefix: z.string(),
   timezone: z.string(),
   policyId: Id.nullable(),
+  paused: z.boolean(),
+  /** Absolute folder under which tasks get their own working folder by default. */
+  workspaceRoot: z.string(),
   createdAt: IsoDate,
 });
 export type OrganizationDto = z.infer<typeof OrganizationDto>;
@@ -19,9 +22,13 @@ export const UpdateOrganizationBody = z
       .regex(/^[A-Z][A-Z0-9]{1,9}$/)
       .optional(),
     timezone: z.string().min(1).max(100).optional(),
+    workspaceRoot: z.string().startsWith('/').max(4096).optional(),
   })
   .strict();
 export type UpdateOrganizationBody = z.infer<typeof UpdateOrganizationBody>;
+
+export const SetPausedBody = z.object({ paused: z.boolean() }).strict();
+export type SetPausedBody = z.infer<typeof SetPausedBody>;
 
 export const SetOrgPolicyBody = z.object({ policyId: Id.nullable() }).strict();
 export type SetOrgPolicyBody = z.infer<typeof SetOrgPolicyBody>;

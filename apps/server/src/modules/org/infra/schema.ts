@@ -1,5 +1,15 @@
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 export const organizations = pgTable('organizations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -9,6 +19,8 @@ export const organizations = pgTable('organizations', {
     .notNull()
     .$defaultFn(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
   policyId: uuid('policy_id'),
+  paused: boolean('paused').notNull().default(false),
+  workspaceRoot: text('workspace_root'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

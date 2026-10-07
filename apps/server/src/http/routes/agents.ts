@@ -10,6 +10,7 @@ import {
   CreateGroupBody,
   GroupMemberParams,
   IdParams,
+  SetPausedBody,
   UpdateAgentBody,
   UpdateGroupBody,
 } from '@agent-band/contracts';
@@ -77,6 +78,20 @@ export function agentRoutes(c: Composition): FastifyPluginCallbackZod {
         await requirePolicy(c, actor.orgId, req.body.policyId);
         return c.agents.updateAgent(db, actor, req.params.id, req.body);
       },
+    );
+
+    app.put(
+      '/agents/:id/pause',
+      {
+        schema: {
+          tags: ['agents'],
+          summary: 'Pause or resume an agent; it gets no new tasks while paused',
+          params: IdParams,
+          body: SetPausedBody,
+          response: { 200: AgentDto },
+        },
+      },
+      async (req) => c.agents.setAgentPaused(db, await c.resolveActor(req), req.params.id, req.body.paused),
     );
 
     app.delete(

@@ -4,6 +4,7 @@ export { createPrincipal, principalRegistry, type NewPrincipal } from './app/pri
 export {
   getOrganization,
   orgSettings,
+  setOrgPaused,
   setOrgPolicy,
   updateOrganization,
   type OrganizationDto,

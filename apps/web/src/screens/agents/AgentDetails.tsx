@@ -1,3 +1,4 @@
+import { Badge } from '../../components/Badge.tsx';
 import type { AgentDto } from '@agent-band/contracts';
 import type { ReactNode } from 'react';
 import { errorMessage } from '../../api/client.ts';
@@ -102,6 +103,7 @@ function Loaded({
       <div className="panel-row">
         <Avatar name={agent.name} avatar={agent.avatar} size={36} />
         <StatusDot kind="agent" value={agent.enabled ? 'enabled' : 'disabled'} />
+        {agent.paused ? <Badge tone="warn">Paused</Badge> : null}
       </div>
       <h3 className="section-title">Persona and identity</h3>
       <dl className="kv">

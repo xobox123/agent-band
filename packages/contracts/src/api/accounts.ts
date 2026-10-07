@@ -52,6 +52,7 @@ export const AccountDto = z.object({
     maxConcurrentRuns: z.number(),
   }),
   providerIdentity: z.string().nullable(),
+  paused: z.boolean(),
   hasSecret: z.boolean(),
   secretUpdatedAt: IsoDate.nullable(),
   createdBy: Id,

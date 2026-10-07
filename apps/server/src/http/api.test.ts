@@ -74,7 +74,8 @@ describe('org', () => {
     expect(org.policyId).toBeTruthy();
     const policy = (await call('GET', `/policies/${org.policyId}`)).json();
     expect(policy.name).toBe('Default');
-    expect(policy.rules).toEqual({ maxMode: 'edit' });
+    expect(policy.rules).toMatchObject({ maxMode: 'edit' });
+    expect(policy.rules.workDirs).toEqual([org.workspaceRoot]);
   });
 });
 
@@ -570,6 +571,7 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/accounts/{id}',
   'PATCH /api/v1/accounts/{id}',
   'DELETE /api/v1/accounts/{id}',
+  'PUT /api/v1/accounts/{id}/pause',
   'PUT /api/v1/accounts/{id}/provider-identity',
   'GET /api/v1/agent-groups',
   'POST /api/v1/agent-groups',
@@ -582,6 +584,7 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/agents/{id}',
   'PATCH /api/v1/agents/{id}',
   'DELETE /api/v1/agents/{id}',
+  'PUT /api/v1/agents/{id}/pause',
   'GET /api/v1/agents/{id}/effective-policy',
   'GET /api/v1/agents/{id}/effective-skills',
   'GET /api/v1/audit',
@@ -591,10 +594,14 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/dashboard',
   'GET /api/v1/events',
   'GET /api/v1/goals',
+  'POST /api/v1/goals/{id}/approve',
+  'POST /api/v1/goals/{id}/reject',
+  'POST /api/v1/goals/{id}/subtasks',
   'GET /api/v1/me',
   'POST /api/v1/mcp',
   'GET /api/v1/organization',
   'PATCH /api/v1/organization',
+  'PUT /api/v1/organization/pause',
   'PUT /api/v1/organization/policy',
   'GET /api/v1/policies',
   'POST /api/v1/policies',
@@ -629,6 +636,9 @@ const EXPECTED_ROUTES = [
   'POST /api/v1/tasks',
   'GET /api/v1/tasks/{id}',
   'PATCH /api/v1/tasks/{id}',
+  'DELETE /api/v1/tasks/{id}',
+  'POST /api/v1/tasks/start',
+  'POST /api/v1/tasks/{id}/start',
   'POST /api/v1/tasks/{id}/cancel',
   'POST /api/v1/tasks/{id}/reorder',
   'GET /api/v1/tasks/{id}/tree',

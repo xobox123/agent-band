@@ -103,7 +103,7 @@ describe('Schedules screen', () => {
 
     fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Weekly' } });
     fireEvent.change(within(dialog).getByLabelText(/^Title/), { target: { value: 'Report' } });
-    fireEvent.change(within(dialog).getByLabelText(/^Work directory/), { target: { value: '/work' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Project folder/), { target: { value: '/work' } });
     fireEvent.change(within(dialog).getByLabelText(/^Prompt/), { target: { value: 'Summarise' } });
     fireEvent.change(within(dialog).getByLabelText(/^Agent/), { target: { value: ID(1) } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create schedule' }));

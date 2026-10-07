@@ -43,6 +43,12 @@ export function toTask(dto: TaskDto, runId: string | null): Task {
     rank: dto.rank,
     target: toTarget(dto.target),
     workDir: dto.workDir,
+    mode: dto.mode,
+    kind: dto.kind,
+    parentTaskId: dto.parentTaskId,
+    proposed: dto.proposed,
+    dependsOn: dto.dependsOn,
+    startAfterReset: dto.startAfterReset,
     runId,
     runAt: dto.runAt,
     scheduleId: dto.scheduleId,
@@ -81,6 +87,7 @@ export function toAgent(dto: AgentDto, status?: AgentStatus, runningRunId: strin
     handle: dto.handle,
     role: dto.role,
     enabled: dto.enabled,
+    paused: dto.paused,
     accountId: dto.accountId,
     model: dto.model,
     labels: dto.labels,
@@ -98,6 +105,7 @@ export function toAccount(dto: AccountDto, tokensToday: number): Account {
     provider: dto.provider,
     dailyTokenBudget: dto.limits.dailyTokenBudget ?? null,
     tokensToday,
+    paused: dto.paused,
   };
 }
 
