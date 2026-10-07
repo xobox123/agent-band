@@ -615,6 +615,8 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/principals',
   'GET /api/v1/principals/{id}',
   'GET /api/v1/providers',
+  'GET /api/v1/providers/diagnostics',
+  'POST /api/v1/providers/diagnostics',
   'GET /api/v1/role-bindings',
   'POST /api/v1/role-bindings',
   'DELETE /api/v1/role-bindings/{id}',

@@ -10,6 +10,9 @@ const EnvSchema = z.object({
   AGENT_BAND_WORKER_ID: z.string().min(1).optional(),
   AGENT_BAND_SCHEDULER_INTERVAL_MS: z.coerce.number().int().min(100).max(3_600_000).default(15_000),
   AGENT_BAND_WORKSPACE_ROOT: z.string().startsWith('/').optional(),
+  AGENT_BAND_CLAUDE_BIN: z.string().min(1).optional(),
+  AGENT_BAND_CODEX_BIN: z.string().min(1).optional(),
+  AGENT_BAND_GEMINI_BIN: z.string().min(1).optional(),
   DATABASE_URL: z.string().min(1).optional(),
   PGLITE_DIR: z.string().min(1).optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
@@ -23,6 +26,8 @@ export interface Config {
   workerId?: string;
   workspaceRoot?: string;
   schedulerIntervalMs: number;
+  /** Explicit CLI binaries; when unset they are discovered. */
+  cliBins: { claude?: string; codex?: string; gemini?: string };
   databaseUrl?: string;
   pgliteDir?: string;
   logLevel: string;
@@ -45,6 +50,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     workerId: e.AGENT_BAND_WORKER_ID,
     workspaceRoot: e.AGENT_BAND_WORKSPACE_ROOT,
     schedulerIntervalMs: e.AGENT_BAND_SCHEDULER_INTERVAL_MS,
+    cliBins: {
+      ...(e.AGENT_BAND_CLAUDE_BIN && { claude: e.AGENT_BAND_CLAUDE_BIN }),
+      ...(e.AGENT_BAND_CODEX_BIN && { codex: e.AGENT_BAND_CODEX_BIN }),
+      ...(e.AGENT_BAND_GEMINI_BIN && { gemini: e.AGENT_BAND_GEMINI_BIN }),
+    },
     databaseUrl: e.DATABASE_URL,
     pgliteDir: e.PGLITE_DIR,
     logLevel: e.LOG_LEVEL,

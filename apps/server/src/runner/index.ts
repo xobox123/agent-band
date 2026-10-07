@@ -4,6 +4,7 @@ export { readCodexRateLimits } from './rollout.ts';
 export {
   claudeArgs,
   codexArgs,
+  codexMcpOverrides,
   runEnv,
   ClaudeAdapter,
   CodexAdapter,
@@ -33,3 +34,14 @@ export {
   readCodexModelsCache,
 } from './models.ts';
 export { parseClaudeUsageText, parseResetTime } from './claude-usage.ts';
+export {
+  CLI_NAMES,
+  CliLocator,
+  cliCommand,
+  cliEnvVar,
+  getCliLocator,
+  missingCliMessage,
+  setCliLocator,
+  withCliPath,
+} from './cli-locator.ts';
+export type { CliDiagnostic, CliName, CliSource, LocatorOptions } from './cli-locator.ts';

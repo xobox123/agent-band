@@ -24,6 +24,7 @@ describe('provider wiring', () => {
         args: claudeArgs(spec),
         cwd: '/work',
         env: { ...process.env, ...runEnv(spec, 'claude') },
+        missingMessage: 'Claude Code CLI not found. Install it or set AGENT_BAND_CLAUDE_BIN',
       },
       expect.any(Function),
     );
@@ -37,6 +38,7 @@ describe('provider wiring', () => {
       args: codexArgs(spec),
       cwd: '/work',
       env: { ...process.env, ...runEnv(spec, 'openai') },
+      missingMessage: 'Codex CLI not found. Install it or set AGENT_BAND_CODEX_BIN',
     });
     expect(await call[2]?.()).toEqual([]);
     expect(readCodexRateLimits).not.toHaveBeenCalled();

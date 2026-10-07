@@ -261,3 +261,13 @@
   align-items: center;
   gap: 8px;
 }
+
+.cli-diagnostics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}

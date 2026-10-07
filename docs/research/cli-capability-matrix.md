@@ -168,6 +168,36 @@ The official app-server `account/read` provides safe account metadata. The pinne
 
 Chat wire rejection and profile semantics also require versioned launch configuration. [0.160.1](https://github.com/openai/codex/releases/tag/rust-v0.160.1) fixes preservation of Windows environment overrides for remote MCP; upgrading can affect credential/config propagation. Pin the binary and fixture parser together.
 
+### 9. Streamable HTTP MCP server for leader runs (verified locally on 0.160.1)
+
+`CODEX_HOME=$(mktemp -d) codex mcp add agent_band --url http://127.0.0.1:1/api/v1/mcp --bearer-token-env-var AGENT_BAND_RUN_TOKEN` writes exactly:
+
+```toml
+[mcp_servers.agent_band]
+url = "http://127.0.0.1:1/api/v1/mcp"
+bearer_token_env_var = "AGENT_BAND_RUN_TOKEN"
+```
+
+The same server can be supplied per run, without touching the user's `config.toml`, through `-c` overrides (values are parsed as TOML). `codex mcp list --json` with these flags reports transport `streamable_http`, the URL including any query string, and `auth_status: bearer_token`:
+
+```sh
+-c 'mcp_servers.agent_band.url="http://127.0.0.1:4870/api/v1/mcp?runId=<run>"'
+-c 'mcp_servers.agent_band.bearer_token_env_var="AGENT_BAND_RUN_TOKEN"'
+-c 'mcp_servers.agent_band.default_tools_approval_mode="approve"'
+-c 'mcp_servers.agent_band.required=true'
+-c 'mcp_servers.agent_band.startup_timeout_sec=30'
+```
+
+The token is read by Codex from its own environment (`bearer_token_env_var`), so it never appears in argv or in a file; agent-band only sets `AGENT_BAND_RUN_TOKEN` in the spawned process. Other raw-config keys of the same table (from [config.schema.json](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/core/config.schema.json)): `http_headers`, `env_http_headers`, `enabled_tools`, `disabled_tools`, `tool_timeout_sec`, `tools.<tool>.approval_mode`.
+
+Approval in non-interactive mode, from [mcp_tool_call.rs](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/core/src/mcp_tool_call.rs): a tool call asks for approval unless the server mode is `approve`. With the default mode `auto`, a tool without `readOnlyHint` annotations counts as destructive/open-world and requires approval; under `approval_policy = "never"` that approval is answered with a denial ("MCP tool call requires approval, but approval policy is never"). `default_tools_approval_mode` (`auto | prompt | writes | approve`) is a per-server key, so `approve` pre-approves only the agent_band tools and leaves shell, patch and every other MCP server on the normal policy. Delegation safety does not rest on this prompt: every tool call is authorized by the run token and the delegation rules on the server side.
+
+Server-side authentication accepts `Authorization: Bearer <run token>` in addition to the Claude headers. The run is found by the token's hash; a `runId` query parameter in the URL is optional and must match the run the token belongs to, otherwise the request is rejected with 401.
+
+Continuations: no `--resume` is used for Codex. The continuation prompt is self-contained (goal, round and structured child results), so each Codex leader turn is a fresh `codex exec`. The leader system prompt is prepended to the prompt, as for every Codex run.
+
+Not verified without a model call: that `codex exec` actually lists and calls the tools of the server end to end, and that `required = true` fails the run when the server is down. Manual smoke recipe: create an agent with role `leader` and `canDelegate` on a Codex subscription account plus a worker agent, create a goal with a one-line prompt such as "ask worker to print hello, then complete the goal", and expect `delegation.create_subtask` and `delegation.complete_goal` audit entries.
+
 ## Google Gemini CLI
 
 ### 1. Non-interactive execution and telemetry

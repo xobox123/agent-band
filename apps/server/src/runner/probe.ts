@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
+import { cliCommand, missingCliMessage, withCliPath } from './cli-locator.ts';
 import { parseClaudeUsageText, type ClaudeUsage } from './claude-usage.ts';
 import { readCodexNative, startCodexNativeLogin, type CodexUsageInfo } from './codex-app-server.ts';
 import { object } from './parsers.ts';
@@ -52,10 +53,14 @@ export function isDefaultConfigDir(provider: CliProvider, dir: string | null): b
 }
 /** The default dir is left implicit: setting the variable changes where the CLI looks up its login. */
 export function cliEnv(provider: CliProvider, dir: string | null): NodeJS.ProcessEnv {
-  return isDefaultConfigDir(provider, dir) || dir === null
-    ? { ...process.env }
-    : { ...process.env, [ENV_KEY[provider]]: dir };
+  const env =
+    isDefaultConfigDir(provider, dir) || dir === null
+      ? { ...process.env }
+      : { ...process.env, [ENV_KEY[provider]]: dir };
+  return withCliPath(cliNameOf(provider), env);
 }
+export const cliNameOf = (provider: CliProvider): 'claude' | 'codex' =>
+  provider === 'claude' ? 'claude' : 'codex';
 const shellQuote = (s: string): string => (/^[\w@%+=:,./~-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);
 
 export function loginCommand(provider: CliProvider, dir: string | null): string {
@@ -76,7 +81,7 @@ interface CliOutput {
 
 function bin(provider: CliProvider, bins: CliBins | undefined, args: string[]) {
   const b = bins?.[provider];
-  return { cmd: b?.cmd ?? (provider === 'claude' ? 'claude' : 'codex'), args: [...(b?.args ?? []), ...args] };
+  return { cmd: b?.cmd ?? cliCommand(cliNameOf(provider)), args: [...(b?.args ?? []), ...args] };
 }
 
 function runCli(
@@ -195,7 +200,7 @@ export async function probeAccount(
     { cmd, args, env: cliEnv(provider, configDir) },
     opts.timeoutMs ?? PROBE_TIMEOUT_MS,
   );
-  if (res.missing) return fail(`${name} CLI not found in PATH`);
+  if (res.missing) return fail(missingCliMessage(cliNameOf(provider)));
   if (res.timedOut)
     return fail(`${name} did not answer within ${(opts.timeoutMs ?? PROBE_TIMEOUT_MS) / 1000}s`);
   if (res.error) return fail(res.error);
@@ -222,7 +227,7 @@ async function legacyCodexStatus(
     error,
     loginCommand: command,
   });
-  if (res.missing) return fail('codex CLI not found in PATH');
+  if (res.missing) return fail(missingCliMessage('codex'));
   if (res.timedOut) return fail('codex did not answer in time');
   const text = `${res.stdout}\n${res.stderr}`;
   const loggedIn = res.code === 0 && /logged in/i.test(text) && !/not logged in/i.test(text);
@@ -320,7 +325,7 @@ function spawnLogin(
       resolveHandle({
         started: false,
         command,
-        error: err.code === 'ENOENT' ? `${cmd} not found in PATH` : err.message,
+        error: err.code === 'ENOENT' ? missingCliMessage(cliNameOf(provider)) : err.message,
         done,
       });
     });
@@ -359,7 +364,7 @@ export async function readClaudeUsage(
       { cmd, args, env: cliEnv('claude', account.configDir), cwd: dir },
       opts.timeoutMs ?? PROBE_TIMEOUT_MS,
     );
-    if (res.missing) throw new Error('claude CLI not found in PATH');
+    if (res.missing) throw new Error(missingCliMessage('claude'));
     if (res.timedOut) throw new Error('claude /usage did not answer in time');
     let text: string;
     try {
@@ -400,7 +405,7 @@ export async function setupCodexApiKey(
     { cmd, args, env: cliEnv('openai', configDir), input: `${apiKey}\n` },
     opts.timeoutMs ?? PROBE_TIMEOUT_MS,
   );
-  if (res.missing) return { ok: false, error: 'codex CLI not found in PATH' };
+  if (res.missing) return { ok: false, error: missingCliMessage('codex') };
   if (res.timedOut) return { ok: false, error: 'codex did not answer in time' };
   return res.code === 0 ? { ok: true } : { ok: false, error: 'codex rejected the API key login' };
 }
@@ -424,7 +429,7 @@ export async function probeApiKey(
       { cmd, args, env: { ...cliEnv('claude', account.configDir), ANTHROPIC_API_KEY: account.apiKey } },
       opts.timeoutMs ?? PROBE_TIMEOUT_MS,
     );
-    if (res.missing) return fail('claude CLI not found in PATH');
+    if (res.missing) return fail(missingCliMessage('claude'));
     if (res.timedOut) return fail('claude did not answer in time');
     const parsed = parseClaudeStatus(res.stdout);
     if (!parsed) return fail('unexpected output from claude auth status');

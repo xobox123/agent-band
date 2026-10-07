@@ -51,6 +51,8 @@ export const RunSpec = z.object({
   skillsDir: z.string().optional(),
   /** Claude MCP config file attached to goal (leader) runs. */
   mcpConfigPath: z.string().optional(),
+  /** Delegation MCP server URL for Codex leader runs; the run token is passed through env only. */
+  mcpServerUrl: z.string().optional(),
   /** Claude session to resume on a leader continuation turn. */
   resumeSessionId: z.string().optional(),
   gitIdentity: z.object({ name: z.string(), email: z.string() }),

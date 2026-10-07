@@ -11,6 +11,7 @@ import {
   ModelList,
   ProbeConfigBody,
   ProbeResult,
+  ProviderDiagnostics,
   RefreshLimitsResult,
   ProviderList,
   SetPausedBody,
@@ -18,6 +19,7 @@ import {
   UpdateAccountBody,
 } from '@agent-band/contracts';
 import type { Composition } from '../../composition.ts';
+import { getCliLocator } from '../../runner/index.ts';
 
 /** After an API key is stored, prepares the harness home and records the connection; failures are not fatal. */
 async function verifyAfterChange(
@@ -51,6 +53,45 @@ export function accountRoutes(c: Composition): FastifyPluginCallbackZod {
         const actor = await c.resolveActor(req);
         await c.ports.authorizer.authorize(db, actor, 'read', {});
         return { items: c.listProviders() };
+      },
+    );
+
+    const diagnostics = async (fresh: boolean) => {
+      const locator = getCliLocator();
+      const run = fresh
+        ? (n: 'claude' | 'codex' | 'gemini') => locator.detect(n)
+        : (n: 'claude' | 'codex' | 'gemini') => locator.ensure(n);
+      const [claude, openai, gemini] = await Promise.all([run('claude'), run('codex'), run('gemini')]);
+      return { claude, openai, gemini };
+    };
+    app.get(
+      '/providers/diagnostics',
+      {
+        schema: {
+          tags: ['accounts'],
+          summary: 'Where the provider CLIs were found',
+          response: { 200: ProviderDiagnostics },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        await c.ports.authorizer.authorize(c.database.db, actor, 'read', {});
+        return diagnostics(false);
+      },
+    );
+    app.post(
+      '/providers/diagnostics',
+      {
+        schema: {
+          tags: ['accounts'],
+          summary: 'Detect the provider CLIs again',
+          response: { 200: ProviderDiagnostics },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        await c.ports.authorizer.authorize(c.database.db, actor, 'org.manage', {});
+        return diagnostics(true);
       },
     );
 

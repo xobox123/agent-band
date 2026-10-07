@@ -6,6 +6,7 @@ import type { Config } from './platform/config.ts';
 import { startAll } from './roles/all.ts';
 import { startApi } from './roles/api.ts';
 import type { RoleHandle } from './roles/types.ts';
+import { setCliLocator, type CliLocator } from './runner/index.ts';
 import { startWorker } from './roles/worker-hook.ts';
 
 export interface RunningServer extends RoleHandle {
@@ -16,10 +17,13 @@ export interface RunningServer extends RoleHandle {
 export interface StartOptions {
   webDist?: string;
   resolveActor?: CompositionOptions['resolveActor'];
+  /** Already detected CLI locator; installed as the process-wide one. */
+  cliLocator?: CliLocator;
 }
 
 /** Opens the database, wires the composition root and starts the configured role. */
 export async function start(config: Config, opts: StartOptions = {}): Promise<RunningServer> {
+  if (opts.cliLocator) setCliLocator(opts.cliLocator);
   mkdirSync(config.home, { recursive: true, mode: 0o700 });
   const database = await openDatabase({
     databaseUrl: config.databaseUrl,

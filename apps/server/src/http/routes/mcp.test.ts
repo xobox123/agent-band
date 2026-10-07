@@ -15,7 +15,7 @@ import {
 import { newRunToken, registerRunAuth } from '../../execution/app/run-auth.ts';
 import { FakeEffectivePolicySource, FakeEffectiveSkillsSource, openPolicy } from '../../ports/testing.ts';
 import { createWorker, type Worker } from '../../roles/worker.ts';
-import { claudeArgs } from '../../runner/adapters.ts';
+import { claudeArgs, codexArgs } from '../../runner/adapters.ts';
 import { makeApi, type TestApi } from '../test-helpers.ts';
 
 let api: TestApi;
@@ -256,6 +256,52 @@ describe('MCP protocol', () => {
   });
 });
 
+describe('MCP bearer auth', () => {
+  const body = { jsonrpc: '2.0', id: 3, method: 'tools/list' };
+  const bearer = (token: string, query = '') =>
+    api.app.inject({
+      method: 'POST',
+      url: `/api/v1/mcp${query}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: body,
+    });
+
+  it('identifies the run by the token alone', async () => {
+    const { creds } = await runningLeader();
+    const res = await bearer(creds.token);
+    expect(res.statusCode).toBe(200);
+    expect(res.json<Rpc>().result?.tools).toHaveLength(7);
+  });
+
+  it('accepts a runId query parameter only when it matches the token', async () => {
+    const { creds } = await runningLeader();
+    expect((await bearer(creds.token, `?runId=${creds.runId}`)).statusCode).toBe(200);
+    const other = await bearer(creds.token, `?runId=${crypto.randomUUID()}`);
+    expect(other.statusCode).toBe(401);
+  });
+
+  it('rejects an unknown token and a runId without credentials', async () => {
+    const { creds } = await runningLeader();
+    expect((await bearer('nope')).statusCode).toBe(401);
+    expect((await bearer('nope', `?runId=${creds.runId}`)).statusCode).toBe(401);
+    const none = await api.app.inject({
+      method: 'POST',
+      url: `/api/v1/mcp?runId=${creds.runId}`,
+      payload: body,
+    });
+    expect(none.statusCode).toBe(401);
+  });
+
+  it('rejects the run header of another run combined with this token', async () => {
+    const { creds } = await runningLeader();
+    const res = await post(
+      { [RUN_ID_HEADER]: crypto.randomUUID(), authorization: `Bearer ${creds.token}` },
+      body,
+    );
+    expect(res.statusCode).toBe(401);
+  });
+});
+
 describe('leader runner arguments', () => {
   const base: RunSpec = {
     runId: 'r',
@@ -281,6 +327,30 @@ describe('leader runner arguments', () => {
     expect(args[args.indexOf('--resume') + 1]).toBe('sess-1');
   });
 
+  it('attaches the Codex MCP server through -c overrides without the token in argv', () => {
+    const args = codexArgs({
+      ...base,
+      systemPrompt: 'LEADER',
+      mcpServerUrl: 'http://127.0.0.1:4870/api/v1/mcp?runId=r',
+      env: { AGENT_BAND_RUN_TOKEN: 'secret-token' },
+    });
+    const overrides = args.flatMap((a, i) => (args[i - 1] === '-c' ? [a] : []));
+    expect(overrides).toEqual([
+      'mcp_servers.agent_band.url="http://127.0.0.1:4870/api/v1/mcp?runId=r"',
+      'mcp_servers.agent_band.bearer_token_env_var="AGENT_BAND_RUN_TOKEN"',
+      'mcp_servers.agent_band.default_tools_approval_mode="approve"',
+      'mcp_servers.agent_band.required=true',
+      'mcp_servers.agent_band.startup_timeout_sec=30',
+    ]);
+    expect(args.join(' ')).not.toContain('secret-token');
+    expect(args.at(-1)).toBe('LEADER\n\ngoal');
+    expect(args.indexOf('-c')).toBeLessThan(args.length - 1);
+  });
+
+  it('leaves non-goal Codex runs without MCP config', () => {
+    expect(codexArgs(base).join(' ')).not.toContain('mcp_servers');
+  });
+
   it('leaves non-goal runs untouched', () => {
     const args = claudeArgs(base);
     for (const flag of ['--mcp-config', '--strict-mcp-config', '--allowedTools', '--resume'])
@@ -291,7 +361,7 @@ describe('leader runner arguments', () => {
 describe('goal runs through the worker', () => {
   /** Adapter whose "agent" performs MCP calls over the HTTP endpoint while it runs. */
   class ScriptedAdapter implements ProviderAdapter {
-    readonly provider = 'claude';
+    readonly provider: ProviderAdapter['provider'] = 'claude';
     readonly specs: RunSpec[] = [];
     readonly configs: string[] = [];
     constructor(private readonly script: (s: RunSpec, call: McpCall) => Promise<NormalizedEvent[]>) {}
@@ -486,21 +556,21 @@ describe('goal runs through the worker', () => {
     expect(leaderSpecs.map((x) => x.resumeSessionId)).toEqual([undefined, 'old', undefined]);
   });
 
-  it('denies a goal for a Codex leader at admission', async () => {
+  it('runs a Codex leader goal through Bearer-only MCP calls and passes the summary in the prompt', async () => {
     const { c } = api;
     const db = api.database.db;
     const account = await c.accounts.createAccount(db, c.localUser, {
       name: 'codex',
       provider: 'openai',
       type: 'cli',
-      limits: { maxConcurrentRuns: 2 },
+      limits: { maxConcurrentRuns: 4 },
     });
-    const leader = await c.agents.createAgent(db, c.localUser, {
-      slug: 'cx',
-      name: 'cx',
-      accountId: account.id,
-      role: 'leader',
-    });
+    const mk = (slug: string, role: 'leader' | 'worker') =>
+      c.agents.createAgent(db, c.localUser, { slug, name: slug, accountId: account.id, role });
+    const leader = await mk('cx', 'leader');
+    const worker1 = await mk('cxw', 'worker');
+    const policy = new FakeEffectivePolicySource(openPolicy({ maxMode: 'edit' }));
+    policy.byAgent.set(leader.id, openPolicy({ canDelegate: true, maxMode: 'edit' }));
     const goal = await c.tasks.createTask(db, c.localUser, {
       title: 'Goal',
       prompt: 'Go',
@@ -508,13 +578,57 @@ describe('goal runs through the worker', () => {
       target: { agentId: leader.id },
       kind: 'goal',
     });
-    const adapter = new ScriptedAdapter(() => Promise.resolve([]));
-    await startWorker(adapter);
-    const task = await waitFor(async () => {
-      const t = (await c.tasks.listTasks(db, c.localUser)).find((x) => x.id === goal.id);
-      return t?.status === 'denied' ? t : undefined;
+    const bearerCall = async (spec: RunSpec, name: string, args: unknown) => {
+      const url = new URL(spec.mcpServerUrl ?? '');
+      const res = await api.app.inject({
+        method: 'POST',
+        url: `${url.pathname}${url.search}`,
+        headers: { authorization: `Bearer ${spec.env?.['AGENT_BAND_RUN_TOKEN'] ?? ''}` },
+        payload: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
+      });
+      expect(res.statusCode).toBe(200);
+      return res.json<Rpc>();
+    };
+    const adapter = new (class extends ScriptedAdapter {
+      override readonly provider = 'openai';
+    })(async (spec) => {
+      if (spec.agentId !== leader.id) return [{ kind: 'text', text: 'worker output' }];
+      if (adapter.specs.filter((x) => x.agentId === leader.id).length === 1) {
+        const r = await bearerCall(spec, 'create_subtask', {
+          title: 'T',
+          prompt: 'p',
+          workDir: '/work/repo',
+          target: { agentId: worker1.id },
+        });
+        expect(r.result?.isError).toBeUndefined();
+        return [
+          { kind: 'session', sessionId: 'codex-thread' },
+          { kind: 'text', text: 'planned' },
+        ];
+      }
+      const r = await bearerCall(spec, 'complete_goal', { summary: 'shipped', outcome: 'success' });
+      expect(r.result?.isError).toBeUndefined();
+      return [{ kind: 'text', text: 'done' }];
     });
-    expect(task.error).toContain('leader agents are not supported on provider openai yet');
-    expect(adapter.specs).toHaveLength(0);
+    await startWorker(adapter, policy);
+    await waitFor(async () => {
+      await tick();
+      return (await c.tasks.getGoalState(db, c.orgId, goal.id))?.status === 'completed';
+    });
+    const specs = adapter.specs.filter((x) => x.agentId === leader.id);
+    expect(specs).toHaveLength(2);
+    for (const spec of specs) {
+      expect(spec.mcpConfigPath).toBeUndefined();
+      expect(spec.resumeSessionId).toBeUndefined();
+      expect(spec.mcpServerUrl).toBe(`http://127.0.0.1:4870/api/v1/mcp?runId=${spec.runId}`);
+      const argv = codexArgs(spec).join('\n');
+      expect(argv).toContain('mcp_servers.agent_band.url=');
+      expect(argv).not.toContain(spec.env?.['AGENT_BAND_RUN_TOKEN'] ?? 'missing');
+    }
+    expect(specs[1]?.prompt).toContain('worker output');
+    expect(specs[1]?.systemPrompt).toContain('complete_goal');
+    const second = specs[1];
+    if (!second) throw new Error('missing continuation spec');
+    expect(codexArgs(second).at(-1)).toContain('complete_goal');
   });
 });

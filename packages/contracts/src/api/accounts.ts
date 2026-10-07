@@ -32,6 +32,21 @@ export const ProviderDto = z.object({
 export type ProviderDto = z.infer<typeof ProviderDto>;
 export const ProviderList = z.object({ items: z.array(ProviderDto) });
 
+export const CliDiagnostic = z.object({
+  binary: z.string().nullable(),
+  version: z.string().nullable(),
+  source: z.enum(['env', 'path', 'shell', 'known']).nullable(),
+  error: z.string().optional(),
+});
+export type CliDiagnostic = z.infer<typeof CliDiagnostic>;
+/** Where each provider CLI was found on the machine running the server. */
+export const ProviderDiagnostics = z.object({
+  claude: CliDiagnostic,
+  openai: CliDiagnostic,
+  gemini: CliDiagnostic,
+});
+export type ProviderDiagnostics = z.infer<typeof ProviderDiagnostics>;
+
 export const StopAt = z
   .object({
     fiveHourPercent: z.number().int().min(1).max(100).optional(),

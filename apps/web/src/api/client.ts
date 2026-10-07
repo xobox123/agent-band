@@ -37,6 +37,7 @@ import type {
   ScheduleDto,
   SchedulePreviewDto,
   UpdateScheduleBody,
+  ProviderDiagnostics,
   ProviderDto,
   RoleBindingDto,
   RunDto,
@@ -250,6 +251,8 @@ export function createApi(fetchImpl?: typeof fetch) {
     },
 
     providers: () => get<{ items: ProviderDto[] }>('/providers'),
+    providerDiagnostics: () => get<ProviderDiagnostics>('/providers/diagnostics'),
+    redetectProviders: () => send<ProviderDiagnostics>('POST', '/providers/diagnostics'),
     accounts: {
       list: () => get<Page<AccountDto>>('/accounts'),
       create: (body: CreateAccountBody) => send<AccountDto>('POST', '/accounts', body),

@@ -53,6 +53,16 @@ export async function verifyRunToken(
   return { runId: row.runId, orgId: row.orgId, agentId: row.agentId, workDir: row.workDir };
 }
 
+/** Finds the run a token was issued for; the caller must still verify it with verifyRunToken. */
+export async function findRunIdByToken(db: Db | Tx, token: string): Promise<string | null> {
+  if (!token) return null;
+  const [row] = await db
+    .select({ runId: runAuth.runId })
+    .from(runAuth)
+    .where(eq(runAuth.tokenHash, hashToken(token)));
+  return row?.runId ?? null;
+}
+
 export type ToolCall = Pick<AuthorizeToolRequest, 'toolName' | 'toolInput' | 'toolUseId'>;
 
 /**

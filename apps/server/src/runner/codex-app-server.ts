@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { cliCommand, missingCliMessage } from './cli-locator.ts';
 import { object } from './parsers.ts';
 import type { CliBins, LimitWindowInfo } from './probe.ts';
 
@@ -22,7 +23,7 @@ export async function withCodexAppServer<T>(
   keepAlive = false,
 ): Promise<T> {
   const bin = opts.bins?.openai;
-  const child: ChildProcess = spawn(bin?.cmd ?? 'codex', [...(bin?.args ?? []), 'app-server'], {
+  const child: ChildProcess = spawn(bin?.cmd ?? cliCommand('codex'), [...(bin?.args ?? []), 'app-server'], {
     env,
     stdio: ['pipe', 'pipe', 'ignore'],
     detached: true,
@@ -47,7 +48,7 @@ export async function withCodexAppServer<T>(
     pending.clear();
   };
   child.on('error', (err: NodeJS.ErrnoException) => {
-    failAll(new Error(err.code === 'ENOENT' ? 'codex CLI not found in PATH' : err.message));
+    failAll(new Error(err.code === 'ENOENT' ? missingCliMessage('codex') : err.message));
   });
   child.on('close', () => {
     failAll(new Error('codex app-server exited'));
