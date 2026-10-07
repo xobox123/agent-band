@@ -2,7 +2,18 @@ import { z } from 'zod';
 
 export const NormalizedEvent = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('text'), text: z.string() }),
-  z.object({ kind: z.literal('tool'), name: z.string(), input: z.unknown().optional() }),
+  z.object({
+    kind: z.literal('tool'),
+    name: z.string(),
+    input: z.unknown().optional(),
+    toolUseId: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal('tool_decision'),
+    decision: z.enum(['allow', 'deny']),
+    reason: z.string(),
+    toolUseId: z.string().optional(),
+  }),
   z.object({
     kind: z.literal('usage'),
     inputTokens: z.number(),

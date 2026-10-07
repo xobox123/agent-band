@@ -1,7 +1,6 @@
 import type { Api } from '../api/client.ts';
 import type { EventsClient } from '../api/events.ts';
-import { toAccount, toAgent, toGroup, toRun, toTargetDto, toTask } from './adapt.ts';
-import { matchesFilter } from './filter.ts';
+import { toAccount, toAgent, toGroup, toTargetDto, toTask } from './adapt.ts';
 import type { BoardDataSource } from './source.ts';
 import type { BoardEvent, Run } from './types.ts';
 
@@ -10,21 +9,19 @@ const BOARD_EVENTS = ['task.', 'run.updated', 'agent', 'account.', 'org.'];
 export function createLiveDataSource(api: Api, events: EventsClient, throttleMs = 400): BoardDataSource {
   return {
     async load(filter) {
-      const [board, agents, accounts, groups, runs, dashboard] = await Promise.all([
-        api.board(),
+      const [board, agents, accounts, groups, dashboard] = await Promise.all([
+        api.board({
+          text: filter.text,
+          agentId: filter.agentId,
+          label: filter.label,
+          accountId: filter.accountId,
+        }),
         api.agents.list(),
         api.accounts.list(),
         api.groups.list(),
-        api.runs.list(),
         api.dashboard().catch(() => null),
       ]);
 
-      const latestRun = new Map<string, Run>();
-      for (const dto of runs.items) {
-        const run = toRun(dto);
-        const current = latestRun.get(run.taskId);
-        if (!current || run.startedAt > current.startedAt) latestRun.set(run.taskId, run);
-      }
       const statusOf = new Map((dashboard?.agents ?? []).map((a) => [a.agent.id, a]));
       const tokensOf = new Map((dashboard?.accounts ?? []).map((a) => [a.account.id, a.tokensToday]));
 
@@ -32,17 +29,27 @@ export function createLiveDataSource(api: Api, events: EventsClient, throttleMs 
         const dash = statusOf.get(a.id);
         return toAgent(a, dash?.status, dash?.runningRunId ?? null);
       });
-      const agentMap = new Map(agentList.map((a) => [a.id, a]));
 
       const all = Object.values(board.columns).flat();
-      const tasks = all
-        .map((dto) => toTask(dto, latestRun.get(dto.id)?.id ?? null))
-        .filter((task) => matchesFilter(task, latestRun.get(task.id), agentMap, filter));
-      const ids = new Set(tasks.map((t) => t.id));
+      const tasks = all.map((dto) => toTask(dto, dto.latestRun?.id ?? null));
+      const runs: Run[] = all.flatMap((dto) =>
+        dto.latestRun
+          ? [
+              {
+                ...dto.latestRun,
+                taskId: dto.id,
+                accountId: agentList.find((a) => a.id === dto.latestRun?.agentId)?.accountId ?? '',
+                cachedTokens: null,
+                rateLimitResetsAt: null,
+                error: null,
+              },
+            ]
+          : [],
+      );
       return {
         cursor: String(board.cursor),
         tasks,
-        runs: [...latestRun.values()].filter((r) => ids.has(r.taskId)),
+        runs,
         agents: agentList,
         accounts: accounts.items.map((a) => toAccount(a, tokensOf.get(a.id) ?? 0)),
         groups: groups.items.map(toGroup),

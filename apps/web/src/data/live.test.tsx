@@ -12,13 +12,13 @@ const board = (queued: unknown[]) => ({
 function setup(events?: EventsClient) {
   const { api, calls } = testApi({
     'GET /board': board([
-      taskDto(),
+      taskDto({ latestRun: runDto({ id: ID(41), startedAt: '2026-10-06T10:00:00.000Z' }) }),
       taskDto({
         id: ID(31),
         key: 'AB-2',
         title: 'Label task',
         target: { label: 'gpu' },
-        error: 'No enabled agent carries the label',
+        eligibilityReason: 'No enabled agent carries the label',
       }),
     ]),
     'GET /agents': list([agentDto()]),
@@ -59,9 +59,11 @@ function setup(events?: EventsClient) {
 
 describe('live board data source', () => {
   it('maps DTOs into the board snapshot', async () => {
-    const { source } = setup();
+    const { source, calls } = setup();
     const snap = await source.load(emptyFilter);
     expect(snap.cursor).toBe('12');
+    expect(calls.some((c) => c.path === '/runs')).toBe(false);
+    expect(snap.runs[0]?.inputTokens).toBe(1200);
     const [first, label] = snap.tasks;
     expect(first?.target).toEqual({ type: 'agent', agentId: ID(1) });
     expect(first?.runId).toBe(ID(41));
@@ -75,10 +77,14 @@ describe('live board data source', () => {
     });
   });
 
-  it('applies filters client side and sends mutations to the API', async () => {
+  it('sends filters and mutations to the API', async () => {
     const { source, calls } = setup();
-    const filtered = await source.load({ ...emptyFilter, label: 'gpu' });
-    expect(filtered.tasks.map((t) => t.key)).toEqual(['AB-2']);
+    await source.load({ ...emptyFilter, label: 'gpu', accountId: ID(2), text: 'Title' });
+    expect(calls.find((c) => c.path === '/board')?.query).toMatchObject({
+      label: 'gpu',
+      accountId: ID(2),
+      text: 'Title',
+    });
 
     await source.createTask({
       title: 'T',

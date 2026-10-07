@@ -47,7 +47,14 @@ export function parseClaudeLine(line: string): NormalizedEvent[] {
       if (block.type === 'text' && typeof block.text === 'string' && block.text)
         return [{ kind: 'text', text: block.text }];
       if (block.type === 'tool_use' && typeof block.name === 'string')
-        return [{ kind: 'tool', name: block.name, input: block.input }];
+        return [
+          {
+            kind: 'tool',
+            name: block.name,
+            input: block.input,
+            ...(typeof block.id === 'string' ? { toolUseId: block.id } : {}),
+          },
+        ];
       return [];
     });
   }

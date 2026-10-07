@@ -23,29 +23,47 @@ export function RunsScreen() {
   const api = useApi();
   const { openDock } = useWorkspace();
   const [status, setStatus] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [pageCursor, setPageCursor] = useState<string | null>(null);
+  const [previous, setPrevious] = useState<(string | null)[]>([]);
+  const resetPage = () => {
+    setPageCursor(null);
+    setPrevious([]);
+  };
   const state = useResource(
     async () => {
       const [runs, agents, accounts, tasks] = await Promise.all([
-        api.runs.list(status ? { status } : undefined),
+        api.runs.list({
+          status,
+          text: search,
+          pageCursor,
+          limit: 50,
+          from: from ? new Date(from).toISOString() : undefined,
+          to: to ? new Date(to).toISOString() : undefined,
+        }),
         api.agents.list(),
         api.accounts.list(),
         api.tasks.list(),
       ]);
-      return { runs: runs.items, agents: agents.items, accounts: accounts.items, tasks: tasks.items };
+      return {
+        nextCursor: runs.nextCursor,
+        runs: runs.items,
+        agents: agents.items,
+        accounts: accounts.items,
+        tasks: tasks.items,
+      };
     },
-    [status],
+    [status, search, from, to, pageCursor],
     ['run.updated', 'task.', 'agent'],
   );
-  const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [agentId, setAgentId] = useState<string | null>(null);
 
-  const text = search.trim().toLowerCase();
   const taskKey = (id: string) => state.data?.tasks.find((t) => t.id === id)?.key ?? shortId(id);
   const all = state.data?.runs ?? [];
-  const rows = all.filter(
-    (r) => text === '' || r.id.toLowerCase().includes(text) || taskKey(r.taskId).toLowerCase().includes(text),
-  );
+  const rows = all;
   useItemCount(state.data ? rows.length : null);
   const run = all.find((r) => r.id === selected);
 
@@ -126,16 +144,68 @@ export function RunsScreen() {
       <Toolbar label="Runs toolbar">
         <FilterInput
           label="Search runs"
-          placeholder="Search run ID or task key (/)"
+          placeholder="Search task key or title (/)"
           value={search}
-          onChange={setSearch}
+          onChange={(value) => {
+            setSearch(value);
+            resetPage();
+          }}
         />
         <FilterSelect
           label="Status"
           value={status}
-          onChange={setStatus}
+          onChange={(value) => {
+            setStatus(value);
+            resetPage();
+          }}
           options={statusValues('run').map((v) => ({ value: v, label: v }))}
         />
+        <label>
+          From{' '}
+          <input
+            aria-label="From"
+            type="datetime-local"
+            value={from}
+            onChange={(e) => {
+              setFrom(e.target.value);
+              resetPage();
+            }}
+          />
+        </label>
+        <label>
+          To{' '}
+          <input
+            aria-label="To"
+            type="datetime-local"
+            value={to}
+            onChange={(e) => {
+              setTo(e.target.value);
+              resetPage();
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          className="btn"
+          disabled={!previous.length}
+          onClick={() => {
+            setPageCursor(previous.at(-1) ?? null);
+            setPrevious(previous.slice(0, -1));
+          }}
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={!state.data?.nextCursor}
+          onClick={() => {
+            setPrevious([...previous, pageCursor]);
+            setPageCursor(state.data?.nextCursor ?? null);
+          }}
+        >
+          Next
+        </button>
         <button type="button" className="btn" onClick={state.reload}>
           Refresh
         </button>

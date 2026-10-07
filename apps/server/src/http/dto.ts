@@ -29,6 +29,7 @@ export function taskDto(t: Task): TaskDto {
     depth: t.depth,
     dependsOn: t.dependsOn,
     result: t.result,
+    latestRun: null,
     eligibilityReason: t.eligibility?.reason ?? null,
     createdBy: t.createdBy,
     createdAt: t.createdAt.toISOString(),

@@ -113,3 +113,66 @@ describe('Runs screen', () => {
     });
   });
 });
+
+it('correlates decisions before and after tool rows by id and keeps unmatched decisions visible', async () => {
+  const { api } = testApi({
+    [`GET /runs/${ID(40)}/events`]: list([
+      ev(1, { kind: 'tool_decision', decision: 'deny', reason: 'blocked path', toolUseId: 'a' }),
+      ev(2, { kind: 'tool', name: 'Read', toolUseId: 'a' }),
+      ev(3, { kind: 'tool', name: 'Read', toolUseId: 'b' }),
+      ev(4, { kind: 'tool_decision', decision: 'allow', reason: 'permitted', toolUseId: 'b' }),
+      ev(5, { kind: 'tool_decision', decision: 'deny', reason: 'no tool yet', toolUseId: 'c' }),
+    ]),
+  });
+  render(
+    <Providers api={api}>
+      <RunLog runId={ID(40)} />
+    </Providers>,
+  );
+  const log = await screen.findByRole('log');
+  await waitFor(() => {
+    expect(log.querySelectorAll('.log-line')).toHaveLength(3);
+  });
+  const tools = log.querySelectorAll('[data-kind="tool"]');
+  expect(tools[0]).toHaveTextContent('deny: blocked path');
+  expect(tools[1]).toHaveTextContent('allow: permitted');
+  expect(log.querySelector('[data-kind="tool_decision"]')).toHaveTextContent('no tool yet');
+});
+
+it('uses server cursors and resets paging when search or time filters change', async () => {
+  const { api, calls } = testApi({
+    'GET /runs': (_init: RequestInit, url: URL) => ({
+      ...list([runDto({ id: url.searchParams.has('pageCursor') ? ID(41) : ID(40) })]),
+      nextCursor: url.searchParams.has('pageCursor') ? null : 'next-page',
+    }),
+    'GET /agents': list([agentDto()]),
+    'GET /accounts': list([accountDto()]),
+    'GET /tasks': list([taskDto()]),
+  });
+  render(
+    <Providers api={api}>
+      <RunsScreen />
+    </Providers>,
+  );
+  await screen.findByRole('table', { name: 'Runs' });
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => {
+    expect(calls.filter((c) => c.path === '/runs').at(-1)?.query.pageCursor).toBe('next-page');
+  });
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search runs' }), {
+    target: { value: 'target title' },
+  });
+  await waitFor(() => {
+    expect(calls.filter((c) => c.path === '/runs').at(-1)?.query).toMatchObject({
+      text: 'target title',
+      limit: '50',
+    });
+  });
+  expect(calls.filter((c) => c.path === '/runs').at(-1)?.query.pageCursor).toBeUndefined();
+  fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-10-01T12:00' } });
+  await waitFor(() => {
+    expect(calls.filter((c) => c.path === '/runs').at(-1)?.query.from).toBe(
+      new Date('2026-10-01T12:00').toISOString(),
+    );
+  });
+});

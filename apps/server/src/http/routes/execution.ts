@@ -6,7 +6,7 @@ import { createAuthorizeToolCall } from '../../execution/index.ts';
 
 /** Called by the tool-gate hook of a running agent; authenticated by the run token only. */
 export function executionRoutes(c: Composition): FastifyPluginCallbackZod {
-  const authorize = createAuthorizeToolCall({ audit: c.ports.audit });
+  const authorize = createAuthorizeToolCall({ audit: c.ports.audit, runs: c.runs });
   return (app, _opts, done) => {
     app.post(
       '/runs/:runId/authorize-tool',
