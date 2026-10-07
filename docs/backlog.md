@@ -4,6 +4,8 @@ Items found during stage 1 integration. Each is small and independent unless not
 
 ## API gaps found while building the web app (T12)
 
+All 12 items and the empty-body fix are done (2026-10-07).
+
 1. Effective policy: per-rule provenance (`rules[name] = { value, setBy: { level, policyId, version } }`) and per-rule enforcement coverage (`admission | runtime-hook | cli-sandbox | not-enforced` for the agent's provider), so the UI needs one request.
 2. Effective skills: assignment origin (org/group/agent), pin, and a list of skills excluded by `allowedSkillIds`.
 3. Run events: carry tool decisions. When the hook decides, append a `tool_decision` NormalizedEvent (decision, reason, toolUseId) to the run so the log can correlate it with the tool call; add `toolUseId` to `tool` events.
