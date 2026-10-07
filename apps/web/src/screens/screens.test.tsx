@@ -271,8 +271,10 @@ describe('Agents screen', () => {
     await screen.findByRole('table', { name: 'Agents' });
     fireEvent.click(screen.getByRole('button', { name: 'Create agent' }));
     const dialog = screen.getByRole('dialog', { name: 'Create agent' });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create agent' }));
+    expect(within(dialog).getByRole('button', { name: 'Create agent' })).toBeEnabled();
+    fireEvent.blur(within(dialog).getByLabelText(/^Name/));
     expect(within(dialog).getByText('Name is required.')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/^Name/)).toHaveAttribute('aria-invalid', 'true');
     fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Grace' } });
     fireEvent.change(within(dialog).getByLabelText(/^Slug/), { target: { value: 'grace' } });
     fireEvent.change(within(dialog).getByLabelText(/^Labels/), { target: { value: 'qa, review' } });
@@ -428,7 +430,7 @@ describe('Accounts screen', () => {
   it('shows hasSecret without ever exposing a secret', async () => {
     mount(routes, <AccountsScreen />);
     const table = await screen.findByRole('table', { name: 'Accounts' });
-    expect(within(table).getByText('Stored')).toBeInTheDocument();
+    expect(within(table).queryByText('Stored')).not.toBeInTheDocument();
     fireEvent.click(within(table).getByText('Claude Max'));
     const details = await screen.findByRole('complementary', { name: 'Claude Max details' });
     expect(within(details).getByText(/^Stored \(updated/)).toBeInTheDocument();
@@ -442,8 +444,10 @@ describe('Accounts screen', () => {
     expect(within(dialog).queryByLabelText(/^baseUrl/)).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('Provider'), { target: { value: 'openai_compatible' } });
     fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Local LLM' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
-    expect(within(dialog).getByText('Fill in all required provider fields.')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Create account' })).toBeEnabled();
+    fireEvent.submit(dialog.querySelector('form') as HTMLFormElement);
+    expect(within(dialog).getByText('baseUrl is required.')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/^baseUrl/)).toHaveAttribute('aria-invalid', 'true');
     fireEvent.change(within(dialog).getByLabelText(/^baseUrl/), {
       target: { value: 'http://localhost:8000/v1' },
     });
@@ -661,8 +665,12 @@ describe('Accounts form connection methods', () => {
     fireEvent.change(within(dialog).getByLabelText(/^Stop new work at \(5h %\)/), {
       target: { value: '150' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
-    expect(within(dialog).getByText('Stop thresholds must be between 1 and 100.')).toBeInTheDocument();
+    fireEvent.blur(within(dialog).getByLabelText(/^Stop new work at \(5h %\)/));
+    expect(within(dialog).getByText('Must be between 1 and 100.')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/^Stop new work at \(5h %\)/)).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
     fireEvent.change(within(dialog).getByLabelText(/^Stop new work at \(5h %\)/), {
       target: { value: '70' },
     });
@@ -781,7 +789,8 @@ describe('Skills screen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import skill' }));
     const dialog = screen.getByRole('dialog', { name: 'Import skill' });
     fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'review' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Import' }));
+    expect(within(dialog).getByRole('button', { name: 'Import' })).toBeEnabled();
+    fireEvent.blur(within(dialog).getByLabelText('Skill bundle'));
     expect(within(dialog).getByText('Choose a zip archive or the skill files.')).toBeInTheDocument();
     const file = new File([new Uint8Array([80, 75, 3, 4])], 'skill.zip', { type: 'application/zip' });
     fireEvent.change(within(dialog).getByLabelText('Skill bundle'), { target: { files: [file] } });
@@ -876,7 +885,7 @@ describe('People and teams screen', () => {
     expect(within(bindings).getByText('User: Local Owner')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Create role binding' }));
     const dialog = screen.getByRole('dialog', { name: 'Create role binding' });
-    expect(within(dialog).getByRole('button', { name: 'Create binding' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Create binding' })).toBeEnabled();
     fireEvent.change(within(dialog).getByLabelText('Subject type'), { target: { value: 'team' } });
     fireEvent.change(within(dialog).getByLabelText('Subject'), { target: { value: ID(90) } });
     fireEvent.change(within(dialog).getByLabelText('Role'), { target: { value: 'operator' } });

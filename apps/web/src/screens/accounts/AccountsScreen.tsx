@@ -18,9 +18,10 @@ import {
   AccountActions,
   AccountIdentity,
   AccountLimits,
+  AccountLimitsCompact,
   UsageExtras,
 } from '../../components/AccountStatus.tsx';
-import { planLabel } from '../../lib/account.ts';
+import { duplicateIdentities, planLabel } from '../../lib/account.ts';
 import { formatCost } from '../../lib/format.ts';
 import { AccountForm, type FollowUp } from './AccountForm.tsx';
 
@@ -47,6 +48,8 @@ export function AccountsScreen() {
   useItemCount(state.data ? rows.length : null);
   const account = rows.find((a) => a.id === selected);
   const dashRow = state.data?.dashboard?.accounts.find((a) => a.account.id === selected);
+  const dashByAccount = new Map((state.data?.dashboard?.accounts ?? []).map((d) => [d.account.id, d]));
+  const duplicates = duplicateIdentities(rows);
   const providerName = (id: string) => state.data?.providers.find((p) => p.id === id)?.displayName ?? id;
 
   const columns: Column<AccountDto>[] = [
@@ -66,7 +69,19 @@ export function AccountsScreen() {
       sortValue: (a) => a.provider,
       cell: (a) => providerName(a.provider),
     },
-    { id: 'type', header: 'Type', sortValue: (a) => a.type, cell: (a) => a.type },
+    {
+      id: 'type',
+      header: 'Type',
+      sortValue: (a) => a.type,
+      cell: (a) =>
+        a.type === 'api' ? (
+          <>
+            api <Badge tone={a.hasSecret ? 'ok' : 'warn'}>{a.hasSecret ? 'API key set' : 'No API key'}</Badge>
+          </>
+        ) : (
+          a.type
+        ),
+    },
     {
       id: 'login',
       header: 'Login',
@@ -78,12 +93,36 @@ export function AccountsScreen() {
               ? [a.connection.email, planLabel(a.provider, a.connection.plan)].filter(Boolean).join(' - ') ||
                 'Logged in'
               : 'Not logged in'}
+            {duplicates.has(a.id) ? (
+              <span
+                className="dup-warning"
+                role="img"
+                aria-label={`Same login as ${(duplicates.get(a.id) ?? []).join(', ')}`}
+                title={`Same login as ${(duplicates.get(a.id) ?? []).join(', ')}: both use one subscription and share limits`}
+              >
+                {' ⚠'}
+              </span>
+            ) : null}
           </span>
         ) : (
           <span className="dim">Not checked</span>
         ),
     },
-    { id: 'secret', header: 'Secret', cell: (a) => (a.hasSecret ? 'Stored' : 'None') },
+    {
+      id: 'limits',
+      header: 'Limits',
+      cell: (a) => {
+        const row = dashByAccount.get(a.id);
+        return (
+          <AccountLimitsCompact
+            account={a}
+            windows={row?.windows ?? []}
+            updatedAt={row?.windowsUpdatedAt ?? null}
+            costToday={row?.costToday ?? null}
+          />
+        );
+      },
+    },
     { id: 'slots', header: 'Max runs', cell: (a) => String(a.limits.maxConcurrentRuns) },
     {
       id: 'budget',
@@ -148,6 +187,11 @@ export function AccountsScreen() {
         <DetailsPanel
           title={account.name}
           subtitle={`${providerName(account.provider)} · ${account.type === 'api' ? 'API key' : 'subscription'}`}
+          banner={
+            duplicates.has(account.id)
+              ? `Same login as ${(duplicates.get(account.id) ?? []).join(', ')}: both use one subscription and share limits. To separate them, use Add another account, then Log in with a different login.`
+              : undefined
+          }
           onClose={() => {
             setSelected(null);
           }}

@@ -482,6 +482,7 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
     tasks = tasks.map((x) => (x.id === next.id ? next : x));
   };
 
+  const BACKLOG_SOURCES: Task['status'][] = ['failed', 'denied', 'cancelled', 'rate_limited'];
   const startOne = (t: Task, when: StartWhen, stamp: string) => {
     const at = when.mode === 'at' ? when.at : when.mode === 'limit_reset' ? iso(now() + 95 * MIN) : null;
     replace({
@@ -644,6 +645,26 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
       if (bad) throw new Error(`${bad.key} cannot be started.`);
       const stamp = iso(now());
       for (const t of found) startOne(t, when, stamp);
+      emit();
+    },
+    async toBacklog(ids) {
+      await delay();
+      const found = ids.map(findTask);
+      const bad = found.find((t) => !BACKLOG_SOURCES.includes(t.status) || t.kind === 'goal');
+      if (bad) throw new Error(`${bad.key} cannot be moved to the backlog.`);
+      const stamp = iso(now());
+      for (const t of found)
+        replace({
+          ...t,
+          status: 'draft',
+          error: null,
+          noEligibleReason: null,
+          runAt: null,
+          resumeAt: null,
+          startAfterReset: false,
+          attempt: 1,
+          updatedAt: stamp,
+        });
       emit();
     },
     async updateTask(taskId, patch) {

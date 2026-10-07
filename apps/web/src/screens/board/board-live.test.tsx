@@ -45,7 +45,7 @@ describe('Board new task form', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New task' }));
     const dialog = screen.getByRole('dialog', { name: 'New task' });
 
-    expect(within(dialog).getByRole('button', { name: 'Create and start' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Create and start' })).toBeEnabled();
     expect(within(dialog).getByRole('button', { name: /^Missing: Title, Prompt/ })).toBeInTheDocument();
     expect(createTask).not.toHaveBeenCalled();
 

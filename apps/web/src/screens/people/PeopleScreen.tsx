@@ -113,12 +113,10 @@ export function PeopleScreen() {
   ];
 
   const scopeOptions = scopeKind === 'group' ? (d?.groups ?? []) : (d?.agents ?? []);
-  const bindingInvalid =
-    subjectId === ''
-      ? 'Select a subject.'
-      : scopeKind !== 'org' && scopeId === ''
-        ? 'Select a scope target.'
-        : null;
+  const bindingErrors: Record<string, string> = {};
+  if (subjectId === '') bindingErrors['subjectId'] = 'Select a subject.';
+  if (scopeKind !== 'org' && scopeId === '') bindingErrors['scopeId'] = 'Select a scope target.';
+  const teamErrors: Record<string, string> = teamName.trim() === '' ? { name: 'Name is required.' } : {};
 
   return (
     <div className="screen">
@@ -264,12 +262,11 @@ export function PeopleScreen() {
           submitLabel="Create team"
           pending={mutation.pending}
           error={mutation.error}
-          invalid={null}
+          errors={teamErrors}
           onCancel={() => {
             setForm(null);
           }}
           onSubmit={() => {
-            if (teamName.trim() === '') return;
             void mutation
               .ok(() => api.teams.create({ name: teamName.trim(), description: teamDescription }))
               .then((ok) => {
@@ -282,7 +279,7 @@ export function PeopleScreen() {
               });
           }}
         >
-          <Field label="Name">
+          <Field label="Name" name="name">
             <input
               className="field"
               value={teamName}
@@ -291,7 +288,7 @@ export function PeopleScreen() {
               }}
             />
           </Field>
-          <Field label="Description">
+          <Field label="Description" name="description">
             <input
               className="field"
               value={teamDescription}
@@ -308,7 +305,8 @@ export function PeopleScreen() {
           submitLabel="Create binding"
           pending={mutation.pending}
           error={mutation.error}
-          invalid={bindingInvalid}
+          errors={bindingErrors}
+          fieldAlias={(p) => p.replace(/^subject\..*/, 'subjectId').replace(/^scope\..*/, 'scopeId')}
           onCancel={() => {
             setForm(null);
           }}
@@ -347,7 +345,7 @@ export function PeopleScreen() {
               <option value="team">Team</option>
             </select>
           </Field>
-          <Field label="Subject">
+          <Field label="Subject" name="subjectId">
             <select
               className="field"
               value={subjectId}
@@ -396,7 +394,7 @@ export function PeopleScreen() {
             </select>
           </Field>
           {scopeKind === 'org' ? null : (
-            <Field label="Scope target">
+            <Field label="Scope target" name="scopeId">
               <select
                 className="field"
                 value={scopeId}

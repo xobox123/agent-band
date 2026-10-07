@@ -93,7 +93,8 @@ export function ScheduleForm({
           if (id === seq.current) setPreview({ state: 'ok', times: result.fireTimes });
         },
         (e: unknown) => {
-          if (id === seq.current) setPreview({ state: 'error', message: errorMessage(e) });
+          if (id === seq.current)
+            setPreview({ state: 'error', message: e instanceof Error ? e.message : errorMessage(e) });
         },
       );
     }, 400);
@@ -105,6 +106,7 @@ export function ScheduleForm({
   const errors: Record<string, string> = {};
   if (name.trim() === '') errors['name'] = 'Name is required.';
   if (cron.trim() === '') errors['cron'] = 'Cron expression is required.';
+  if (preview.state === 'error' && cron.trim() !== '') errors['cron'] = preview.message;
   Object.assign(errors, taskFieldErrors(fields));
   const invalid = Object.keys(errors).length > 0;
 
@@ -195,7 +197,11 @@ export function ScheduleForm({
           ))}
         </div>
       </div>
-      <Field label="Time zone" help={`Blank uses the organization time zone (${orgTimezone}).`}>
+      <Field
+        label="Time zone"
+        name="timezone"
+        help={`Blank uses the organization time zone (${orgTimezone}).`}
+      >
         <input
           className="field"
           list="timezone-options"
@@ -221,7 +227,7 @@ export function ScheduleForm({
               ))}
             </ol>
           ) : preview.state === 'error' ? (
-            <p className="form-error">{preview.message}</p>
+            <p className="dim">No preview for this expression.</p>
           ) : (
             <p className="dim">
               {preview.state === 'loading' ? 'Calculating...' : 'Enter a cron expression.'}
@@ -231,6 +237,7 @@ export function ScheduleForm({
       </div>
       <Field
         label="Overlap"
+        name="overlap"
         help="What happens when the previous task is still active at the next fire time."
       >
         <select

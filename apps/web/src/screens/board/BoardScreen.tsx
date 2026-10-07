@@ -50,6 +50,7 @@ export function BoardScreen() {
   const [creating, setCreating] = useState(false);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [restoreChecked, setRestoreChecked] = useState<Set<string>>(new Set());
   const [startIds, setStartIds] = useState<string[] | null>(null);
   const [approveId, setApproveId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
@@ -163,12 +164,44 @@ export function BoardScreen() {
       review: (goalId) => {
         setSelectedId(goalId);
       },
+      restoreSelected: restoreChecked,
+      toggleRestore: (id) => {
+        setRestoreChecked((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+      },
+      toBacklog: (ids) => {
+        setNotice(null);
+        setPendingIds((prev) => new Set([...prev, ...ids]));
+        source
+          .toBacklog(ids)
+          .then(() => {
+            setRestoreChecked(new Set());
+          })
+          .catch((e: unknown) => {
+            setNotice(e instanceof Error ? e.message : 'The change was rejected.');
+          })
+          .finally(() => {
+            setPendingIds((prev) => new Set([...prev].filter((id) => !ids.includes(id))));
+            reload();
+          });
+      },
     }),
-    [checked],
+    [checked, restoreChecked, source, reload],
   );
   // Selection only makes sense for tasks that are still in the backlog.
   useEffect(() => {
     if (!snapshot) return;
+    setRestoreChecked((prev) => {
+      const live = new Set(
+        snapshot.tasks.filter((t) => t.status === 'failed' || t.status === 'denied').map((t) => t.id),
+      );
+      const next = new Set([...prev].filter((id) => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
     setChecked((prev) => {
       const live = new Set(
         snapshot.tasks.filter((t) => t.status === 'draft' && !t.proposed).map((t) => t.id),
@@ -263,7 +296,7 @@ export function BoardScreen() {
         if (!drag) return;
         event.preventDefault();
         const result = evaluateDrop(drag.task, drag.laneKey, target);
-        const ok = result.kind === 'reorder' || result.kind === 'cancel';
+        const ok = result.kind === 'reorder' || result.kind === 'cancel' || result.kind === 'backlog';
         const transfer = event.dataTransfer as DataTransfer | null;
         if (transfer) transfer.dropEffect = ok ? 'move' : 'none';
         const reason = result.kind === 'reject' ? result.reason : null;
@@ -279,6 +312,7 @@ export function BoardScreen() {
         endDrag();
         if (result.kind === 'reject') setNotice(result.reason);
         else if (result.kind === 'cancel') setConfirmId(drag.task.id);
+        else if (result.kind === 'backlog') backlog.toBacklog([drag.task.id]);
         else if (result.kind === 'reorder') {
           const { beforeId } = result;
           void mutate(drag.task.id, () => source.reorder(drag.task.id, beforeId));
@@ -286,7 +320,7 @@ export function BoardScreen() {
       },
       end: endDrag,
     }),
-    [draggingId, hint, endDrag, mutate, source],
+    [draggingId, hint, endDrag, mutate, source, backlog],
   );
 
   const openLogs = (v: TaskView) => {
@@ -370,6 +404,17 @@ export function BoardScreen() {
             }}
           >
             {`Start selected (${String(checked.size)})`}
+          </button>
+        ) : null}
+        {restoreChecked.size > 0 ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              backlog.toBacklog([...restoreChecked]);
+            }}
+          >
+            Move selected to backlog
           </button>
         ) : null}
         <FilterInput

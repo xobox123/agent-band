@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import type { KeyboardEvent, PointerEvent, ReactNode } from 'react';
+import { CloseButton } from './CloseButton.tsx';
 import { useEscape } from '../hooks/useEscape.ts';
 import { useStoredNumber } from '../hooks/useStoredNumber.ts';
 
@@ -60,9 +61,7 @@ export function Dock({ title, onClose, maxHeight = 800, children }: Props) {
       />
       <header className="dock-head">
         <strong>{title}</strong>
-        <button type="button" className="btn btn-icon" aria-label="Close dock" onClick={onClose}>
-          ✕
-        </button>
+        <CloseButton onClick={onClose} />
       </header>
       <div className="dock-body">{children}</div>
     </section>

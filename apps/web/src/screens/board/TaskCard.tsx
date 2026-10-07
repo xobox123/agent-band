@@ -3,7 +3,7 @@ import { AgentHoverCard } from '../../components/AgentHoverCard.tsx';
 import { Badge } from '../../components/Badge.tsx';
 import { StatusDot } from '../../components/StatusDot.tsx';
 import type { Priority } from '../../data/types.ts';
-import { CANCELLABLE, PRIORITIES, hoverInfoOf, startable } from './model.ts';
+import { CANCELLABLE, PRIORITIES, hoverInfoOf, restorable, startable } from './model.ts';
 import type { BacklogApi, TaskView } from './model.ts';
 import { formatClock, formatRelative } from '../../lib/schedule.ts';
 import { compactCount, exactCount } from './format.ts';
@@ -40,7 +40,8 @@ export function TaskCard({
   const { task, run } = view;
   const isDraft = task.status === 'draft';
   const [menu, setMenu] = useState(false);
-  const draggable = CANCELLABLE.includes(task.status) && !pending;
+  const canRestore = restorable(task);
+  const draggable = (CANCELLABLE.includes(task.status) || canRestore) && !pending;
   const target = { kind: 'card', task, laneKey } as const;
   const key = targetKey(target);
   const hint = dnd.hint?.key === key ? dnd.hint : null;
@@ -93,6 +94,22 @@ export function TaskCard({
               backlog.toggle(task.id);
             }}
           />
+        ) : null}
+        {task.status === 'failed' || task.status === 'denied' ? (
+          canRestore ? (
+            <input
+              type="checkbox"
+              className="card-check"
+              aria-label={`Select ${task.key}`}
+              checked={backlog.restoreSelected.has(task.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+              onChange={() => {
+                backlog.toggleRestore(task.id);
+              }}
+            />
+          ) : null
         ) : null}
         <span className="mono card-key">{task.key}</span>
         <Badge tone={task.priority === 0 ? 'crit' : 'neutral'} title={`Priority P${String(task.priority)}`}>
@@ -186,6 +203,18 @@ export function TaskCard({
                     </button>
                   ))
                 : null}
+              {canRestore ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    backlog.toBacklog([task.id]);
+                  }}
+                >
+                  Move to backlog
+                </button>
+              ) : null}
               {CANCELLABLE.includes(task.status) ? (
                 <button
                   type="button"
@@ -197,7 +226,7 @@ export function TaskCard({
                 >
                   Cancel
                 </button>
-              ) : isDraft ? null : (
+              ) : isDraft || canRestore ? null : (
                 <span className="menu-empty dim">No actions available</span>
               )}
             </div>

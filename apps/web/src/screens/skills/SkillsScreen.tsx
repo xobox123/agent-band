@@ -31,27 +31,23 @@ function ImportForm({
   const [name, setName] = useState(existing?.name ?? '');
   const [description, setDescription] = useState(existing?.description ?? '');
   const [files, setFiles] = useState<File[]>([]);
-  const [touched, setTouched] = useState(false);
-  const invalid =
-    name.trim() === ''
-      ? 'Name is required.'
-      : files.length === 0
-        ? 'Choose a zip archive or the skill files.'
-        : null;
+  const errors: Record<string, string> = {};
+  if (name.trim() === '') errors['name'] = 'Name is required.';
+  if (files.length === 0) errors['files'] = 'Choose a zip archive or the skill files.';
   return (
     <FormDialog
       title={existing ? `New version of ${existing.name}` : 'Import skill'}
       submitLabel={existing ? 'Upload version' : 'Import'}
       pending={pending}
       error={error}
-      invalid={touched ? invalid : null}
+      errors={errors}
+      codeFields={{ skill_unchanged: 'files' }}
       onCancel={onCancel}
       onSubmit={() => {
-        setTouched(true);
-        if (!invalid) onSubmit({ name: name.trim(), description, files });
+        onSubmit({ name: name.trim(), description, files });
       }}
     >
-      <Field label="Name">
+      <Field label="Name" name="name">
         <input
           className="field"
           value={name}
@@ -61,7 +57,7 @@ function ImportForm({
           }}
         />
       </Field>
-      <Field label="Description">
+      <Field label="Description" name="description">
         <input
           className="field"
           value={description}
@@ -73,6 +69,7 @@ function ImportForm({
       <div className="wide form-field">
         <Field
           label="Bundle"
+          name="files"
           help="One .zip, or the skill files. SKILL.md is required at the root. Skills are instructions and code; policy controls execution."
         >
           <input

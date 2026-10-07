@@ -100,6 +100,9 @@ export function createLiveDataSource(api: Api, events: EventsClient, throttleMs 
     async startTasks(ids, when) {
       await api.tasks.start(ids, when);
     },
+    async toBacklog(ids) {
+      await api.tasks.toBacklog(ids);
+    },
     async updateTask(taskId, patch) {
       await api.tasks.update(taskId, {
         ...(patch.title !== undefined && { title: patch.title }),

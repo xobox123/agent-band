@@ -1,5 +1,5 @@
 import type { Task } from '../../data/types.ts';
-import { CANCELLABLE, columnOf } from './model.ts';
+import { CANCELLABLE, columnOf, restorable } from './model.ts';
 import type { ColumnId } from './model.ts';
 
 export type DropTarget =
@@ -10,6 +10,7 @@ export type DropTarget =
 export type DropResult =
   | { kind: 'reorder'; beforeId: string | null }
   | { kind: 'cancel' }
+  | { kind: 'backlog' }
   | { kind: 'none' }
   | { kind: 'reject'; reason: string };
 
@@ -29,6 +30,15 @@ export function evaluateDrop(dragged: Task, dragLane: string, target: DropTarget
       : {
           kind: 'reject',
           reason: 'Only scheduled, queued, claimed, running or rate-limited tasks can be cancelled.',
+        };
+  }
+
+  if (column === 'draft') {
+    return restorable(dragged)
+      ? { kind: 'backlog' }
+      : {
+          kind: 'reject',
+          reason: 'Only failed, denied, cancelled or rate-limited tasks can move to the backlog.',
         };
   }
 

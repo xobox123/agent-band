@@ -61,16 +61,14 @@ function PolicyForm({
   const [deniedTools, setDeniedTools] = useState((r.deniedTools ?? []).join(', '));
   const [budget, setBudget] = useState(r.dailyTokenBudget === undefined ? '' : String(r.dailyTokenBudget));
   const [minutes, setMinutes] = useState(r.maxRunMinutes === undefined ? '' : String(r.maxRunMinutes));
-  const [touched, setTouched] = useState(false);
-
-  let invalid: string | null = null;
-  if (name.trim() === '') invalid = 'Name is required.';
-  else if (lines(workDirs).some((d) => !d.startsWith('/')))
-    invalid = 'Work directories must be absolute paths.';
-  else if (budget !== '' && !/^\d+$/.test(budget))
-    invalid = 'Daily token budget must be a non-negative integer.';
-  else if (minutes !== '' && !/^[1-9]\d*$/.test(minutes))
-    invalid = 'Max run minutes must be a positive integer.';
+  const errors: Record<string, string> = {};
+  if (name.trim() === '') errors['name'] = 'Name is required.';
+  if (lines(workDirs).some((d) => !d.startsWith('/')))
+    errors['workDirs'] = 'Work directories must be absolute paths.';
+  if (budget !== '' && !/^\d+$/.test(budget))
+    errors['dailyTokenBudget'] = 'Daily token budget must be a non-negative integer.';
+  if (minutes !== '' && !/^[1-9]\d*$/.test(minutes))
+    errors['maxRunMinutes'] = 'Max run minutes must be a positive integer.';
 
   return (
     <FormDialog
@@ -78,11 +76,10 @@ function PolicyForm({
       submitLabel={policy ? 'Save as new version' : 'Create policy'}
       pending={pending}
       error={error}
-      invalid={touched ? invalid : null}
+      errors={errors}
+      fieldAlias={(p) => p.replace(/^rules\./, '').replace(/\.\d+$/, '')}
       onCancel={onCancel}
       onSubmit={() => {
-        setTouched(true);
-        if (invalid) return;
         onSubmit({
           name: name.trim(),
           description,
@@ -97,7 +94,7 @@ function PolicyForm({
         });
       }}
     >
-      <Field label="Name">
+      <Field label="Name" name="name">
         <input
           className="field"
           value={name}
@@ -106,7 +103,7 @@ function PolicyForm({
           }}
         />
       </Field>
-      <Field label="Description">
+      <Field label="Description" name="description">
         <input
           className="field"
           value={description}
@@ -116,7 +113,11 @@ function PolicyForm({
         />
       </Field>
       <div className="wide form-field">
-        <Field label="Work directories" help="One absolute path per line. Empty means not set.">
+        <Field
+          label="Work directories"
+          name="workDirs"
+          help="One absolute path per line. Empty means not set."
+        >
           <textarea
             className="field mono"
             rows={3}
@@ -127,7 +128,7 @@ function PolicyForm({
           />
         </Field>
       </div>
-      <Field label="Max mode">
+      <Field label="Max mode" name="maxMode">
         <select
           className="field"
           value={maxMode}
@@ -141,7 +142,7 @@ function PolicyForm({
           <option value="full-auto">full-auto</option>
         </select>
       </Field>
-      <Field label="Daily token budget">
+      <Field label="Daily token budget" name="dailyTokenBudget">
         <input
           className="field"
           inputMode="numeric"
@@ -151,7 +152,7 @@ function PolicyForm({
           }}
         />
       </Field>
-      <Field label="Allowed tools" help="Comma separated.">
+      <Field label="Allowed tools" name="allowedTools" help="Comma separated.">
         <input
           className="field"
           value={allowedTools}
@@ -160,7 +161,7 @@ function PolicyForm({
           }}
         />
       </Field>
-      <Field label="Denied tools" help="Comma separated. Deny wins.">
+      <Field label="Denied tools" name="deniedTools" help="Comma separated. Deny wins.">
         <input
           className="field"
           value={deniedTools}
@@ -169,7 +170,7 @@ function PolicyForm({
           }}
         />
       </Field>
-      <Field label="Max run minutes">
+      <Field label="Max run minutes" name="maxRunMinutes">
         <input
           className="field"
           inputMode="numeric"

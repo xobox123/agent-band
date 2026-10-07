@@ -4,7 +4,7 @@ import { StatusDot } from '../../components/StatusDot.tsx';
 import type { Priority } from '../../data/types.ts';
 import { formatClock } from '../../lib/schedule.ts';
 import { exactCount } from './format.ts';
-import { CANCELLABLE, PRIORITIES, startable } from './model.ts';
+import { CANCELLABLE, PRIORITIES, restorable, startable } from './model.ts';
 import type { BacklogApi, TaskView } from './model.ts';
 import { PlanReview } from './PlanReview.tsx';
 
@@ -126,6 +126,17 @@ export function TaskDetails({
                 Delete
               </button>
             </>
+          ) : null}
+          {restorable(task) ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                backlog.toBacklog([task.id]);
+              }}
+            >
+              Move to backlog
+            </button>
           ) : null}
           <button
             type="button"

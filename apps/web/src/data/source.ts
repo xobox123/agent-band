@@ -22,6 +22,8 @@ export interface BoardDataSource {
   createTask(task: NewTask): Promise<void>;
   /** Moves backlog tasks to the queue, all or none. */
   startTasks(ids: string[], when: StartWhen): Promise<void>;
+  /** Moves failed, denied, cancelled or rate-limited tasks back to the backlog, all or none. */
+  toBacklog(ids: string[]): Promise<void>;
   updateTask(taskId: string, patch: TaskPatch): Promise<void>;
   deleteTask(taskId: string): Promise<void>;
   approvePlan(goalId: string, when: StartWhen): Promise<void>;

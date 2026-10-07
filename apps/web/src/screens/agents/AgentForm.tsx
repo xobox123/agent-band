@@ -51,15 +51,13 @@ export function AgentForm({
   const [enabled, setEnabled] = useState(agent?.enabled ?? true);
   const [gitName, setGitName] = useState(agent?.gitIdentity.name ?? '');
   const [gitEmail, setGitEmail] = useState(agent?.gitIdentity.email ?? '');
-  const [touched, setTouched] = useState(false);
 
-  let invalid: string | null = null;
-  if (name.trim() === '') invalid = 'Name is required.';
-  else if (!agent && !SLUG.test(slug)) invalid = 'Slug must be lowercase letters, digits and hyphens.';
-  else if (accountId === '') invalid = 'Select an account.';
-  else if ((gitName !== '' || gitEmail !== '') && (gitName === '' || gitEmail === '')) {
-    invalid = 'Git name and email must be set together.';
-  }
+  const errors: Record<string, string> = {};
+  if (name.trim() === '') errors['name'] = 'Name is required.';
+  if (!agent && !SLUG.test(slug)) errors['slug'] = 'Slug must be lowercase letters, digits and hyphens.';
+  if (accountId === '') errors['accountId'] = 'Select an account.';
+  if (gitName !== '' && gitEmail === '') errors['gitEmail'] = 'Git name and email must be set together.';
+  if (gitEmail !== '' && gitName === '') errors['gitName'] = 'Git name and email must be set together.';
 
   const git = gitName !== '' && gitEmail !== '' ? { gitIdentity: { name: gitName, email: gitEmail } } : {};
 
@@ -68,8 +66,6 @@ export function AgentForm({
     value: avatar.trim(),
   };
   const submit = () => {
-    setTouched(true);
-    if (invalid) return;
     if (agent) {
       onUpdate(agent.id, {
         name: name.trim(),
@@ -110,11 +106,14 @@ export function AgentForm({
       submitLabel={agent ? 'Save agent' : 'Create agent'}
       pending={pending}
       error={error}
-      invalid={touched ? invalid : null}
+      errors={errors}
+      fieldAlias={(p) =>
+        p.replace(/^gitIdentity\.name$/, 'gitName').replace(/^gitIdentity\.email$/, 'gitEmail')
+      }
       onSubmit={submit}
       onCancel={onCancel}
     >
-      <Field label="Name" help="A readable agent name.">
+      <Field label="Name" name="name" help="A readable agent name.">
         <input
           className="field"
           value={name}
@@ -123,7 +122,7 @@ export function AgentForm({
           }}
         />
       </Field>
-      <Field label="Slug" help={agent ? 'Immutable.' : 'Creates the stable handle agent:<slug>.'}>
+      <Field label="Slug" name="slug" help={agent ? 'Immutable.' : 'Creates the stable handle agent:<slug>.'}>
         <input
           className="field"
           value={slug}
@@ -133,7 +132,7 @@ export function AgentForm({
           }}
         />
       </Field>
-      <Field label="Account" help="Shared account limits apply.">
+      <Field label="Account" name="accountId" help="Shared account limits apply.">
         <select
           className="field"
           value={accountId}
@@ -148,7 +147,7 @@ export function AgentForm({
         </select>
       </Field>
       <ModelPicker accountId={accountId} value={model} onChange={setModel} />
-      <Field label="Role" help="Workflow role, not a human access role.">
+      <Field label="Role" name="role" help="Workflow role, not a human access role.">
         <select
           className="field"
           value={role}
@@ -161,7 +160,7 @@ export function AgentForm({
           <option value="reviewer">Reviewer</option>
         </select>
       </Field>
-      <Field label="Avatar" help="Initials, an av-N colour token or an http(s) image URL.">
+      <Field label="Avatar" name="avatar" help="Initials, an av-N colour token or an http(s) image URL.">
         <input
           className="field"
           value={avatar}
@@ -171,7 +170,7 @@ export function AgentForm({
         />
       </Field>
       <div className="wide form-field">
-        <Field label="Persona" help="Who this agent is; this does not grant permissions.">
+        <Field label="Persona" name="persona" help="Who this agent is; this does not grant permissions.">
           <textarea
             className="field"
             rows={3}
@@ -183,7 +182,11 @@ export function AgentForm({
         </Field>
       </div>
       <div className="wide form-field">
-        <Field label="System prompt" help="Appended instructions; do not include credentials.">
+        <Field
+          label="System prompt"
+          name="systemPrompt"
+          help="Appended instructions; do not include credentials."
+        >
           <textarea
             className="field"
             rows={3}
@@ -194,7 +197,7 @@ export function AgentForm({
           />
         </Field>
       </div>
-      <Field label="Labels" help="Comma separated. Tasks may target agents by label.">
+      <Field label="Labels" name="labels" help="Comma separated. Tasks may target agents by label.">
         <input
           className="field"
           value={labels}
@@ -203,7 +206,7 @@ export function AgentForm({
           }}
         />
       </Field>
-      <Field label="Agent policy" help="Adds restrictions to org and group policies.">
+      <Field label="Agent policy" name="policyId" help="Adds restrictions to org and group policies.">
         <select
           className="field"
           value={policyId}
@@ -219,7 +222,7 @@ export function AgentForm({
           ))}
         </select>
       </Field>
-      <Field label="Git name" help="Git author and committer name.">
+      <Field label="Git name" name="gitName" help="Git author and committer name.">
         <input
           className="field"
           value={gitName}
@@ -228,7 +231,7 @@ export function AgentForm({
           }}
         />
       </Field>
-      <Field label="Git email" help="Git author and committer email.">
+      <Field label="Git email" name="gitEmail" help="Git author and committer email.">
         <input
           className="field"
           value={gitEmail}

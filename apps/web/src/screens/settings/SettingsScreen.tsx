@@ -25,7 +25,7 @@ export function SettingsScreen() {
       : undefined;
   const server = fieldErrors(error);
   const rootError = (touched || submitted ? clientError : undefined) ?? server['workspaceRoot'];
-  const generic = error && Object.keys(server).length === 0 ? errorMessage(error) : null;
+  const generic = error && server['workspaceRoot'] === undefined ? errorMessage(error) : null;
   const save = () => {
     setPending(true);
     setError(null);
