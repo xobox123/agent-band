@@ -133,10 +133,36 @@ describe('Avatar and LimitBar', () => {
   });
 
   it('shows a progress bar or "No snapshot"', () => {
-    const { rerender } = render(<LimitBar value={42} label="5h" />);
+    const { rerender } = render(<LimitBar name="5h window" value={42} label="5h" />);
     expect(screen.getByRole('progressbar', { name: '5h' })).toHaveAttribute('aria-valuenow', '42');
-    rerender(<LimitBar value={null} label="5h" />);
+    rerender(<LimitBar name="5h window" value={null} label="5h" />);
     expect(screen.getByRole('img', { name: '5h: No snapshot' })).toBeInTheDocument();
+  });
+
+  it('renders the same four cells with or without data and reset info', () => {
+    const { container } = render(
+      <>
+        <LimitBar name="5h window" value={0} label="a" reset="resets in 1h" />
+        <LimitBar name="Weekly window" value={63} label="b" marker={80} />
+        <LimitBar name="Week (Opus)" value={null} label="c" stale />
+        <LimitBar name="Daily tokens" value={95} label="d" reset={null} />
+      </>,
+    );
+    const rows = container.querySelectorAll('.limit-row');
+    expect(rows).toHaveLength(4);
+    rows.forEach((row) => {
+      expect(Array.from(row.children).map((c) => c.className.split(' ')[0])).toEqual([
+        'limit-name',
+        'limit-track-wrap',
+        'limit-text',
+        'limit-reset',
+      ]);
+    });
+    expect(rows[0]?.querySelector('.limit-track')).not.toBeNull();
+    expect(rows[0]?.querySelector('.limit-reset')).toHaveTextContent('resets in 1h');
+    expect(rows[1]?.querySelector('.limit-reset')).toHaveTextContent('no reset info');
+    expect(rows[1]?.querySelector('.limit-marker')).not.toBeNull();
+    expect(rows[2]?.querySelector('.limit-reset')).toHaveTextContent('no reset info');
   });
 });
 

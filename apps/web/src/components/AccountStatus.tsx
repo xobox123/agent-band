@@ -63,29 +63,29 @@ export function AccountLimits({ account, windows, updatedAt }: LimitsProps) {
   const stopAt = account.limits.stopAt;
   return (
     <>
-      {(['5h', 'weekly'] as const).map((w) => {
-        const win = windows.find((x) => x.window === w);
-        const reset = resetsIn(win?.resetsAt, now);
-        return (
-          <div key={w} className="panel-row">
-            <span>{w === '5h' ? '5h window' : 'Weekly window'}</span>
+      <div className="limit-rows">
+        {(['5h', 'weekly'] as const).map((w) => {
+          const win = windows.find((x) => x.window === w);
+          const reset = resetsIn(win?.resetsAt, now);
+          return (
             <LimitBar
+              key={w}
+              name={w === '5h' ? '5h window' : 'Weekly window'}
               value={win ? win.usedPercent : null}
               label={`${account.name} ${w}`}
               title={win?.resetsAt ? `Resets ${formatTime(win.resetsAt)}` : undefined}
               marker={w === '5h' ? stopAt?.fiveHourPercent : stopAt?.weeklyPercent}
               stale={stale}
+              reset={reset ? `resets ${reset}` : null}
+              resetTitle={win?.resetsAt ? formatTime(win.resetsAt) : undefined}
             />
-            {reset ? (
-              <span className="dim" title={formatTime(win?.resetsAt)}>{`resets ${reset}`}</span>
-            ) : null}
-          </div>
-        );
-      })}
-      <div className="panel-row">
-        <span className="dim">{updatedAt ? `Updated ${ago(updatedAt, now)}` : 'Limits not read yet'}</span>
-        {stale && updatedAt ? <span className="dim">(stale)</span> : null}
+          );
+        })}
       </div>
+      <p className="dim limit-updated">
+        {updatedAt ? `Updated ${ago(updatedAt, now)}` : 'Limits not read yet'}
+        {stale && updatedAt ? <span> (stale)</span> : null}
+      </p>
     </>
   );
 }
@@ -262,12 +262,18 @@ export function UsageExtras({ account }: { account: AccountDto }) {
   const max = Math.max(1, ...d.daily.map((x) => x.tokens));
   return (
     <div aria-label={`${account.name} usage details`}>
-      {d.perModel.map((m) => (
-        <div key={m.label} className="panel-row">
-          <span>{`Week (${m.label})`}</span>
-          <LimitBar value={m.usedPercent} label={`${account.name} week ${m.label}`} />
+      {d.perModel.length > 0 ? (
+        <div className="limit-rows">
+          {d.perModel.map((m) => (
+            <LimitBar
+              key={m.label}
+              name={`Week (${m.label})`}
+              value={m.usedPercent}
+              label={`${account.name} week ${m.label}`}
+            />
+          ))}
         </div>
-      ))}
+      ) : null}
       {d.ordinaryUsageAllowed !== null ? (
         <div className="panel-row">
           <span>Ordinary usage</span>
