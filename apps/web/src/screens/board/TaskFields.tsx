@@ -1,4 +1,5 @@
 import { Field } from '../../components/FormDialog.tsx';
+import { DictationTextarea } from '../../components/DictationButton.tsx';
 import type { Agent, AgentGroup, NewTask, Priority } from '../../data/types.ts';
 import { PRIORITIES } from './model.ts';
 
@@ -124,7 +125,7 @@ export function TaskFields({ value, onChange, agents, groups }: Props) {
       </Field>
       <div className="wide form-field">
         <Field label="Prompt" name="prompt" required help="Instructions passed to the agent.">
-          <textarea
+          <DictationTextarea
             className="field"
             rows={5}
             value={value.prompt}

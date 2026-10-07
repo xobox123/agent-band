@@ -526,3 +526,108 @@
   color: var(--warn);
   cursor: help;
 }
+
+.dictation {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dictation textarea {
+  padding-right: 64px;
+}
+
+.dictation-controls {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+}
+
+.dictation-btn {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim, inherit);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.dictation-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dictation-btn.is-listening {
+  color: #fff;
+  background: var(--crit);
+  border-color: var(--crit);
+  animation: dictation-pulse 1.2s ease-in-out infinite;
+}
+
+.dictation-menu {
+  position: absolute;
+  top: 28px;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 90px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.dictation-menu button {
+  padding: 4px 8px;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.dictation-menu button[aria-checked='true'] {
+  font-weight: 600;
+}
+
+.dictation-status {
+  font-size: var(--fs-sm);
+  min-height: 0;
+}
+
+.dictation-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--crit);
+  animation: dictation-pulse 1.2s ease-in-out infinite;
+}
+
+.dictation-interim {
+  opacity: 0.55;
+  font-style: italic;
+}
+
+@keyframes dictation-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dictation-btn.is-listening,
+  .dictation-dot {
+    animation: none;
+  }
+}
