@@ -1,12 +1,16 @@
-export { parseClaudeLine, parseCodexLine } from './parsers.ts';
+export { parseClaudeLine, parseCodexLine, parseGeminiLine, geminiResetsAt } from './parsers.ts';
+export { CLAUDE_NAME_OF, geminiAllowedTools, geminiToolNames } from './gemini-tools.ts';
 export { spawnJsonLines } from './process.ts';
 export { readCodexRateLimits } from './rollout.ts';
 export {
   claudeArgs,
   codexArgs,
   codexMcpOverrides,
+  geminiArgs,
+  geminiEnv,
   runEnv,
   ClaudeAdapter,
+  GeminiAdapter,
   CodexAdapter,
   ApiStubAdapter,
   FakeAdapter,

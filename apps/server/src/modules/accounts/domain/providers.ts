@@ -87,15 +87,18 @@ const REGISTRY: readonly ProviderDescriptor[] = [
     id: 'gemini',
     displayName: 'Gemini CLI',
     harness: 'gemini-cli',
-    accountTypes: ['cli'],
+    accountTypes: ['cli', 'api'],
     accountFields: noFields,
-    adapterEnabled: false,
-    runnableTypes: [],
+    adapterEnabled: true,
+    runnableTypes: ['cli', 'api'],
     capabilities: {
-      runtimeToolEnforcement: false,
+      // BeforeTool hook per run; Gemini does not deny a call when the hook itself times out or fails to launch.
+      runtimeToolEnforcement: true,
+      // Google quotas are daily and per model: no 5h/weekly windows are faked.
       limitWindows: [],
       costReporting: false,
       skills: false,
+      // No append flag exists: the prompt is prefixed with it.
       systemPrompt: true,
     },
   },

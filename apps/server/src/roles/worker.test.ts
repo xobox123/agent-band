@@ -332,6 +332,29 @@ describe('worker', () => {
     );
   });
 
+  it('gives Gemini runs a per-run settings file with the hook and registers the run token', async () => {
+    const acc = await kit.account('gem', 'gemini');
+    const agent = await kit.agent('gm', acc.id);
+    let spec: RunSpec | undefined;
+    let settings: Record<string, unknown> = {};
+    kit.script = (s) => {
+      spec = s;
+      if (s.geminiSettingsPath)
+        settings = JSON.parse(readFileSync(s.geminiSettingsPath, 'utf8')) as Record<string, unknown>;
+      return { events: [] };
+    };
+    const task = await kit.task({ target: { agentId: agent.id } });
+    await run(kit);
+    await reachStatus(task.id, 'done');
+    expect(spec?.geminiSettingsPath).toMatch(/gemini\/settings\.json$/);
+    expect(spec?.skillsDir).toBeUndefined();
+    expect(spec?.mcpConfigPath).toBeUndefined();
+    expect(spec?.configDir).toMatch(/\.gemini$/);
+    expect(settings).toHaveProperty('hooks.BeforeTool');
+    expect(settings).not.toHaveProperty('mcpServers');
+    await waitFor(() => Promise.resolve(!existsSync(spec?.geminiSettingsPath ?? '')));
+  });
+
   it('fails runs left running by a previous worker with the same id on start', async () => {
     const acc = await kit.account('a');
     const agent = await kit.agent('alpha', acc.id);

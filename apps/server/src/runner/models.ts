@@ -33,9 +33,14 @@ export const CLAUDE_MODELS: readonly ModelOption[] = [
   full('claude-fable-5-1', 'Fable 5.1'),
 ];
 
+/** Gemini CLI has no model listing command; `auto` leaves the choice to the CLI (no -m flag). */
 export const GEMINI_MODELS: readonly ModelOption[] = [
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', isDefault: true, source: 'builtin' },
+  alias('auto', 'Auto', 'Gemini CLI picks the model for each request', true),
+  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', isDefault: false, source: 'builtin' },
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', isDefault: false, source: 'builtin' },
+  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', isDefault: false, source: 'builtin' },
+  { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (preview)', isDefault: false, source: 'builtin' },
+  { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (preview)', isDefault: false, source: 'builtin' },
 ];
 
 /** One page of the app-server `model/list` response. */

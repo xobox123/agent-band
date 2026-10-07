@@ -119,7 +119,7 @@ export function createAccountUseCases(deps: AccountsDeps) {
     const providerConfig = checkConfig(v.provider, v.type, v.providerConfig);
     checkSecretAllowed(v.type, v.secret !== undefined);
     checkConfigDirAllowed(v.type, v.configDir);
-    const cliHarness = v.provider === 'claude' || v.provider === 'openai';
+    const cliHarness = v.provider === 'claude' || v.provider === 'openai' || v.provider === 'gemini';
     // API-key accounts of the CLI harnesses get their own private home so they never touch a stored login.
     const managed = v.managedConfigDir === true || (v.type === 'api' && cliHarness);
     if (v.managedConfigDir) {

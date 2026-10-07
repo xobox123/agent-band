@@ -10,15 +10,25 @@ import {
   RunSpec,
 } from '@agent-band/contracts';
 import { cliCommand, missingCliMessage, withCliPath } from './cli-locator.ts';
-import { parseClaudeLine, parseCodexLine } from './parsers.ts';
+import { geminiAllowedTools } from './gemini-tools.ts';
+import { parseClaudeLine, parseCodexLine, parseGeminiLine } from './parsers.ts';
 import { eventQueue, spawnJsonLines } from './process.ts';
 import { readCodexRateLimits } from './rollout.ts';
 
-export function runEnv(s: RunSpec, provider: 'claude' | 'openai'): Record<string, string> {
-  const key = provider === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME';
+const HOME_KEY = { claude: 'CLAUDE_CONFIG_DIR', openai: 'CODEX_HOME', gemini: 'GEMINI_CLI_HOME' } as const;
+
+export function runEnv(s: RunSpec, provider: keyof typeof HOME_KEY): Record<string, string> {
+  const key = HOME_KEY[provider];
   // Setting the variable even to the default dir changes where the CLI looks up its login
   // (Claude on macOS keys the Keychain entry by it), so the default dir is left implicit.
-  const isDefault = resolve(s.configDir) === join(homedir(), provider === 'claude' ? '.claude' : '.codex');
+  // Gemini's variable names the home root that contains `.gemini`, so the root is a default too.
+  const dir = resolve(s.configDir);
+  const defaults = {
+    claude: [join(homedir(), '.claude')],
+    openai: [join(homedir(), '.codex')],
+    gemini: [join(homedir(), '.gemini'), homedir()],
+  }[provider];
+  const isDefault = defaults.includes(dir);
   return {
     ...s.env,
     ...(isDefault ? {} : { [key]: s.configDir }),
@@ -99,6 +109,60 @@ export function codexArgs(s: RunSpec): string[] {
     ...(s.model !== undefined ? ['-m', s.model] : []),
     s.systemPrompt !== undefined ? `${s.systemPrompt}\n\n${s.prompt}` : s.prompt,
   ];
+}
+/** Variables that would silently switch a Gemini run to another auth route than the account's. */
+const GEMINI_AUTH_ENV = [
+  'GEMINI_API_KEY',
+  'GOOGLE_API_KEY',
+  'GOOGLE_GENAI_USE_VERTEXAI',
+  'GOOGLE_GENAI_USE_GCA',
+  'GOOGLE_CLOUD_PROJECT',
+  'GOOGLE_CLOUD_LOCATION',
+  'GOOGLE_APPLICATION_CREDENTIALS',
+];
+
+/** `auto` is the CLI's own routing: no -m flag. */
+const GEMINI_AUTO_MODELS = new Set(['auto', 'default']);
+
+export function geminiArgs(s: RunSpec): string[] {
+  const prompt = s.systemPrompt !== undefined ? `${s.systemPrompt}\n\n${s.prompt}` : s.prompt;
+  const args = [
+    // The = form keeps a prompt that starts with a dash from being read as a flag.
+    `--prompt=${prompt}`,
+    '--output-format',
+    'stream-json',
+    '--approval-mode',
+    { 'read-only': 'plan', edit: 'auto_edit', 'full-auto': 'yolo' }[s.mode],
+  ];
+  if (s.model !== undefined && !GEMINI_AUTO_MODELS.has(s.model)) args.push('-m', s.model);
+  // --allowed-tools auto-approves; it is not an exclusive allowlist (the BeforeTool hook is).
+  for (const tool of geminiAllowedTools(s.preApprovedTools)) args.push('--allowed-tools', tool);
+  return args;
+}
+
+/** Gemini env: the account home, the per-run settings, and no inherited key that changes the auth route. */
+export function geminiEnv(s: RunSpec): Record<string, string | undefined> {
+  return {
+    ...process.env,
+    ...Object.fromEntries(GEMINI_AUTH_ENV.map((name) => [name, undefined])),
+    ...runEnv(s, 'gemini'),
+    ...(s.geminiSettingsPath !== undefined ? { GEMINI_CLI_SYSTEM_SETTINGS_PATH: s.geminiSettingsPath } : {}),
+  };
+}
+export class GeminiAdapter implements ProviderAdapter {
+  readonly provider = 'gemini';
+  start(s: RunSpec): RunHandle {
+    return spawnJsonLines(
+      {
+        cmd: cliCommand('gemini'),
+        args: geminiArgs(s),
+        cwd: s.workDir,
+        env: withCliPath('gemini', geminiEnv(s)),
+        missingMessage: missingCliMessage('gemini'),
+      },
+      (line) => parseGeminiLine(line),
+    );
+  }
 }
 export class ClaudeAdapter implements ProviderAdapter {
   readonly provider = 'claude';

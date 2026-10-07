@@ -101,3 +101,95 @@ export function parseCodexLine(line: string): NormalizedEvent[] {
   }
   return [];
 }
+
+const GEMINI_QUOTA =
+  /quota|rate.?limit|resource_exhausted|\b429\b|exhausted your capacity|usage limit|limit reached/i;
+const UNIT_SECONDS = { h: 3600, m: 60, s: 1 } as const;
+
+/** Best-known reset time from Gemini quota wording such as "reset after 3h24m5s" or "retry in 34.5s". */
+export function geminiResetsAt(message: string, now = Date.now()): string | null {
+  const m = /(?:resets? (?:after|in)|retry (?:in|after))\s+((?:\d+(?:\.\d+)?\s*[hms]\s*)+)/i.exec(message);
+  if (!m?.[1]) return null;
+  let seconds = 0;
+  for (const part of m[1].matchAll(/(\d+(?:\.\d+)?)\s*([hms])/gi)) {
+    seconds += Number(part[1]) * UNIT_SECONDS[(part[2] ?? 's').toLowerCase() as keyof typeof UNIT_SECONDS];
+  }
+  return seconds > 0 ? new Date(now + Math.ceil(seconds) * 1000).toISOString() : null;
+}
+
+function geminiFailure(message: string, now: number): NormalizedEvent[] {
+  return [
+    { kind: 'error', message },
+    ...(GEMINI_QUOTA.test(message)
+      ? [
+          {
+            kind: 'rate_limit' as const,
+            windows: [],
+            limitReached: true,
+            resetsAt: geminiResetsAt(message, now),
+          },
+        ]
+      : []),
+  ];
+}
+
+/** Gemini CLI `--output-format stream-json`: one JSON object per line, no cost field. */
+export function parseGeminiLine(line: string, now = Date.now()): NormalizedEvent[] {
+  const e = object(JSON.parse(line));
+  switch (e.type) {
+    case 'init':
+      return typeof e.session_id === 'string' ? [{ kind: 'session', sessionId: e.session_id }] : [];
+    case 'message':
+      return e.role === 'assistant' && typeof e.content === 'string' && e.content
+        ? [{ kind: 'text', text: e.content }]
+        : [];
+    case 'tool_use':
+      return typeof e.tool_name === 'string'
+        ? [
+            {
+              kind: 'tool',
+              name: e.tool_name,
+              input: e.parameters,
+              ...(typeof e.tool_id === 'string' ? { toolUseId: e.tool_id } : {}),
+            },
+          ]
+        : [];
+    case 'tool_result': {
+      if (e.status !== 'error') return [];
+      const message = object(e.error).message;
+      return [
+        {
+          kind: 'stderr',
+          text: `tool ${String(e.tool_id)} failed: ${typeof message === 'string' ? message : 'error'}`,
+        },
+      ];
+    }
+    case 'error': {
+      const message = typeof e.message === 'string' ? e.message : 'Gemini error';
+      return e.severity === 'warning'
+        ? [{ kind: 'stderr', text: `warning: ${message}` }]
+        : geminiFailure(message, now);
+    }
+    case 'result': {
+      const stats = object(e.stats);
+      const cached = number(stats.cached);
+      // `input` is the uncached part; `input_tokens` includes the cached tokens.
+      const input =
+        typeof stats.input === 'number' ? stats.input : Math.max(0, number(stats.input_tokens) - cached);
+      const failure = object(e.error).message;
+      return [
+        {
+          kind: 'usage',
+          inputTokens: input,
+          outputTokens: number(stats.output_tokens),
+          cachedTokens: cached,
+        },
+        ...(e.status === 'error'
+          ? geminiFailure(typeof failure === 'string' ? failure : 'Gemini run failed', now)
+          : []),
+      ];
+    }
+    default:
+      return [];
+  }
+}

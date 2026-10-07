@@ -99,7 +99,10 @@ describe('builtin lists', () => {
   });
 
   it('has a gemini list', () => {
-    expect(GEMINI_MODELS.length).toBeGreaterThan(0);
+    expect(GEMINI_MODELS.find((m) => m.isDefault)?.id).toBe('auto');
+    expect(GEMINI_MODELS.map((m) => m.id)).toEqual(
+      expect.arrayContaining(['auto', 'gemini-2.5-pro', 'gemini-2.5-flash']),
+    );
   });
 });
 

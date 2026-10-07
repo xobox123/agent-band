@@ -55,6 +55,8 @@ export const RunSpec = z.object({
   mcpConfigPath: z.string().optional(),
   /** Delegation MCP server URL for Codex leader runs; the run token is passed through env only. */
   mcpServerUrl: z.string().optional(),
+  /** Gemini per-run system settings file (hooks, MCP); the CLI reads it through GEMINI_CLI_SYSTEM_SETTINGS_PATH. */
+  geminiSettingsPath: z.string().optional(),
   /** Claude session to resume on a leader continuation turn. */
   resumeSessionId: z.string().optional(),
   gitIdentity: z.object({ name: z.string(), email: z.string() }),
@@ -68,6 +70,6 @@ export interface RunHandle {
   cancel(): void;
 }
 export interface ProviderAdapter {
-  readonly provider: 'claude' | 'openai' | 'api';
+  readonly provider: 'claude' | 'openai' | 'gemini' | 'api';
   start(spec: RunSpec): RunHandle;
 }

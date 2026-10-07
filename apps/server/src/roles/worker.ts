@@ -37,6 +37,7 @@ import {
   revokeRunAuth,
   stableHash,
   writeClaudePlugin,
+  writeGeminiRunConfig,
   mcpUrl,
   writeMcpConfig,
 } from '../execution/index.ts';
@@ -44,6 +45,12 @@ import { FRESH_SNAPSHOT_MS } from '../modules/usage/index.ts';
 import { LEADER_PROMPT, PLAN_APPROVAL_PROMPT } from './leader-prompt.ts';
 
 type Availability = Awaited<ReturnType<ReturnType<typeof createUsage>['accountAvailability']>>;
+
+const API_KEY_ENV: Record<string, string> = { openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY' };
+
+/** Gemini runs get the BeforeTool hook and per-run settings; they need a registered run token. */
+const usesGeminiHook = (account: AccountForRun): boolean =>
+  getProvider(account.provider)?.harness === 'gemini-cli';
 
 /** Pre-approved rules for a run; read-only runs keep only the web rules so plan mode is never bypassed. */
 export function preApprovedFor(c: { mode: RunSpec['mode']; policy: EffectivePolicy }): string[] {
@@ -193,8 +200,9 @@ export function createWorker(deps: WorkerDeps): Worker {
     const policy = await deps.policy.forAgent(deps.db, orgId, agent.id);
     if (task.kind === 'goal' && agent.role !== 'leader')
       return { reasons: [`agent ${agent.handle}: goals need an agent with role leader`] };
-    // Claude gets the delegation MCP server through a config file, Codex through -c overrides.
-    if (task.kind === 'goal' && account.provider !== 'claude' && account.provider !== 'openai')
+    // Claude gets the delegation MCP server through a config file, Codex through -c overrides,
+    // Gemini through its per-run settings file.
+    if (task.kind === 'goal' && !['claude', 'openai', 'gemini'].includes(account.provider))
       return {
         reasons: [
           `agent ${agent.handle}: leader agents are not supported on provider ${account.provider} yet`,
@@ -268,7 +276,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         });
         await deps.tasks.setTaskStatus(tx, d, task.id, 'running');
         const preApprovedTools = preApprovedFor(c);
-        if (c.skillsLoadable || task.kind === 'goal') {
+        if (c.skillsLoadable || task.kind === 'goal' || usesGeminiHook(c.account)) {
           await registerRunAuth(tx, {
             runId: run.id,
             orgId,
@@ -423,7 +431,18 @@ export function createWorker(deps: WorkerDeps): Worker {
       const mcpConfigPath = join(dir, 'mcp.json');
       let resumeSessionId: string | undefined;
       let mcpServerUrl: string | undefined;
-      if (isGoal) {
+      let geminiSettingsPath: string | undefined;
+      if (usesGeminiHook(c.account)) {
+        geminiSettingsPath = await writeGeminiRunConfig({
+          dir,
+          runId: run.id,
+          port: deps.apiPort,
+          deniedTools: c.policy.deniedTools,
+          apiKey: c.account.type === 'api',
+          ...(isGoal ? { mcpUrl: mcpUrl(deps.apiPort, run.id) } : {}),
+        });
+      }
+      if (isGoal && !geminiSettingsPath) {
         const goal = await deps.tasks.getGoalState(deps.db, orgId, task.id);
         if (c.account.provider === 'openai') {
           mcpServerUrl = mcpUrl(deps.apiPort, run.id);
@@ -447,14 +466,16 @@ export function createWorker(deps: WorkerDeps): Worker {
         mode: c.mode,
         ...(c.agent.model ? { model: c.agent.model } : {}),
         ...(systemPrompt ? { systemPrompt } : {}),
-        ...(isGoal && !mcpServerUrl ? { mcpConfigPath } : {}),
+        ...(isGoal && !mcpServerUrl && !geminiSettingsPath ? { mcpConfigPath } : {}),
         ...(mcpServerUrl ? { mcpServerUrl } : {}),
+        ...(geminiSettingsPath ? { geminiSettingsPath } : {}),
         ...(resumeSessionId ? { resumeSessionId } : {}),
         ...(c.policy.allowedTools ? { allowedTools: c.policy.allowedTools } : {}),
         ...(c.policy.deniedTools.length ? { deniedTools: c.policy.deniedTools } : {}),
         ...(preApprovedTools.length ? { preApprovedTools } : {}),
         configDir:
-          c.account.configDir ?? join(homedir(), c.account.provider === 'openai' ? '.codex' : '.claude'),
+          c.account.configDir ??
+          join(homedir(), { openai: '.codex', gemini: '.gemini' }[c.account.provider] ?? '.claude'),
         ...(c.skillsLoadable ? { skillsDir: dir } : {}),
         gitIdentity: c.agent.gitIdentity,
         agentId: c.agent.id,
@@ -462,7 +483,7 @@ export function createWorker(deps: WorkerDeps): Worker {
           [RUN_TOKEN_ENV]: token,
           // Only for api accounts, only in the spawned process environment; never logged or recorded.
           ...(c.account.type === 'api' && c.account.secret
-            ? { [c.account.provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY']: c.account.secret }
+            ? { [API_KEY_ENV[c.account.provider] ?? 'ANTHROPIC_API_KEY']: c.account.secret }
             : {}),
         },
       };

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -8,7 +8,7 @@ import { parseClaudeUsageText, type ClaudeUsage } from './claude-usage.ts';
 import { readCodexNative, startCodexNativeLogin, type CodexUsageInfo } from './codex-app-server.ts';
 import { object } from './parsers.ts';
 
-export type CliProvider = 'claude' | 'openai';
+export type CliProvider = 'claude' | 'openai' | 'gemini';
 /** Replaces the real CLI; tests point this at a fake script. */
 export type CliBins = Partial<Record<CliProvider, { cmd: string; args?: string[] }>>;
 
@@ -42,14 +42,21 @@ export interface ProbeOptions {
 const PROBE_TIMEOUT_MS = 15_000;
 const LOGIN_TIMEOUT_MS = 10 * 60_000;
 
-const ENV_KEY = { claude: 'CLAUDE_CONFIG_DIR', openai: 'CODEX_HOME' } as const;
-const DEFAULT_DIR = { claude: '.claude', openai: '.codex' } as const;
+const ENV_KEY = { claude: 'CLAUDE_CONFIG_DIR', openai: 'CODEX_HOME', gemini: 'GEMINI_CLI_HOME' } as const;
+const DEFAULT_DIR = { claude: '.claude', openai: '.codex', gemini: '.gemini' } as const;
 
 export function defaultConfigDir(provider: CliProvider): string {
   return join(homedir(), DEFAULT_DIR[provider]);
 }
 export function isDefaultConfigDir(provider: CliProvider, dir: string | null): boolean {
-  return dir === null || resolve(dir) === defaultConfigDir(provider);
+  if (dir === null) return true;
+  const resolved = resolve(dir);
+  // GEMINI_CLI_HOME names the home root that contains `.gemini`, so the real home is the default too.
+  return resolved === defaultConfigDir(provider) || (provider === 'gemini' && resolved === homedir());
+}
+/** Directory that holds a Gemini account's `.gemini` folder. */
+export function geminiHomeRoot(dir: string | null): string {
+  return isDefaultConfigDir('gemini', dir) || dir === null ? homedir() : resolve(dir);
 }
 /** The default dir is left implicit: setting the variable changes where the CLI looks up its login. */
 export function cliEnv(provider: CliProvider, dir: string | null): NodeJS.ProcessEnv {
@@ -59,12 +66,13 @@ export function cliEnv(provider: CliProvider, dir: string | null): NodeJS.Proces
       : { ...process.env, [ENV_KEY[provider]]: dir };
   return withCliPath(cliNameOf(provider), env);
 }
-export const cliNameOf = (provider: CliProvider): 'claude' | 'codex' =>
-  provider === 'claude' ? 'claude' : 'codex';
+export const cliNameOf = (provider: CliProvider): 'claude' | 'codex' | 'gemini' =>
+  provider === 'openai' ? 'codex' : provider;
 const shellQuote = (s: string): string => (/^[\w@%+=:,./~-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);
 
 export function loginCommand(provider: CliProvider, dir: string | null): string {
-  const base = provider === 'claude' ? 'claude auth login' : 'codex login';
+  // Gemini has no login subcommand: its interactive UI offers "Sign in with Google" on first start.
+  const base = { claude: 'claude auth login', openai: 'codex login', gemini: 'gemini' }[provider];
   return isDefaultConfigDir(provider, dir) || dir === null
     ? base
     : `${ENV_KEY[provider]}=${shellQuote(dir)} ${base}`;
@@ -173,7 +181,8 @@ export async function probeAccount(
     error,
     loginCommand: command,
   });
-  const name = provider === 'claude' ? 'claude' : 'codex';
+  const name = cliNameOf(provider);
+  if (provider === 'gemini') return probeGemini(configDir, opts, checkedAt, command);
   if (provider === 'openai') {
     try {
       const { account } = await readCodexNative(cliEnv(provider, configDir), opts, { limits: false });
@@ -207,6 +216,59 @@ export async function probeAccount(
   const parsed = parseClaudeStatus(res.stdout);
   if (!parsed) return fail(`unexpected output from ${name} auth status`);
   return { ...parsed, checkedAt, loginCommand: parsed.loggedIn ? null : command };
+}
+
+const exists = (path: string): Promise<boolean> =>
+  stat(path).then(
+    () => true,
+    () => false,
+  );
+
+/**
+ * Gemini CLI 0.6x has no auth or status subcommand, and /stats only works inside its interactive UI.
+ * So this checks that the CLI starts (`--version`, no model call) and that the Google login was stored:
+ * the credentials file is only stat'ed, never read. Expired or revoked logins are not detected here;
+ * the first run reports them. The cached email comes from the non-secret google_accounts.json.
+ */
+async function probeGemini(
+  configDir: string | null,
+  opts: ProbeOptions,
+  checkedAt: string,
+  command: string,
+): Promise<ProbeResult> {
+  const fail = (error: string): ProbeResult => ({
+    loggedIn: false,
+    identity: {},
+    checkedAt,
+    error,
+    loginCommand: command,
+  });
+  const { cmd, args } = bin('gemini', opts.bins, ['--version']);
+  const res = await runCli(
+    { cmd, args, env: cliEnv('gemini', configDir) },
+    opts.timeoutMs ?? PROBE_TIMEOUT_MS,
+  );
+  if (res.missing) return fail(missingCliMessage('gemini'));
+  if (res.timedOut) return fail('gemini did not answer in time');
+  if (res.error) return fail(res.error);
+  const home = join(geminiHomeRoot(configDir), '.gemini');
+  if (!(await exists(join(home, 'oauth_creds.json')))) {
+    return { loggedIn: false, identity: {}, checkedAt, loginCommand: command };
+  }
+  let email: string | undefined;
+  try {
+    const active = object(JSON.parse(await readFile(join(home, 'google_accounts.json'), 'utf8'))).active;
+    if (typeof active === 'string' && active) email = active;
+  } catch {
+    // the account list is optional
+  }
+  return {
+    loggedIn: true,
+    identity: { authMethod: 'google-oauth', ...(email && { email }) },
+    checkedAt,
+    note: 'Gemini has no login status command: this confirms a stored Google login, which is verified on the first run.',
+    loginCommand: null,
+  };
 }
 
 async function legacyCodexStatus(
@@ -256,6 +318,10 @@ export async function startLogin(
   opts: ProbeOptions & { openUrl?: (url: string) => void } = {},
 ): Promise<LoginHandle> {
   const { provider, configDir } = account;
+  if (provider === 'gemini') {
+    // Sign-in happens inside Gemini's interactive UI, which cannot run headless: hand over the command.
+    return { started: false, command: loginCommand(provider, configDir), done: Promise.resolve() };
+  }
   if (provider === 'openai') {
     try {
       const { authUrl, done } = await startCodexNativeLogin(
@@ -423,6 +489,16 @@ export async function probeApiKey(
     error,
     loginCommand: null,
   });
+  if (account.provider === 'gemini') {
+    if (account.apiKey.trim() === '') return fail('no API key stored');
+    return {
+      loggedIn: true,
+      identity: { plan: 'API key', authMethod: 'gemini-api-key' },
+      checkedAt,
+      note: 'The key is passed through the environment and verified on the first run.',
+      loginCommand: null,
+    };
+  }
   if (account.provider === 'claude') {
     const { cmd, args } = bin('claude', opts.bins, ['auth', 'status']);
     const res = await runCli(

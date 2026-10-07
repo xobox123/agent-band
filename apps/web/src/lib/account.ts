@@ -94,6 +94,7 @@ export function slugify(name: string): string {
 /** The command a user runs in a terminal to log in a separate account. */
 export function suggestedLoginCommand(provider: string, name: string): string {
   const slug = slugify(name);
+  if (provider === 'gemini') return `GEMINI_CLI_HOME=~/.gemini-${slug} gemini`;
   return provider === 'openai'
     ? `CODEX_HOME=~/.codex-${slug} codex login`
     : `CLAUDE_CONFIG_DIR=~/.claude-${slug} claude auth login`;

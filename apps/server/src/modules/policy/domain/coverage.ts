@@ -24,7 +24,10 @@ export function describePolicy(
       if (provider.capabilities.runtimeToolEnforcement)
         details.push({
           mechanism: 'runtime-hook',
-          scope: 'Paths in Claude Read/Edit/Write/Glob/Grep tool calls.',
+          scope:
+            provider.harness === 'gemini-cli'
+              ? 'Paths in Gemini read_file/write_file/replace/glob/list_directory/grep_search tool calls; read_many_files is blocked.'
+              : 'Paths in Claude Read/Edit/Write/Glob/Grep tool calls.',
         });
       if (provider.harness === 'codex-cli')
         details.push({ mechanism: 'cli-sandbox', scope: 'Workspace writes in workspace-write mode.' });
@@ -44,7 +47,9 @@ export function describePolicy(
         mechanism: coverage,
         scope:
           coverage === 'runtime-hook'
-            ? 'Passed to Claude as allowed tool rules and granted explicitly by the pre-tool hook; denied and disallowed tools still win.'
+            ? provider.harness === 'gemini-cli'
+              ? 'Mapped to Gemini --allowed-tools rules (auto-approval, not an exclusive allowlist); the BeforeTool hook still denies denied tools.'
+              : 'Passed to Claude as allowed tool rules and granted explicitly by the pre-tool hook; denied and disallowed tools still win.'
             : 'Web and curl rules enable network access in the Codex workspace-write sandbox; other rules are not enforced.',
       });
     } else if (name === 'maxMode') {

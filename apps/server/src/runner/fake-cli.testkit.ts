@@ -91,12 +91,23 @@ if (args[0] === 'app-server') {
 process.exit(2);
 `;
 
+/** Only answers --version; Gemini has no login or status command. */
+const GEMINI = `
+if (process.argv[2] === '--version') {
+  if (process.env.FAKE_MODE === 'hang') return setTimeout(() => {}, 60000);
+  return console.log('0.63.0');
+}
+process.exit(2);
+`;
+
 export function fakeBins(): CliBins & { dir: string } {
   const dir = mkdtempSync(join(tmpdir(), 'fake-cli-'));
   writeFileSync(join(dir, 'claude.cjs'), CLAUDE);
   writeFileSync(join(dir, 'codex.cjs'), CODEX);
+  writeFileSync(join(dir, 'gemini.cjs'), GEMINI);
   return {
     dir,
+    gemini: { cmd: process.execPath, args: [join(dir, 'gemini.cjs')] },
     claude: { cmd: process.execPath, args: [join(dir, 'claude.cjs')] },
     openai: { cmd: process.execPath, args: [join(dir, 'codex.cjs')] },
   };
