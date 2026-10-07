@@ -14,12 +14,26 @@ afterEach(async () => {
 });
 
 async function register(token: string): Promise<string> {
-  const runId = randomUUID();
+  const run = await withTx(api.database.db, (tx) =>
+    api.c.runs.startRun(
+      tx,
+      { ...api.c.localUser, kind: 'system' },
+      {
+        taskId: randomUUID(),
+        agentId: randomUUID(),
+        accountId: randomUUID(),
+        workerId: 'test',
+        effectivePolicy: {},
+        skills: [],
+      },
+    ),
+  );
+  const runId = run.id;
   await withTx(api.database.db, (tx) =>
     registerRunAuth(tx, {
       runId,
       orgId: api.c.orgId,
-      agentId: randomUUID(),
+      agentId: run.agentId,
       workDir: '/work/run',
       token,
       policy: { deniedTools: ['Bash'], workDirSets: [] },
@@ -33,7 +47,7 @@ const authorize = (runId: string, toolName: string, token?: string) =>
     method: 'POST',
     url: `/api/v1/runs/${runId}/authorize-tool`,
     headers: token === undefined ? {} : { [RUN_TOKEN_HEADER]: token },
-    payload: { runId, toolName },
+    payload: { runId, toolName, toolUseId: 'tool-1' },
   });
 
 it('allows a permitted tool and denies a policy-denied one, both with 200', async () => {
@@ -45,6 +59,11 @@ it('allows a permitted tool and denies a policy-denied one, both with 200', asyn
   const denied = await authorize(runId, 'Bash', token);
   expect(denied.statusCode).toBe(200);
   expect(denied.json<{ decision: string }>().decision).toBe('deny');
+  const events = await api.c.runs.listRunEvents(api.database.db, api.c.localUser, runId);
+  expect(events.map((e) => e.payload)).toEqual([
+    expect.objectContaining({ kind: 'tool_decision', decision: 'allow', toolUseId: 'tool-1' }),
+    expect.objectContaining({ kind: 'tool_decision', decision: 'deny', toolUseId: 'tool-1' }),
+  ]);
 });
 
 it('denies a wrong token and a missing token without requiring a user actor', async () => {

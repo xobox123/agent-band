@@ -12,6 +12,7 @@ export interface Call {
   method: string;
   path: string;
   body: unknown;
+  query: Record<string, string>;
 }
 
 /** Fetch stub: keys are `METHOD /path` (no /api/v1 prefix, no query). Unlisted routes answer 404 problem+json. */
@@ -27,6 +28,7 @@ export function fakeFetch(routes: Routes) {
     calls.push({
       method,
       path,
+      query: Object.fromEntries(url.searchParams),
       body: typeof init.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined,
     });
     const entry = routes[`${method} ${path}`];

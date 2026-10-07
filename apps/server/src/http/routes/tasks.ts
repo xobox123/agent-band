@@ -16,12 +16,51 @@ import {
   TaskTreeDto,
   UpdateTaskBody,
 } from '@agent-band/contracts';
+import type { ActorContext } from '../../platform/actor.ts';
+import type { Task } from '../../modules/tasks/index.ts';
 import type { Composition } from '../../composition.ts';
 import { goalDto, runDto, runEventDto, taskDto } from '../dto.ts';
 import { invalid } from '../../platform/errors.ts';
 
 export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
   const db = c.database.db;
+  async function dtos(actor: ActorContext, tasks: Task[]) {
+    const runs = await c.runs.latestByTask(
+      db,
+      actor,
+      tasks.map((t) => t.id),
+    );
+    const latest = new Map(runs.map((r) => [r.taskId, r]));
+    return tasks.map((t) => {
+      const run = latest.get(t.id);
+      return { ...taskDto(t), latestRun: run ? runDto(run) : null };
+    });
+  }
+  async function dto(actor: ActorContext, task: Task) {
+    const [result] = await dtos(actor, [task]);
+    if (!result) throw new Error('task dto missing');
+    return result;
+  }
+  async function accountFilter(actor: ActorContext, accountId?: string) {
+    if (!accountId) return {};
+    const [runs, agents] = await Promise.all([
+      c.runs.listRuns(db, actor, { accountId }),
+      c.agents.listAgents(db, actor),
+    ]);
+    return {
+      accountTaskIds: [...new Set(runs.map((r) => r.taskId))],
+      accountAgentIds: agents.filter((a) => a.accountId === accountId).map((a) => a.id),
+    };
+  }
+  function page<T extends { id: string }>(rows: T[], limit: number, at: (row: T) => Date) {
+    const items = rows.slice(0, limit);
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor:
+        rows.length > limit && last ? JSON.stringify({ at: at(last).toISOString(), id: last.id }) : null,
+    };
+  }
   return (app, _opts, done) => {
     app.get(
       '/tasks',
@@ -35,8 +74,20 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
       },
       async (req) => {
         const cursor = await c.cursor();
-        const items = await c.tasks.listTasks(db, await c.resolveActor(req), req.query);
-        return { items: items.map(taskDto), cursor };
+        const actor = await c.resolveActor(req);
+        const terminal =
+          req.query.status && ['done', 'failed', 'cancelled', 'denied'].includes(req.query.status);
+        if (req.query.pageCursor && !terminal) throw invalid('pageCursor requires a terminal status');
+        const items = await c.tasks.listTasks(db, actor, {
+          ...req.query,
+          ...(await accountFilter(actor, req.query.accountId)),
+          limit: terminal ? req.query.limit + 1 : undefined,
+          ...(req.query.status === 'failed'
+            ? { status: undefined, statuses: ['failed' as const, 'denied' as const] }
+            : {}),
+        });
+        const result = page(items, terminal ? req.query.limit : items.length, (t) => t.createdAt);
+        return { ...result, items: await dtos(actor, result.items), cursor };
       },
     );
 
@@ -62,7 +113,7 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
           ...body,
           ...(runAt ? { runAt: new Date(runAt) } : {}),
         });
-        return reply.code(201).send(taskDto(task));
+        return reply.code(201).send(await dto(actor, task));
       },
     );
 
@@ -71,7 +122,8 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
       {
         schema: { tags: ['tasks'], summary: 'Get a task', params: IdParams, response: { 200: TaskDto } },
       },
-      async (req) => taskDto(await c.tasks.getTask(db, await c.resolveActor(req), req.params.id)),
+      async (req) =>
+        dto(await c.resolveActor(req), await c.tasks.getTask(db, await c.resolveActor(req), req.params.id)),
     );
 
     app.get(
@@ -96,7 +148,10 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
         return {
           cursor,
           goal: goalDto(goal, total),
-          tasks: tasks.map((t) => ({ ...taskDto(t), tokens: tokens[t.id] ?? 0 })),
+          tasks: (await dtos(await c.resolveActor(req), tasks)).map((t) => ({
+            ...t,
+            tokens: tokens[t.id] ?? 0,
+          })),
         };
       },
     );
@@ -109,7 +164,15 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
       async (req) => {
         const cursor = await c.cursor();
         const rows = await c.tasks.listGoals(db, await c.resolveActor(req));
-        return { items: rows.map((r) => ({ goal: goalDto(r.goal), task: taskDto(r.task) })), cursor };
+        return {
+          items: await Promise.all(
+            rows.map(async (r) => ({
+              goal: goalDto(r.goal),
+              task: await dto(await c.resolveActor(req), r.task),
+            })),
+          ),
+          cursor,
+        };
       },
     );
 
@@ -125,7 +188,8 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
         },
       },
       async (req) =>
-        taskDto(
+        dto(
+          await c.resolveActor(req),
           await c.tasks.setTaskPriority(db, await c.resolveActor(req), req.params.id, req.body.priority),
         ),
     );
@@ -140,7 +204,11 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
           response: { 200: TaskDto },
         },
       },
-      async (req) => taskDto(await c.tasks.cancelTask(db, await c.resolveActor(req), req.params.id)),
+      async (req) =>
+        dto(
+          await c.resolveActor(req),
+          await c.tasks.cancelTask(db, await c.resolveActor(req), req.params.id),
+        ),
     );
 
     app.post(
@@ -155,7 +223,10 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
         },
       },
       async (req) =>
-        taskDto(await c.tasks.reorderTask(db, await c.resolveActor(req), req.params.id, req.body.beforeId)),
+        dto(
+          await c.resolveActor(req),
+          await c.tasks.reorderTask(db, await c.resolveActor(req), req.params.id, req.body.beforeId),
+        ),
     );
 
     app.get(
@@ -170,17 +241,46 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
       },
       async (req) => {
         const cursor = await c.cursor();
-        const columns = await c.tasks.boardView(db, await c.resolveActor(req), req.query);
+        const actor = await c.resolveActor(req);
+        if (req.query.pageCursor)
+          throw invalid('Use /tasks with a terminal status to fetch the next column page');
+        const filter = {
+          ...req.query,
+          ...(await accountFilter(actor, req.query.accountId)),
+          limit: undefined,
+        };
+        const columns = await c.tasks.boardView(db, actor, {
+          ...filter,
+          statuses: ['scheduled', 'queued', 'claimed', 'running', 'rate_limited'],
+        });
+        const nextCursors = { done: null, failed: null, cancelled: null } as Record<
+          'done' | 'failed' | 'cancelled',
+          string | null
+        >;
+        for (const status of ['done', 'failed', 'cancelled'] as const) {
+          const rows = await c.tasks.listTasks(db, actor, {
+            ...filter,
+            statuses: status === 'failed' ? ['failed', 'denied'] : [status],
+            limit: req.query.limit + 1,
+          });
+          const result = page(rows, req.query.limit, (t) => t.createdAt);
+          columns[status] = result.items;
+          nextCursors[status] = result.nextCursor;
+        }
+        const mapped = await dtos(actor, Object.values(columns).flat());
+        const byId = new Map(mapped.map((t) => [t.id, t]));
+        const column = (tasks: Task[]) => tasks.flatMap((t) => byId.get(t.id) ?? []);
         return {
           cursor,
+          nextCursors,
           columns: {
-            scheduled: columns.scheduled.map(taskDto),
-            queued: columns.queued.map(taskDto),
-            running: columns.running.map(taskDto),
-            rate_limited: columns.rate_limited.map(taskDto),
-            done: columns.done.map(taskDto),
-            failed: columns.failed.map(taskDto),
-            cancelled: columns.cancelled.map(taskDto),
+            scheduled: column(columns.scheduled),
+            queued: column(columns.queued),
+            running: column(columns.running),
+            rate_limited: column(columns.rate_limited),
+            done: column(columns.done),
+            failed: column(columns.failed),
+            cancelled: column(columns.cancelled),
           },
         };
       },
@@ -198,8 +298,13 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
       },
       async (req) => {
         const cursor = await c.cursor();
-        const items = await c.runs.listRuns(db, await c.resolveActor(req), req.query);
-        return { items: items.map(runDto), cursor };
+        const actor = await c.resolveActor(req);
+        const taskIds = req.query.text
+          ? (await c.tasks.listTasks(db, actor, { text: req.query.text })).map((t) => t.id)
+          : undefined;
+        const rows = await c.runs.listRuns(db, actor, { ...req.query, taskIds, limit: req.query.limit + 1 });
+        const result = page(rows, req.query.limit, (r) => r.startedAt);
+        return { ...result, items: result.items.map(runDto), cursor };
       },
     );
 

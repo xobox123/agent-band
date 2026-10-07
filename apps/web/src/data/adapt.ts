@@ -50,7 +50,7 @@ export function toTask(dto: TaskDto, runId: string | null): Task {
     maxAttempts: dto.maxAttempts,
     resumeAt: dto.resumeAt,
     error: dto.error,
-    noEligibleReason: dto.status === 'queued' ? dto.error : null,
+    noEligibleReason: dto.status === 'queued' ? dto.eligibilityReason : null,
     createdBy: dto.createdBy,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,

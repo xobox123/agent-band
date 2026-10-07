@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import type { AuthorizeToolRequest } from '@agent-band/contracts';
 import type { Db } from '../../platform/db.ts';
 import type { Tx } from '../../platform/tx.ts';
-import type { AuditLog } from '../../ports/index.ts';
+import type { AuditLog, RunEventWriter } from '../../ports/index.ts';
 import { decideTool, type ToolDecision, type ToolPolicySnapshot } from '../domain/tool-authz.ts';
 import { runAuth } from '../infra/schema.ts';
 
@@ -59,7 +59,7 @@ export type ToolCall = Pick<AuthorizeToolRequest, 'toolName' | 'toolInput' | 'to
  * Decides one tool call of a running agent. Unknown run, revoked run and bad token all
  * deny without an audit record, because the caller is not a proven agent.
  */
-export function createAuthorizeToolCall(deps: { audit: AuditLog }) {
+export function createAuthorizeToolCall(deps: { audit: AuditLog; runs: RunEventWriter }) {
   return async function authorizeToolCall(
     db: Db,
     runId: string,
@@ -71,8 +71,14 @@ export function createAuthorizeToolCall(deps: { audit: AuditLog }) {
       return { decision: 'deny', reason: 'invalid run token' };
     }
     const result = decideTool(row.policy, row.workDir, tool.toolName, tool.toolInput);
-    await db.transaction((tx) =>
-      deps.audit.append(tx, {
+    await db.transaction(async (tx) => {
+      await deps.runs.appendRunEvent(
+        tx,
+        { orgId: row.orgId, principalId: row.agentId, kind: 'system', requestId: runId },
+        runId,
+        { kind: 'tool_decision', ...result, ...(tool.toolUseId ? { toolUseId: tool.toolUseId } : {}) },
+      );
+      await deps.audit.append(tx, {
         orgId: row.orgId,
         actorId: row.agentId,
         action: 'agent.tool_decision',
@@ -85,8 +91,8 @@ export function createAuthorizeToolCall(deps: { audit: AuditLog }) {
           input: JSON.stringify(tool.toolInput ?? null).slice(0, 2000),
           ...(tool.toolUseId ? { toolUseId: tool.toolUseId } : {}),
         },
-      }),
-    );
+      });
+    });
     return result;
   };
 }

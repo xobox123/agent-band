@@ -158,7 +158,7 @@ export function createApi(fetchImpl?: typeof fetch) {
     organization: () => get<OrganizationDto>('/organization'),
 
     tasks: {
-      list: (query?: Query) => get<Page<TaskDto>>('/tasks', query),
+      list: (query?: Query) => get<Page<TaskDto> & { nextCursor: string | null }>('/tasks', query),
       create: (body: CreateTaskBody) => send<TaskDto>('POST', '/tasks', body),
       reorder: (id: string, beforeId: string | null) =>
         send<TaskDto>('POST', `/tasks/${id}/reorder`, beforeId ? { beforeId } : {}),
@@ -226,7 +226,7 @@ export function createApi(fetchImpl?: typeof fetch) {
     },
 
     runs: {
-      list: (query?: Query) => get<Page<RunDto>>('/runs', query),
+      list: (query?: Query) => get<Page<RunDto> & { nextCursor: string | null }>('/runs', query),
       get: (id: string) => get<RunDto>(`/runs/${id}`),
       events: (id: string, afterId = 0) => get<Page<RunEventDto>>(`/runs/${id}/events`, { afterId }),
     },

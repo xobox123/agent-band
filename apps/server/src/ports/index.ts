@@ -98,6 +98,15 @@ export interface TaskPlanner {
   ): Promise<{ resumed: { id: string }[]; exhausted: { id: string }[] }>;
 }
 
+export interface RunEventWriter {
+  appendRunEvent(
+    tx: Tx,
+    actor: ActorContext,
+    id: string,
+    event: import('@agent-band/contracts').NormalizedEvent,
+  ): Promise<unknown>;
+}
+
 export interface ModuleDeps {
   authorizer: Authorizer;
   audit: AuditLog;

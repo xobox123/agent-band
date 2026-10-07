@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Id, IsoDate, listOf } from './common.ts';
+import { Id, IsoDate, listOf, PagingQuery } from './common.ts';
 
 export const TaskStatus = z.enum([
   'scheduled',
@@ -50,6 +50,8 @@ export const GoalLimitsBody = z
   })
   .strict();
 
+import { RunDto } from './runs.ts';
+
 export const TaskDto = z.object({
   id: Id,
   orgId: Id,
@@ -83,13 +85,22 @@ export const TaskDto = z.object({
   dependsOn: z.array(Id),
   result: TaskResult.nullable(),
   /** Why a queued task is waiting for an agent (no eligible agent, account limits); null otherwise. */
+  latestRun: RunDto.pick({
+    id: true,
+    agentId: true,
+    status: true,
+    inputTokens: true,
+    outputTokens: true,
+    startedAt: true,
+    finishedAt: true,
+  }).nullable(),
   eligibilityReason: z.string().nullable(),
   createdBy: Id,
   createdAt: IsoDate,
   updatedAt: IsoDate,
 });
 export type TaskDto = z.infer<typeof TaskDto>;
-export const TaskList = listOf(TaskDto);
+export const TaskList = listOf(TaskDto).extend({ nextCursor: z.string().nullable() });
 
 export const CreateTaskBody = z
   .object({
@@ -110,7 +121,8 @@ export const CreateTaskBody = z
   .strict();
 export type CreateTaskBody = z.input<typeof CreateTaskBody>;
 
-export const TaskQuery = z.object({
+export const TaskQuery = PagingQuery.extend({
+  accountId: Id.optional(),
   status: TaskStatus.optional(),
   agentId: Id.optional(),
   label: z.string().optional(),
@@ -131,7 +143,15 @@ export const BoardColumns = z.object({
   failed: z.array(TaskDto),
   cancelled: z.array(TaskDto),
 });
-export const BoardDto = z.object({ columns: BoardColumns, cursor: z.number().int().nonnegative() });
+export const BoardDto = z.object({
+  columns: BoardColumns,
+  nextCursors: z.object({
+    done: z.string().nullable(),
+    failed: z.string().nullable(),
+    cancelled: z.string().nullable(),
+  }),
+  cursor: z.number().int().nonnegative(),
+});
 export type BoardDto = z.infer<typeof BoardDto>;
 
 export const GoalStatus = z.enum(['planning', 'waiting', 'continuing', 'completed', 'failed']);

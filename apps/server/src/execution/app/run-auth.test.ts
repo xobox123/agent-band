@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openTestDatabase, type Database } from '../../platform/db.ts';
-import { fakeDeps } from '../../ports/testing.ts';
+import { fakeDeps, FakeRunEventWriter } from '../../ports/testing.ts';
 import { createAuthorizeToolCall, newRunToken, registerRunAuth, revokeRunAuth } from './run-auth.ts';
 
 let database: Database;
@@ -11,11 +11,13 @@ const runId = randomUUID();
 const orgId = randomUUID();
 const agentId = randomUUID();
 const token = newRunToken();
+let events: FakeRunEventWriter;
 
 beforeEach(async () => {
   database = await openTestDatabase();
   deps = fakeDeps();
-  authorize = createAuthorizeToolCall(deps);
+  events = new FakeRunEventWriter();
+  authorize = createAuthorizeToolCall({ ...deps, runs: events });
   await database.db.transaction((tx) =>
     registerRunAuth(tx, {
       runId,
@@ -43,6 +45,7 @@ describe('authorizeToolCall', () => {
       toolUseId: 'tu1',
     });
     expect(r.decision).toBe('allow');
+    expect(events.events).toEqual([{ kind: 'tool_decision', ...r, toolUseId: 'tu1' }]);
     expect(deps.audit.entries).toHaveLength(1);
     expect(deps.audit.entries[0]).toMatchObject({
       orgId,
@@ -77,6 +80,7 @@ describe('authorizeToolCall', () => {
     }
     expect((await authorize(database.db, randomUUID(), token, tool)).decision).toBe('deny');
     expect(deps.audit.entries).toHaveLength(0);
+    expect(events.events).toHaveLength(0);
   });
   it('denies after the run auth is revoked', async () => {
     await database.db.transaction((tx) => revokeRunAuth(tx, runId));

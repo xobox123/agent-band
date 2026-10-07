@@ -15,6 +15,8 @@ export function eventText(event: RunEventDto): string {
       return p.text;
     case 'error':
       return p.message;
+    case 'tool_decision':
+      return `${p.decision}: ${p.reason}`;
     case 'tool':
       return p.name;
     case 'usage':
@@ -30,14 +32,25 @@ export function eventText(event: RunEventDto): string {
   }
 }
 
-export function RunEventLine({ event }: { event: RunEventDto }) {
+type Decision = Extract<RunEventDto['payload'], { kind: 'tool_decision' }>;
+
+export function RunEventLine({ event, decisions = [] }: { event: RunEventDto; decisions?: Decision[] }) {
   const p = event.payload as RunEventDto['payload'] | { kind: string };
   const time = new Date(event.ts).toLocaleTimeString();
   let body;
   if (p.kind === 'tool' && 'name' in p) {
     body = (
       <div>
-        <span>{p.name}</span> <span className="badge badge-neutral">Decision unreported</span>
+        <span>{p.name}</span>{' '}
+        {decisions.length ? (
+          decisions.map((d, i) => (
+            <span key={i} className={`badge badge-${d.decision === 'deny' ? 'crit' : 'neutral'}`}>
+              {d.decision}: {d.reason}
+            </span>
+          ))
+        ) : (
+          <span className="badge badge-neutral">Decision unreported</span>
+        )}
         {p.input === undefined ? null : (
           <details>
             <summary>Input</summary>
@@ -48,7 +61,12 @@ export function RunEventLine({ event }: { event: RunEventDto }) {
     );
   } else if (p.kind === 'text' || p.kind === 'stderr' || p.kind === 'error') {
     body = <pre className="log-text">{eventText(event)}</pre>;
-  } else if (p.kind === 'usage' || p.kind === 'session' || p.kind === 'rate_limit') {
+  } else if (
+    p.kind === 'usage' ||
+    p.kind === 'session' ||
+    p.kind === 'rate_limit' ||
+    p.kind === 'tool_decision'
+  ) {
     body = <span>{eventText(event)}</span>;
   } else {
     body = <pre className="log-text">{JSON.stringify(event.payload).slice(0, 2000)}</pre>;
@@ -107,6 +125,16 @@ export function RunLog({ runId }: { runId: string }) {
     if (follow && el) el.scrollTop = el.scrollHeight;
   }, [events, follow]);
 
+  const decisions = new Map<string, Decision[]>();
+  const toolIds = new Set(
+    events.flatMap((e) => (e.payload.kind === 'tool' && e.payload.toolUseId ? [e.payload.toolUseId] : [])),
+  );
+  for (const e of events) {
+    if (e.payload.kind === 'tool_decision' && e.payload.toolUseId) {
+      const id = e.payload.toolUseId;
+      decisions.set(id, [...(decisions.get(id) ?? []), e.payload]);
+    }
+  }
   const onScroll = () => {
     const el = scroller.current;
     if (el && follow && el.scrollHeight - el.scrollTop - el.clientHeight > 40) setFollow(false);
@@ -155,9 +183,26 @@ export function RunLog({ runId }: { runId: string }) {
       ) : null}
       <div className="log-scroll" ref={scroller} onScroll={onScroll} role="log" aria-label="Run events">
         {events.length === 0 && !error ? <p className="dim">No events yet.</p> : null}
-        {events.map((e) => (
-          <RunEventLine key={e.id} event={e} />
-        ))}
+        {events
+          .filter(
+            (e) =>
+              !(
+                e.payload.kind === 'tool_decision' &&
+                e.payload.toolUseId &&
+                toolIds.has(e.payload.toolUseId)
+              ),
+          )
+          .map((e) => (
+            <RunEventLine
+              key={e.id}
+              event={e}
+              decisions={
+                e.payload.kind === 'tool' && e.payload.toolUseId
+                  ? decisions.get(e.payload.toolUseId)
+                  : undefined
+              }
+            />
+          ))}
       </div>
     </div>
   );

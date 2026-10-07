@@ -8,6 +8,21 @@ export function listOf<T extends z.ZodType>(item: T) {
   return z.object({ items: z.array(item), cursor: z.number().int().nonnegative() });
 }
 
+export const PageCursor = z.object({ at: z.iso.datetime({ offset: true }), id: Id });
+export const PagingQuery = z.object({
+  pageCursor: z
+    .string()
+    .refine((value) => {
+      try {
+        return PageCursor.safeParse(JSON.parse(value)).success;
+      } catch {
+        return false;
+      }
+    }, 'Invalid page cursor')
+    .optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
 export const IdParams = z.object({ id: Id });
 
 export const Problem = z.object({

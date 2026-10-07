@@ -9,6 +9,11 @@ import { publish } from '../../../platform/outbox.ts';
 import { runs, runEvents, type Run, type RunEvent } from '../infra/schema.ts';
 import type { StartRunInput, FinishRunInput, RunStatus, UsageScope } from '../domain/run.ts';
 export interface RunFilter {
+  taskIds?: string[];
+  from?: string;
+  to?: string;
+  pageCursor?: string;
+  limit?: number;
   taskId?: string;
   agentId?: string;
   accountId?: string;
@@ -159,21 +164,40 @@ export function createRuns(deps: ModuleDeps) {
     async listRuns(db: Db, actor: ActorContext, filter: RunFilter = {}): Promise<Run[]> {
       return db.transaction(async (tx) => {
         await deps.authorizer.authorize(tx, actor, 'read', filter.agentId ? { agentId: filter.agentId } : {});
+        const after = filter.pageCursor
+          ? (JSON.parse(filter.pageCursor) as { at: string; id: string })
+          : undefined;
         const result = await tx
           .select()
           .from(runs)
           .where(
             and(
               eq(runs.orgId, actor.orgId),
+              filter.taskIds ? inArray(runs.taskId, filter.taskIds) : undefined,
+              filter.from ? sql`${runs.startedAt} >= ${filter.from}::timestamptz` : undefined,
+              filter.to ? sql`${runs.startedAt} <= ${filter.to}::timestamptz` : undefined,
+              after
+                ? sql`(date_trunc('milliseconds', ${runs.startedAt}), ${runs.id}) < (${after.at}::timestamptz, ${after.id}::uuid)`
+                : undefined,
               filter.taskId ? eq(runs.taskId, filter.taskId) : undefined,
               filter.agentId ? eq(runs.agentId, filter.agentId) : undefined,
               filter.accountId ? eq(runs.accountId, filter.accountId) : undefined,
               filter.status ? eq(runs.status, filter.status) : undefined,
             ),
           )
-          .orderBy(desc(runs.startedAt), desc(runs.id));
+          .orderBy(desc(sql`date_trunc('milliseconds', ${runs.startedAt})`), desc(runs.id))
+          .limit(filter.limit ?? 2147483647);
         return result;
       });
+    },
+    async latestByTask(db: Db, actor: ActorContext, taskIds: string[]): Promise<Run[]> {
+      await deps.authorizer.authorize(db, actor, 'read', {});
+      if (!taskIds.length) return [];
+      return db
+        .selectDistinctOn([runs.taskId])
+        .from(runs)
+        .where(and(eq(runs.orgId, actor.orgId), inArray(runs.taskId, taskIds)))
+        .orderBy(runs.taskId, desc(runs.startedAt), desc(runs.id));
     },
     async getRun(db: Db, actor: ActorContext, id: string): Promise<Run> {
       const [run] = await db.select().from(runs).where(where(actor, id));

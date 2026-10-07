@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import type { Tx } from '../platform/tx.ts';
+import type { RunEventWriter } from './index.ts';
 import type { ActorContext } from '../platform/actor.ts';
 import { forbidden } from '../platform/errors.ts';
 import type { Action, ResourceRef } from '../modules/org/domain/rbac.ts';
@@ -32,6 +34,19 @@ export class FakeAuditLog implements AuditLog {
   readonly entries: AuditEntry[] = [];
   append(_tx: unknown, entry: AuditEntry): Promise<void> {
     this.entries.push(entry);
+    return Promise.resolve();
+  }
+}
+
+export class FakeRunEventWriter implements RunEventWriter {
+  readonly events: import('@agent-band/contracts').NormalizedEvent[] = [];
+  appendRunEvent(
+    _tx: Tx,
+    _actor: ActorContext,
+    _id: string,
+    event: import('@agent-band/contracts').NormalizedEvent,
+  ): Promise<void> {
+    this.events.push(event);
     return Promise.resolve();
   }
 }

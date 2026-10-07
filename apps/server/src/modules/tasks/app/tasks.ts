@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, ilike, inArray, isNotNull, lte, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNotNull, lte, notInArray, sql } from 'drizzle-orm';
 import type { ActorContext } from '../../../platform/actor.ts';
 import type { Db } from '../../../platform/db.ts';
 import type { Tx } from '../../../platform/tx.ts';
@@ -26,6 +26,11 @@ import {
 } from '../domain/goal.ts';
 import { goalStates, tasks, taskKeySeq, type GoalState, type Task } from '../infra/schema.ts';
 export interface TaskFilter {
+  statuses?: TaskStatus[];
+  accountTaskIds?: string[];
+  accountAgentIds?: string[];
+  pageCursor?: string;
+  limit?: number;
   status?: TaskStatus;
   agentId?: string;
   label?: string;
@@ -93,21 +98,39 @@ export function createTasks(deps: TasksDeps) {
           ? { agentGroupIds: [filter.agentGroupId] }
           : {},
     );
+    const after = filter.pageCursor
+      ? (JSON.parse(filter.pageCursor) as { at: string; id: string })
+      : undefined;
+    const paged = filter.limit !== undefined;
     const result = await tx
       .select()
       .from(tasks)
       .where(
         and(
           eq(tasks.orgId, actor.orgId),
+          filter.statuses ? inArray(tasks.status, filter.statuses) : undefined,
+          filter.accountTaskIds
+            ? sql`(${inArray(tasks.id, filter.accountTaskIds)} or ${inArray(sql`${tasks.target}->>'agentId'`, filter.accountAgentIds ?? [])})`
+            : undefined,
+          after
+            ? sql`(date_trunc('milliseconds', ${tasks.createdAt}), ${tasks.id}) < (${after.at}::timestamptz, ${after.id}::uuid)`
+            : undefined,
           filter.status ? eq(tasks.status, filter.status) : undefined,
           filter.agentId ? sql`${tasks.target}->>'agentId' = ${filter.agentId}` : undefined,
           filter.label ? sql`${tasks.target}->>'label' = ${filter.label}` : undefined,
           filter.agentGroupId ? sql`${tasks.target}->>'agentGroupId' = ${filter.agentGroupId}` : undefined,
           filter.scheduleId ? eq(tasks.scheduleId, filter.scheduleId) : undefined,
-          filter.text ? ilike(sql`${tasks.key} || ' ' || ${tasks.title}`, `%${filter.text}%`) : undefined,
+          filter.text
+            ? ilike(sql`${tasks.key} || ' ' || ${tasks.title}`, `%${filter.text.replace(/[\\%_]/g, '\\$&')}%`)
+            : undefined,
         ),
       )
-      .orderBy(asc(tasks.priority), asc(tasks.rank), asc(tasks.createdAt), asc(tasks.id));
+      .orderBy(
+        ...(paged
+          ? [desc(sql`date_trunc('milliseconds', ${tasks.createdAt})`), desc(tasks.id)]
+          : [asc(tasks.priority), asc(tasks.rank), asc(tasks.createdAt), asc(tasks.id)]),
+      )
+      .limit(filter.limit ?? 2147483647);
     return result;
   }
   async function createIn(

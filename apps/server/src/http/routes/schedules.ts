@@ -12,7 +12,7 @@ import {
   UpdateScheduleBody,
 } from '@agent-band/contracts';
 import type { Composition } from '../../composition.ts';
-import { scheduleDto, taskDto } from '../dto.ts';
+import { scheduleDto, taskDto, runDto } from '../dto.ts';
 
 export function scheduleRoutes(c: Composition): FastifyPluginCallbackZod {
   const db = c.database.db;
@@ -142,7 +142,19 @@ export function scheduleRoutes(c: Composition): FastifyPluginCallbackZod {
         await c.scheduler.getSchedule(db, actor, req.params.id);
         const cursor = await c.cursor();
         const items = await c.tasks.listTasks(db, actor, { scheduleId: req.params.id });
-        return { items: items.map(taskDto), cursor };
+        const runs = await c.runs.latestByTask(
+          db,
+          actor,
+          items.map((t) => t.id),
+        );
+        return {
+          items: items.map((t) => {
+            const run = runs.find((r) => r.taskId === t.id);
+            return { ...taskDto(t), latestRun: run ? runDto(run) : null };
+          }),
+          cursor,
+          nextCursor: null,
+        };
       },
     );
     done();
