@@ -12,6 +12,7 @@ export {
 } from './adapters.ts';
 export { readLatestCodexRateLimits } from './rollout.ts';
 export {
+  cliEnv,
   defaultConfigDir,
   isDefaultConfigDir,
   loginCommand,
@@ -23,4 +24,12 @@ export {
   startLogin,
 } from './probe.ts';
 export type { CliBins, CliProvider, LimitReading, LoginHandle, ProbeResult } from './probe.ts';
+export {
+  CLAUDE_MODELS,
+  GEMINI_MODELS,
+  fetchOpenAiCompatibleModels,
+  listCodexModels,
+  parseCodexModelPage,
+  readCodexModelsCache,
+} from './models.ts';
 export { parseClaudeUsageText, parseResetTime } from './claude-usage.ts';

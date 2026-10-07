@@ -8,6 +8,7 @@ import type {
 } from '@agent-band/contracts';
 import { useState } from 'react';
 import { Field, FormDialog } from '../../components/FormDialog.tsx';
+import { ModelPicker } from './ModelPicker.tsx';
 import { splitList, toggleIn } from '../../lib/format.ts';
 
 interface Props {
@@ -146,15 +147,7 @@ export function AgentForm({
           ))}
         </select>
       </Field>
-      <Field label="Model" help="Blank uses the provider default.">
-        <input
-          className="field"
-          value={model}
-          onChange={(e) => {
-            setModel(e.target.value);
-          }}
-        />
-      </Field>
+      <ModelPicker accountId={accountId} value={model} onChange={setModel} />
       <Field label="Role" help="Workflow role, not a human access role.">
         <select
           className="field"

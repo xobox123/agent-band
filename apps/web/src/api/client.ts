@@ -7,6 +7,7 @@ import type {
   BoardDto,
   CreateAccountBody,
   LoginResult,
+  ModelList,
   ProbeConfigBody,
   ProbeResult,
   RefreshLimitsResult,
@@ -213,6 +214,7 @@ export function createApi(fetchImpl?: typeof fetch) {
       probeConfig: (body: ProbeConfigBody) => send<ProbeResult>('POST', '/accounts/probe-config', body),
       login: (id: string, body?: { mode?: 'console' }) =>
         send<LoginResult>('POST', `/accounts/${id}/login`, body ?? {}),
+      models: (id: string) => get<ModelList>(`/accounts/${id}/models`),
       refreshLimits: (id: string) => send<RefreshLimitsResult>('POST', `/accounts/${id}/refresh-limits`),
     },
 

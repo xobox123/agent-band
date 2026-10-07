@@ -8,6 +8,7 @@ import {
   IdParams,
   LoginBody,
   LoginResult,
+  ModelList,
   ProbeConfigBody,
   ProbeResult,
   RefreshLimitsResult,
@@ -149,6 +150,19 @@ export function accountRoutes(c: Composition): FastifyPluginCallbackZod {
         },
       },
       async (req) => c.accountConnection.probeConfig(await c.resolveActor(req), req.body),
+    );
+
+    app.get(
+      '/accounts/:id/models',
+      {
+        schema: {
+          tags: ['accounts'],
+          summary: "List the models the account's provider offers (cached for an hour)",
+          params: IdParams,
+          response: { 200: ModelList },
+        },
+      },
+      async (req) => c.accountConnection.listModels(await c.resolveActor(req), req.params.id),
     );
 
     app.post(

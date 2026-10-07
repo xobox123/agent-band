@@ -568,6 +568,7 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/accounts',
   'POST /api/v1/accounts',
   'POST /api/v1/accounts/probe-config',
+  'GET /api/v1/accounts/{id}/models',
   'POST /api/v1/accounts/{id}/login',
   'POST /api/v1/accounts/{id}/probe',
   'POST /api/v1/accounts/{id}/refresh-limits',
