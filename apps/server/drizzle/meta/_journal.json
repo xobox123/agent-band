@@ -71,6 +71,13 @@
       "when": 1791350961973,
       "tag": "0009_api_gaps_1",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791354614507,
+      "tag": "0010_planning_mode",
+      "breakpoints": true
     }
   ]
 }
