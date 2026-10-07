@@ -26,3 +26,4 @@ All 12 items and the empty-body fix are done (2026-10-07).
 - Codex runtime enforcement: no pre-tool hook; evaluate Codex hooks when available (see `docs/research/cli-capability-matrix.md`).
 
 - `POST /schedules/:id/run-now` (and other body-less POSTs) return 400 when sent with `content-type: application/json` and an empty body; accept an empty body.
+- Timing-sensitive tests (server.test real process, outbox delivery, run-auth, execution route) fail under heavy machine load (load avg > 30); make waits event-driven or raise timeouts so the suite is reliable on busy machines and CI.
