@@ -96,6 +96,22 @@ describe('generated PreToolUse hook', () => {
     expect(denial((await runHook(ok, { token: 't' })).out).permissionDecision).toBe('deny');
   });
 
+  it('prints an explicit allow when the call is pre-approved', async () => {
+    const port = await serve((_req, res) => {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ decision: 'allow', reason: 'ok', preApproved: true }));
+    });
+    const r = await runHook(port, { token: 't' });
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'allow',
+        permissionDecisionReason: 'agent-band: pre-approved by policy',
+      },
+    });
+  });
+
   it('posts the call with the run token and prints nothing on allow', async () => {
     let seen: { url?: string; token?: unknown; body?: unknown } = {};
     const port = await serve((req, res) => {

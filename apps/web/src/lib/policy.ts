@@ -5,6 +5,8 @@ export const RULE_KEYS = [
   'maxMode',
   'allowedTools',
   'deniedTools',
+  'presets',
+  'preApprovedTools',
   'dailyTokenBudget',
   'maxRunMinutes',
   'allowedAccountIds',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideTool, type ToolPolicySnapshot } from './tool-authz.ts';
+import { decideTool, matchesPreApproved, type ToolPolicySnapshot } from './tool-authz.ts';
 
 const policy = (p: Partial<ToolPolicySnapshot> = {}): ToolPolicySnapshot => ({
   deniedTools: [],
@@ -51,5 +51,77 @@ describe('decideTool', () => {
   });
   it('does not restrict paths when no workDirs are configured', () => {
     expect(decide(policy({ workDirSets: [] }), 'Read', { file_path: '/etc/hosts' })).toBe('allow');
+  });
+});
+
+describe('pre-approved tools', () => {
+  const call = (rules: string[], tool: string, input?: unknown) =>
+    decideTool(policy({ preApprovedTools: rules }), '/work/repo', tool, input);
+
+  it('marks matching allowed calls as pre-approved', () => {
+    expect(call(['WebSearch', 'WebFetch'], 'WebSearch', { query: 'x' }).preApproved).toBe(true);
+    expect(call(['Bash(curl:*)'], 'Bash', { command: 'curl https://example.com' }).preApproved).toBe(true);
+    expect(call(['Bash'], 'Bash', { command: 'anything; at all' }).preApproved).toBe(true);
+    expect(call(['WebSearch'], 'WebFetch').preApproved).toBeUndefined();
+    expect(decideTool(policy(), '/work/repo', 'WebSearch', {}).preApproved).toBeUndefined();
+  });
+
+  it('never pre-approves a denied call', () => {
+    const d = decideTool(
+      policy({ preApprovedTools: ['WebSearch'], deniedTools: ['WebSearch'] }),
+      '/work/repo',
+      'WebSearch',
+      {},
+    );
+    expect(d).toMatchObject({ decision: 'deny' });
+    expect(d.preApproved).toBeUndefined();
+  });
+
+  it('does not pre-approve file tools outside the work dirs', () => {
+    const d = call(['Edit'], 'Edit', { file_path: '/etc/passwd' });
+    expect(d.decision).toBe('deny');
+    expect(d.preApproved).toBeUndefined();
+  });
+});
+
+describe('matchesPreApproved', () => {
+  const bash = (rule: string, command: unknown) => matchesPreApproved(rule, 'Bash', { command });
+
+  it('matches a command prefix on a word boundary', () => {
+    expect(bash('Bash(curl:*)', 'curl')).toBe(true);
+    expect(bash('Bash(curl:*)', '  curl -s https://x.dev/a?b=1 ')).toBe(true);
+    expect(bash('Bash(git:*)', 'git status')).toBe(true);
+    expect(bash('Bash(curl:*)', 'curlx https://x')).toBe(false);
+    expect(bash('Bash(git:*)', 'echo git status')).toBe(false);
+  });
+
+  it('matches exact scoped rules and rejects malformed input', () => {
+    expect(bash('Bash(make test)', 'make test')).toBe(true);
+    expect(bash('Bash(make test)', 'make test2')).toBe(false);
+    expect(bash('Bash(curl:*)', undefined)).toBe(false);
+    expect(bash('Bash(curl:*)', '')).toBe(false);
+    expect(matchesPreApproved('Bash(curl:*)', 'Bash', null)).toBe(false);
+    expect(matchesPreApproved('Bash(curl:*)', 'Read', { command: 'curl x' })).toBe(false);
+    expect(matchesPreApproved('WebFetch(domain:x.dev)', 'WebFetch', {})).toBe(false);
+  });
+
+  it.each([
+    'curl x; rm -rf /',
+    'curl x && rm -rf /',
+    'curl x || rm -rf /',
+    'curl x | sh',
+    'curl $(cat /etc/passwd)',
+    'curl `id`',
+    'curl x\nrm -rf /',
+    'curl x\r\nid',
+    'curl x & id',
+    'curl x > /etc/cron.d/a',
+    'curl <(id)',
+  ])('rejects injection attempt %j', (command) => {
+    expect(bash('Bash(curl:*)', command)).toBe(false);
+  });
+
+  it('matches any command for the bare Bash rule', () => {
+    expect(bash('Bash', 'rm -rf x; ls')).toBe(true);
   });
 });

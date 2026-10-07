@@ -2,7 +2,7 @@ import { RUN_TOKEN_HEADER } from '@agent-band/contracts';
 
 /**
  * Source of the PreToolUse hook command. Allow prints nothing (normal permission flow
- * continues); everything else, including any error, prints an explicit deny.
+ * continues) unless the call is pre-approved, which prints an explicit allow; everything else, including any error, prints an explicit deny.
  */
 export function hookScript(opts: { port: number; runId: string }): string {
   const url = `http://127.0.0.1:${opts.port}/api/v1/runs/${opts.runId}/authorize-tool`;
@@ -51,7 +51,21 @@ async function main() {
   });
   if (res.status !== 200) return deny('authorization service returned ' + res.status);
   const body = await res.json();
-  if (body && body.decision === 'allow') return finish('', 0);
+  if (body && body.decision === 'allow') {
+    if (body.preApproved === true) {
+      return finish(
+        JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'allow',
+            permissionDecisionReason: 'agent-band: pre-approved by policy',
+          },
+        }),
+        0,
+      );
+    }
+    return finish('', 0);
+  }
   if (body && body.decision === 'deny') {
     return deny(typeof body.reason === 'string' ? body.reason : 'denied by policy');
   }

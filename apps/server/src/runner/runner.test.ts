@@ -154,6 +154,22 @@ describe('arguments and environment', () => {
       'hello',
     ]);
   });
+  it('passes pre-approved rules to Claude allowedTools without duplicates', () => {
+    const s = { ...spec, allowedTools: ['Read'], preApprovedTools: ['WebSearch', 'Read', 'Bash(curl:*)'] };
+    expect(claudeArgs(s)).toEqual([...claudeArgs(spec), '--allowedTools', 'Read,WebSearch,Bash(curl:*)']);
+    expect(claudeArgs({ ...spec, preApprovedTools: ['WebFetch'] })).toContain('WebFetch');
+  });
+  it('enables Codex network access for web and curl rules in workspace-write only', () => {
+    const flag = ['-c', 'sandbox_workspace_write.network_access=true'];
+    const args = (mode: 'read-only' | 'edit' | 'full-auto', rules: string[]) =>
+      codexArgs({ ...spec, mode, preApprovedTools: rules });
+    expect(args('edit', ['WebSearch'])).toEqual(expect.arrayContaining(flag));
+    expect(args('edit', ['Bash(curl:*)'])).toEqual(expect.arrayContaining(flag));
+    expect(args('edit', ['Bash'])).toEqual(expect.arrayContaining(flag));
+    expect(args('edit', ['Bash(git:*)', 'Edit'])).not.toContain('-c');
+    expect(args('read-only', ['WebSearch'])).not.toContain('-c');
+    expect(codexArgs({ ...spec, mode: 'edit' })).not.toContain('-c');
+  });
   it('adds optional flags and prefixes the Codex prompt', () => {
     const s = {
       ...spec,

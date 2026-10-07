@@ -91,6 +91,28 @@ describe('mergePolicies', () => {
     ).toEqual([]);
   });
 
+  it('intersects presets and preApprovedTools across levels', () => {
+    const e = mergePolicies([
+      lvl('org', { presets: ['web-read', 'shell-git'], preApprovedTools: ['WebSearch', 'Bash(make:*)'] }),
+      lvl('agent', { presets: ['web-read', 'shell-curl'], preApprovedTools: ['Bash(make:*)'] }),
+    ]);
+    expect(e.presets).toEqual(['web-read']);
+    expect(e.preApprovedTools).toEqual(['Bash(make:*)']);
+    expect(mergePolicies([lvl('org', {})]).presets).toBeUndefined();
+    expect(mergePolicies([lvl('org', { presets: ['web-read'] })]).presets).toEqual(['web-read']);
+    expect(
+      mergePolicies([lvl('org', { presets: ['web-read'] }), lvl('agent', { presets: ['shell-git'] })])
+        .presets,
+    ).toEqual([]);
+  });
+
+  it('rejects unknown presets in the schema', () => {
+    expect(PolicyRulesSchema.safeParse({ presets: ['web-read'], preApprovedTools: ['X'] }).success).toBe(
+      true,
+    );
+    expect(PolicyRulesSchema.safeParse({ presets: ['nope'] }).success).toBe(false);
+  });
+
   it('unions denied tools', () => {
     const e = mergePolicies([
       lvl('org', { deniedTools: ['x', 'y'] }),

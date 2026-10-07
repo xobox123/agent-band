@@ -7,6 +7,7 @@ import {
   type ProviderAdapter,
   type RunHandle,
   RunSpec,
+  resolvePreApproved,
 } from '@agent-band/contracts';
 import type { ActorContext } from '../platform/actor.ts';
 import type { Db } from '../platform/db.ts';
@@ -39,6 +40,12 @@ import { FRESH_SNAPSHOT_MS } from '../modules/usage/index.ts';
 import { LEADER_PROMPT, PLAN_APPROVAL_PROMPT } from './leader-prompt.ts';
 
 type Availability = Awaited<ReturnType<ReturnType<typeof createUsage>['accountAvailability']>>;
+
+/** Pre-approved rules for a run; read-only runs keep only the web rules so plan mode is never bypassed. */
+export function preApprovedFor(c: { mode: RunSpec['mode']; policy: EffectivePolicy }): string[] {
+  const rules = resolvePreApproved(c.policy);
+  return c.mode === 'read-only' ? rules.filter((r) => r === 'WebSearch' || r === 'WebFetch') : rules;
+}
 
 export interface WorkerDeps {
   db: Db;
@@ -254,6 +261,7 @@ export function createWorker(deps: WorkerDeps): Worker {
           skills: c.skills.map(({ skillId, version, contentHash }) => ({ skillId, version, contentHash })),
         });
         await deps.tasks.setTaskStatus(tx, d, task.id, 'running');
+        const preApprovedTools = preApprovedFor(c);
         if (c.skillsLoadable || task.kind === 'goal') {
           await registerRunAuth(tx, {
             runId: run.id,
@@ -271,6 +279,7 @@ export function createWorker(deps: WorkerDeps): Worker {
                   }
                 : {}),
               deniedTools: c.policy.deniedTools,
+              ...(preApprovedTools.length ? { preApprovedTools } : {}),
               workDirSets: c.policy.workDirSets,
             },
           });
@@ -418,6 +427,7 @@ export function createWorker(deps: WorkerDeps): Worker {
       ]
         .filter(Boolean)
         .join('\n\n');
+      const preApprovedTools = preApprovedFor(c);
       const spec: RunSpec = {
         runId: run.id,
         prompt: task.prompt,
@@ -429,6 +439,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         ...(resumeSessionId ? { resumeSessionId } : {}),
         ...(c.policy.allowedTools ? { allowedTools: c.policy.allowedTools } : {}),
         ...(c.policy.deniedTools.length ? { deniedTools: c.policy.deniedTools } : {}),
+        ...(preApprovedTools.length ? { preApprovedTools } : {}),
         configDir:
           c.account.configDir ?? join(homedir(), c.account.provider === 'openai' ? '.codex' : '.claude'),
         ...(c.skillsLoadable ? { skillsDir: dir } : {}),

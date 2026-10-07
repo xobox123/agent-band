@@ -1,8 +1,10 @@
+import { PERMISSION_PRESETS } from '@agent-band/contracts';
 import type { PolicyDetailDto, PolicyDto, PolicyRules } from '@agent-band/contracts';
 import { useState } from 'react';
 import { useApi } from '../../api/context.tsx';
 import { DetailsPanel } from '../../components/DetailsPanel.tsx';
 import { EmptyState } from '../../components/EmptyState.tsx';
+import { Badge } from '../../components/Badge.tsx';
 import { Field, FormDialog } from '../../components/FormDialog.tsx';
 import { Resource } from '../../components/Resource.tsx';
 import { Table } from '../../components/Table.tsx';
@@ -11,6 +13,8 @@ import { Toolbar } from '../../components/Toolbar.tsx';
 import { useMutation, useResource } from '../../hooks/useResource.ts';
 import { useItemCount } from '../../layout/WorkspaceContext.tsx';
 import { formatTime, splitList } from '../../lib/format.ts';
+
+const RISK_TONE = { low: 'ok', medium: 'warn', high: 'crit' } as const;
 
 type Mode = '' | 'read-only' | 'edit' | 'full-auto';
 
@@ -26,6 +30,8 @@ export function rulesFromForm(f: {
   maxMode: Mode;
   allowedTools: string;
   deniedTools: string;
+  presets?: string[];
+  preApprovedTools?: string;
   dailyTokenBudget: string;
   maxRunMinutes: string;
 }): PolicyRules {
@@ -34,6 +40,9 @@ export function rulesFromForm(f: {
   if (f.maxMode !== '') rules.maxMode = f.maxMode;
   if (f.allowedTools.trim() !== '') rules.allowedTools = splitList(f.allowedTools);
   if (f.deniedTools.trim() !== '') rules.deniedTools = splitList(f.deniedTools);
+  const presets = PERMISSION_PRESETS.map((p) => p.id).filter((id) => f.presets?.includes(id));
+  if (presets.length > 0) rules.presets = presets;
+  if ((f.preApprovedTools ?? '').trim() !== '') rules.preApprovedTools = lines(f.preApprovedTools ?? '');
   if (f.dailyTokenBudget !== '') rules.dailyTokenBudget = Number(f.dailyTokenBudget);
   if (f.maxRunMinutes !== '') rules.maxRunMinutes = Number(f.maxRunMinutes);
   return rules;
@@ -59,6 +68,8 @@ function PolicyForm({
   const [maxMode, setMaxMode] = useState<Mode>(r.maxMode ?? '');
   const [allowedTools, setAllowedTools] = useState((r.allowedTools ?? []).join(', '));
   const [deniedTools, setDeniedTools] = useState((r.deniedTools ?? []).join(', '));
+  const [presets, setPresets] = useState<string[]>(r.presets ?? []);
+  const [preApproved, setPreApproved] = useState((r.preApprovedTools ?? []).join('\n'));
   const [budget, setBudget] = useState(r.dailyTokenBudget === undefined ? '' : String(r.dailyTokenBudget));
   const [minutes, setMinutes] = useState(r.maxRunMinutes === undefined ? '' : String(r.maxRunMinutes));
   const [touched, setTouched] = useState(false);
@@ -91,6 +102,8 @@ function PolicyForm({
             maxMode,
             allowedTools,
             deniedTools,
+            presets,
+            preApprovedTools: preApproved,
             dailyTokenBudget: budget,
             maxRunMinutes: minutes,
           }),
@@ -169,6 +182,43 @@ function PolicyForm({
           }}
         />
       </Field>
+      <fieldset className="wide">
+        <legend className="form-label">Allowed without asking</legend>
+        {PERMISSION_PRESETS.map((p) => (
+          <div key={p.id}>
+            <label className="inline-field">
+              <input
+                type="checkbox"
+                checked={presets.includes(p.id)}
+                onChange={() => {
+                  setPresets((cur) => (cur.includes(p.id) ? cur.filter((x) => x !== p.id) : [...cur, p.id]));
+                }}
+              />
+              {p.label}
+              <Badge tone={RISK_TONE[p.risk]}>{`${p.risk} risk`}</Badge>
+            </label>
+            <span className="dim"> {p.description}</span>
+            {p.id === 'shell-any' && presets.includes(p.id) ? (
+              <p role="alert" className="form-error">
+                Warning: any shell command will run without asking. Prefer the narrower shell presets.
+              </p>
+            ) : null}
+          </div>
+        ))}
+        <Field
+          label="Custom allowed rules"
+          help="Advanced. One tool rule per line, for example Bash(make:*). Denied tools still win."
+        >
+          <textarea
+            className="field mono"
+            rows={3}
+            value={preApproved}
+            onChange={(e) => {
+              setPreApproved(e.target.value);
+            }}
+          />
+        </Field>
+      </fieldset>
       <Field label="Max run minutes">
         <input
           className="field"

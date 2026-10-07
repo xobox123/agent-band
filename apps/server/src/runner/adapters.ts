@@ -28,7 +28,13 @@ export function runEnv(s: RunSpec, provider: 'claude' | 'openai'): Record<string
   };
 }
 function allowedToolsArg(s: RunSpec): string | undefined {
-  const tools = [...(s.allowedTools ?? []), ...(s.mcpConfigPath !== undefined ? [MCP_TOOLS_ALLOW] : [])];
+  const tools = [
+    ...new Set([
+      ...(s.allowedTools ?? []),
+      ...(s.preApprovedTools ?? []),
+      ...(s.mcpConfigPath !== undefined ? [MCP_TOOLS_ALLOW] : []),
+    ]),
+  ];
   return tools.length > 0 ? tools.join(',') : undefined;
 }
 export function claudeArgs(s: RunSpec): string[] {
@@ -55,6 +61,12 @@ export function claudeArgs(s: RunSpec): string[] {
   if (s.mcpConfigPath !== undefined) args.push('--strict-mcp-config');
   return args;
 }
+const NETWORK_RULES = new Set(['WebSearch', 'WebFetch', 'Bash']);
+
+/** Codex has no per-tool rules; web, curl and unrestricted shell rules map to sandbox network access. */
+export function needsCodexNetwork(rules: readonly string[] | undefined): boolean {
+  return (rules ?? []).some((r) => NETWORK_RULES.has(r) || r.startsWith('Bash(curl:'));
+}
 export function codexArgs(s: RunSpec): string[] {
   return [
     'exec',
@@ -62,6 +74,9 @@ export function codexArgs(s: RunSpec): string[] {
     '--skip-git-repo-check',
     '-s',
     { 'read-only': 'read-only', edit: 'workspace-write', 'full-auto': 'danger-full-access' }[s.mode],
+    ...(s.mode === 'edit' && needsCodexNetwork(s.preApprovedTools)
+      ? ['-c', 'sandbox_workspace_write.network_access=true']
+      : []),
     ...(s.model !== undefined ? ['-m', s.model] : []),
     s.systemPrompt !== undefined ? `${s.systemPrompt}\n\n${s.prompt}` : s.prompt,
   ];
