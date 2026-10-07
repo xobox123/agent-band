@@ -57,6 +57,10 @@ export const RunSpec = z.object({
   mcpServerUrl: z.string().optional(),
   /** Gemini per-run system settings file (hooks, MCP); the CLI reads it through GEMINI_CLI_SYSTEM_SETTINGS_PATH. */
   geminiSettingsPath: z.string().optional(),
+  /** Antigravity PreToolUse hook command; the adapter registers it in the workspace .agents/hooks.json for the run. */
+  antigravityHookCommand: z.string().optional(),
+  /** Run time limit; Antigravity gets it as --print-timeout, the worker enforces it for every provider. */
+  maxRunMinutes: z.number().positive().optional(),
   /** Claude session to resume on a leader continuation turn. */
   resumeSessionId: z.string().optional(),
   gitIdentity: z.object({ name: z.string(), email: z.string() }),
@@ -70,6 +74,6 @@ export interface RunHandle {
   cancel(): void;
 }
 export interface ProviderAdapter {
-  readonly provider: 'claude' | 'openai' | 'gemini' | 'api';
+  readonly provider: 'claude' | 'openai' | 'gemini' | 'antigravity' | 'api';
   start(spec: RunSpec): RunHandle;
 }

@@ -19,7 +19,7 @@ import {
   UpdateAccountBody,
 } from '@agent-band/contracts';
 import type { Composition } from '../../composition.ts';
-import { getCliLocator } from '../../runner/index.ts';
+import { getCliLocator, type CliName } from '../../runner/index.ts';
 
 /** After an API key is stored, prepares the harness home and records the connection; failures are not fatal. */
 async function verifyAfterChange(
@@ -58,11 +58,14 @@ export function accountRoutes(c: Composition): FastifyPluginCallbackZod {
 
     const diagnostics = async (fresh: boolean) => {
       const locator = getCliLocator();
-      const run = fresh
-        ? (n: 'claude' | 'codex' | 'gemini') => locator.detect(n)
-        : (n: 'claude' | 'codex' | 'gemini') => locator.ensure(n);
-      const [claude, openai, gemini] = await Promise.all([run('claude'), run('codex'), run('gemini')]);
-      return { claude, openai, gemini };
+      const run = fresh ? (n: CliName) => locator.detect(n) : (n: CliName) => locator.ensure(n);
+      const [claude, openai, gemini, agy] = await Promise.all([
+        run('claude'),
+        run('codex'),
+        run('gemini'),
+        run('agy'),
+      ]);
+      return { claude, openai, gemini, agy };
     };
     app.get(
       '/providers/diagnostics',

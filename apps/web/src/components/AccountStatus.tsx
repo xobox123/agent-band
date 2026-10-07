@@ -294,9 +294,11 @@ export function AccountActions({ account, onChanged, showLimits = true, autoLogi
           <span className="dim">
             {account.provider === 'gemini'
               ? 'Gemini signs in inside its own terminal UI. Run this in a terminal, choose "Sign in with Google", then type /quit and click Check now:'
-              : login.failed
-                ? 'Could not start the login. Run this in a terminal:'
-                : 'Or in a terminal:'}
+              : account.provider === 'antigravity'
+                ? 'Antigravity signs in inside its own terminal UI. Run this in a terminal, sign in with your Google account, then type /quit and click Check now:'
+                : login.failed
+                  ? 'Could not start the login. Run this in a terminal:'
+                  : 'Or in a terminal:'}
           </span>
           <code className="mono-wrap">{login.command}</code>
           <button

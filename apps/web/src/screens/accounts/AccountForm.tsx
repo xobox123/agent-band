@@ -119,7 +119,11 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
   const methods = methodsOf(provider);
   const showSecret = type === 'api' && (provider?.secretField != null || method === 'api');
   const secretLabel = provider?.secretField ?? 'API key';
-  const isCliHarness = providerId === 'claude' || providerId === 'openai' || providerId === 'gemini';
+  const isCliHarness =
+    providerId === 'claude' ||
+    providerId === 'openai' ||
+    providerId === 'gemini' ||
+    providerId === 'antigravity';
   const hasLimitWindows = (provider?.capabilities.limitWindows.length ?? 0) > 0;
 
   const errors: Record<string, string> = {};
@@ -278,7 +282,8 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
           <legend className="form-label">Connection method</legend>
           {(['current', 'another', 'api'] as const).map((m) => {
             const offered = m === 'api' ? methods.api : methods.cli;
-            if (!offered) return null;
+            // agy keeps its login in the OS keyring: there is no way to add a second account.
+            if (!offered || (m === 'another' && providerId === 'antigravity')) return null;
             const disabled = m === 'api' && methods.apiDisabled;
             return (
               <label
@@ -303,7 +308,9 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
                     {disabled
                       ? ' Coming soon for this provider.'
                       : m === 'current'
-                        ? ` Uses the login already on this machine (${{ openai: '~/.codex', gemini: '~/.gemini' }[providerId] ?? '~/.claude'}).`
+                        ? providerId === 'antigravity'
+                          ? ' Uses the Google login of the agy CLI on this machine (one account per machine).'
+                          : ` Uses the login already on this machine (${{ openai: '~/.codex', gemini: '~/.gemini' }[providerId] ?? '~/.claude'}).`
                         : m === 'another'
                           ? providerId === 'gemini'
                             ? ' Log in a separate Google account in its own Gemini home.'

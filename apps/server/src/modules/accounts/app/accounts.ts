@@ -120,6 +120,11 @@ export function createAccountUseCases(deps: AccountsDeps) {
     checkSecretAllowed(v.type, v.secret !== undefined);
     checkConfigDirAllowed(v.type, v.configDir);
     const cliHarness = v.provider === 'claude' || v.provider === 'openai' || v.provider === 'gemini';
+    // agy cannot isolate a login per account: a second account would silently use the first one's.
+    if (v.provider === 'antigravity' && (v.managedConfigDir || v.configDir))
+      throw invalid([
+        { path: 'configDir', message: 'Antigravity has one account per machine: no separate config dir' },
+      ]);
     // API-key accounts of the CLI harnesses get their own private home so they never touch a stored login.
     const managed = v.managedConfigDir === true || (v.type === 'api' && cliHarness);
     if (v.managedConfigDir) {

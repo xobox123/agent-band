@@ -6,6 +6,7 @@ const LABELS: [keyof ProviderDiagnostics, string][] = [
   ['claude', 'Claude'],
   ['openai', 'Codex'],
   ['gemini', 'Gemini'],
+  ['agy', 'Antigravity'],
 ];
 
 /** Where the server found each provider CLI, with a button to look again. */

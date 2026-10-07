@@ -37,6 +37,7 @@ import {
   revokeRunAuth,
   stableHash,
   writeClaudePlugin,
+  writeAgyRunConfig,
   writeGeminiRunConfig,
   mcpUrl,
   writeMcpConfig,
@@ -51,6 +52,10 @@ const API_KEY_ENV: Record<string, string> = { openai: 'OPENAI_API_KEY', gemini: 
 /** Gemini runs get the BeforeTool hook and per-run settings; they need a registered run token. */
 const usesGeminiHook = (account: AccountForRun): boolean =>
   getProvider(account.provider)?.harness === 'gemini-cli';
+
+/** Antigravity runs get a PreToolUse hook that authorizes every tool call; it needs a registered run token. */
+const usesAgyHook = (account: AccountForRun): boolean =>
+  getProvider(account.provider)?.harness === 'antigravity-cli';
 
 /** Pre-approved rules for a run; read-only runs keep only the web rules so plan mode is never bypassed. */
 export function preApprovedFor(c: { mode: RunSpec['mode']; policy: EffectivePolicy }): string[] {
@@ -200,8 +205,16 @@ export function createWorker(deps: WorkerDeps): Worker {
     const policy = await deps.policy.forAgent(deps.db, orgId, agent.id);
     if (task.kind === 'goal' && agent.role !== 'leader')
       return { reasons: [`agent ${agent.handle}: goals need an agent with role leader`] };
+    // Google stopped serving consumer plans through Gemini CLI: only API-key accounts can run.
+    if (account.provider === 'gemini' && account.type === 'cli')
+      return {
+        reasons: [
+          `agent ${agent.handle}: Gemini CLI no longer serves Google AI plans; use an Antigravity account or a Gemini API key`,
+        ],
+      };
     // Claude gets the delegation MCP server through a config file, Codex through -c overrides,
-    // Gemini through its per-run settings file.
+    // Gemini through its per-run settings file. agy has no per-run MCP config (workspace and global
+    // files only), so Antigravity cannot lead.
     if (task.kind === 'goal' && !['claude', 'openai', 'gemini'].includes(account.provider))
       return {
         reasons: [
@@ -276,7 +289,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         });
         await deps.tasks.setTaskStatus(tx, d, task.id, 'running');
         const preApprovedTools = preApprovedFor(c);
-        if (c.skillsLoadable || task.kind === 'goal' || usesGeminiHook(c.account)) {
+        if (c.skillsLoadable || task.kind === 'goal' || usesGeminiHook(c.account) || usesAgyHook(c.account)) {
           await registerRunAuth(tx, {
             runId: run.id,
             orgId,
@@ -442,6 +455,9 @@ export function createWorker(deps: WorkerDeps): Worker {
           ...(isGoal ? { mcpUrl: mcpUrl(deps.apiPort, run.id) } : {}),
         });
       }
+      const antigravityHookCommand = usesAgyHook(c.account)
+        ? await writeAgyRunConfig({ dir, runId: run.id, port: deps.apiPort })
+        : undefined;
       if (isGoal && !geminiSettingsPath) {
         const goal = await deps.tasks.getGoalState(deps.db, orgId, task.id);
         if (c.account.provider === 'openai') {
@@ -469,13 +485,18 @@ export function createWorker(deps: WorkerDeps): Worker {
         ...(isGoal && !mcpServerUrl && !geminiSettingsPath ? { mcpConfigPath } : {}),
         ...(mcpServerUrl ? { mcpServerUrl } : {}),
         ...(geminiSettingsPath ? { geminiSettingsPath } : {}),
+        ...(antigravityHookCommand ? { antigravityHookCommand } : {}),
+        ...(c.policy.maxRunMinutes !== undefined ? { maxRunMinutes: c.policy.maxRunMinutes } : {}),
         ...(resumeSessionId ? { resumeSessionId } : {}),
         ...(c.policy.allowedTools ? { allowedTools: c.policy.allowedTools } : {}),
         ...(c.policy.deniedTools.length ? { deniedTools: c.policy.deniedTools } : {}),
         ...(preApprovedTools.length ? { preApprovedTools } : {}),
         configDir:
           c.account.configDir ??
-          join(homedir(), { openai: '.codex', gemini: '.gemini' }[c.account.provider] ?? '.claude'),
+          join(
+            homedir(),
+            { openai: '.codex', gemini: '.gemini', antigravity: '.gemini' }[c.account.provider] ?? '.claude',
+          ),
         ...(c.skillsLoadable ? { skillsDir: dir } : {}),
         gitIdentity: c.agent.gitIdentity,
         agentId: c.agent.id,

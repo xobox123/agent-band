@@ -511,6 +511,17 @@ describe('Accounts form connection methods', () => {
         adapterEnabled: true,
         capabilities: { ...caps, limitWindows: [], costReporting: false, skills: false },
       },
+      {
+        id: 'antigravity',
+        displayName: 'Antigravity CLI (Google AI plan)',
+        harness: 'antigravity-cli',
+        accountTypes: ['cli'],
+        runnableTypes: ['cli'],
+        accountFields: { type: 'object', properties: {} },
+        secretField: null,
+        adapterEnabled: true,
+        capabilities: { ...caps, costReporting: false, skills: false },
+      },
     ],
   };
   const created = accountDto({
@@ -675,6 +686,25 @@ describe('Accounts form connection methods', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/choose "Sign in with Google", then type \/quit/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Refresh limits' })).not.toBeInTheDocument();
+  });
+
+  it('offers Antigravity with only the machine login, the limit fields and the agy command', async () => {
+    const agyAccount = accountDto({ id: ID(12), name: 'Pro', provider: 'antigravity' });
+    const { calls, dialog } = await openForm({
+      'GET /accounts': list([agyAccount]),
+      'POST /accounts': agyAccount,
+      [`POST /accounts/${ID(12)}/login`]: { started: false, command: 'agy' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Provider'), { target: { value: 'antigravity' } });
+    expect(within(dialog).getByText(/Uses the Google login of the agy CLI/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole('radio', { name: /Add another account/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('radio', { name: /API key/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/^Stop new work at \(5h/)).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Pro' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
+    await waitFor(() => {
+      expect(lastBody(calls, 'POST', '/accounts')).toMatchObject({ provider: 'antigravity', type: 'cli' });
+    });
   });
 
   it('requires and sends a Gemini API key only in the create body', async () => {

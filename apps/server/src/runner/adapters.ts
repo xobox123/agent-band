@@ -1,3 +1,4 @@
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
@@ -11,11 +12,24 @@ import {
 } from '@agent-band/contracts';
 import { cliCommand, missingCliMessage, withCliPath } from './cli-locator.ts';
 import { geminiAllowedTools } from './gemini-tools.ts';
-import { parseClaudeLine, parseCodexLine, parseGeminiLine } from './parsers.ts';
+import { object, parseAgyLine, parseClaudeLine, parseCodexLine, parseGeminiLine } from './parsers.ts';
 import { eventQueue, spawnJsonLines } from './process.ts';
 import { readCodexRateLimits } from './rollout.ts';
 
 const HOME_KEY = { claude: 'CLAUDE_CONFIG_DIR', openai: 'CODEX_HOME', gemini: 'GEMINI_CLI_HOME' } as const;
+
+/** Variables every run gets: the agent's git identity and ids, on top of the spec's own env. */
+function identityEnv(s: RunSpec): Record<string, string> {
+  return {
+    ...s.env,
+    GIT_AUTHOR_NAME: s.gitIdentity.name,
+    GIT_AUTHOR_EMAIL: s.gitIdentity.email,
+    GIT_COMMITTER_NAME: s.gitIdentity.name,
+    GIT_COMMITTER_EMAIL: s.gitIdentity.email,
+    AGENT_BAND_AGENT_ID: s.agentId,
+    AGENT_BAND_RUN_ID: s.runId,
+  };
+}
 
 export function runEnv(s: RunSpec, provider: keyof typeof HOME_KEY): Record<string, string> {
   const key = HOME_KEY[provider];
@@ -29,16 +43,7 @@ export function runEnv(s: RunSpec, provider: keyof typeof HOME_KEY): Record<stri
     gemini: [join(homedir(), '.gemini'), homedir()],
   }[provider];
   const isDefault = defaults.includes(dir);
-  return {
-    ...s.env,
-    ...(isDefault ? {} : { [key]: s.configDir }),
-    GIT_AUTHOR_NAME: s.gitIdentity.name,
-    GIT_AUTHOR_EMAIL: s.gitIdentity.email,
-    GIT_COMMITTER_NAME: s.gitIdentity.name,
-    GIT_COMMITTER_EMAIL: s.gitIdentity.email,
-    AGENT_BAND_AGENT_ID: s.agentId,
-    AGENT_BAND_RUN_ID: s.runId,
-  };
+  return { ...identityEnv(s), ...(isDefault ? {} : { [key]: s.configDir }) };
 }
 function allowedToolsArg(s: RunSpec): string | undefined {
   const tools = [
@@ -161,6 +166,90 @@ export class GeminiAdapter implements ProviderAdapter {
         missingMessage: missingCliMessage('gemini'),
       },
       (line) => parseGeminiLine(line),
+    );
+  }
+}
+/** Variables that would switch an Antigravity run from the machine's Google login to an API key. */
+const AGY_AUTH_ENV = ['GEMINI_API_KEY', 'ANTIGRAVITY_API_KEY', 'GOOGLE_GEMINI_BASE_URL'];
+
+/**
+ * agy has no config-dir variable: its login sits in the OS keyring and its settings under ~/.gemini,
+ * so every run uses the machine's one default account.
+ */
+export function agyArgs(s: RunSpec): string[] {
+  const prompt = s.systemPrompt !== undefined ? `${s.systemPrompt}\n\n${s.prompt}` : s.prompt;
+  const args = [
+    // The = form keeps a prompt that starts with a dash from being read as a flag.
+    `--print=${prompt}`,
+    '--output-format',
+    'stream-json',
+    ...(s.mode === 'full-auto'
+      ? ['--dangerously-skip-permissions']
+      : ['--mode', s.mode === 'read-only' ? 'plan' : 'accept-edits']),
+  ];
+  if (s.model !== undefined && !GEMINI_AUTO_MODELS.has(s.model)) args.push('--model', s.model);
+  if (s.maxRunMinutes !== undefined) args.push('--print-timeout', `${s.maxRunMinutes}m`);
+  if (s.resumeSessionId !== undefined) args.push('--conversation', s.resumeSessionId);
+  return args;
+}
+
+export function agyEnv(s: RunSpec): Record<string, string | undefined> {
+  return {
+    ...process.env,
+    ...Object.fromEntries(AGY_AUTH_ENV.map((name) => [name, undefined])),
+    ...identityEnv(s),
+  };
+}
+
+const AGY_HOOK_NAME = 'agent-band-policy';
+
+/**
+ * Registers the policy hook in the workspace .agents/hooks.json (agy loads it headless, without a
+ * trust prompt) and returns the function that puts the previous file state back. The user's global
+ * hooks and settings are never touched.
+ */
+export function registerAgyHook(workDir: string, hookCommand: string): () => void {
+  const dir = join(workDir, '.agents');
+  const file = join(dir, 'hooks.json');
+  const dirExisted = existsSync(dir);
+  const previous = existsSync(file) ? readFileSync(file, 'utf8') : undefined;
+  let hooks: Record<string, unknown> = {};
+  try {
+    if (previous !== undefined) hooks = object(JSON.parse(previous));
+  } catch {
+    // an unreadable file is replaced for the run and restored afterwards
+  }
+  hooks[AGY_HOOK_NAME] = {
+    PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: hookCommand, timeout: 10 }] }],
+  };
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(file, JSON.stringify(hooks, null, 2));
+  return () => {
+    if (previous !== undefined) writeFileSync(file, previous);
+    else rmSync(file, { force: true });
+    if (!dirExisted) rmSync(dir, { recursive: true, force: true });
+  };
+}
+
+export class AntigravityAdapter implements ProviderAdapter {
+  readonly provider = 'antigravity';
+  start(s: RunSpec): RunHandle {
+    const restore = s.antigravityHookCommand
+      ? registerAgyHook(s.workDir, s.antigravityHookCommand)
+      : undefined;
+    return spawnJsonLines(
+      {
+        cmd: cliCommand('agy'),
+        args: agyArgs(s),
+        cwd: s.workDir,
+        env: withCliPath('agy', agyEnv(s)),
+        missingMessage: missingCliMessage('agy'),
+      },
+      (line) => parseAgyLine(line),
+      () => {
+        restore?.();
+        return Promise.resolve([]);
+      },
     );
   }
 }

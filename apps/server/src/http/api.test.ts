@@ -812,9 +812,10 @@ describe('T12 API gaps', () => {
       'claude',
       'openai',
       'gemini',
+      'antigravity',
       'openai_compatible',
     ]);
-    expect(providers[3].accountFields).toMatchObject({
+    expect(providers[4].accountFields).toMatchObject({
       type: 'object',
       additionalProperties: false,
       properties: {

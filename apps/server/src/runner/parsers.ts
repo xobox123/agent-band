@@ -193,3 +193,100 @@ export function parseGeminiLine(line: string, now = Date.now()): NormalizedEvent
       return [];
   }
 }
+
+const AGY_QUOTA =
+  /quota|rate.?limit|resource_exhausted|\b429\b|model capacity|credits balance is too low|usage limit|limit reached/i;
+
+function agyFailure(message: string, now: number): NormalizedEvent[] {
+  return [
+    { kind: 'error', message },
+    ...(AGY_QUOTA.test(message)
+      ? [
+          {
+            kind: 'rate_limit' as const,
+            windows: [],
+            limitReached: true,
+            resetsAt: geminiResetsAt(message, now),
+          },
+        ]
+      : []),
+  ];
+}
+
+function agyAgentResponse(s: Record<string, unknown>): NormalizedEvent[] {
+  const u = object(s.usage);
+  const cached = number(u.cache_read_tokens);
+  return [
+    ...(typeof s.text_delta === 'string' && s.text_delta
+      ? [{ kind: 'text' as const, text: s.text_delta }]
+      : []),
+    ...(s.state === 'DONE' && s.usage !== undefined
+      ? [
+          {
+            kind: 'usage' as const,
+            // The CLI does not say whether input_tokens includes the cached part; it is treated as included.
+            inputTokens: Math.max(0, number(u.input_tokens) - cached),
+            // output_tokens already includes the thinking tokens.
+            outputTokens: number(u.output_tokens),
+            cachedTokens: cached,
+          },
+        ]
+      : []),
+  ];
+}
+
+function agyToolStep(s: Record<string, unknown>): NormalizedEvent[] {
+  const info = object(s.tool_info);
+  const name = typeof s.tool_name === 'string' ? s.tool_name : undefined;
+  if (name === undefined) return [];
+  if (s.state === 'ACTIVE') {
+    return [
+      {
+        kind: 'tool',
+        name,
+        input: info.parameters,
+        toolUseId: `${String(s.conversation_id)}:${String(s.step_index)}`,
+      },
+    ];
+  }
+  if (s.state === 'ERROR') {
+    const message = object(info.error).message;
+    const first = typeof message === 'string' ? message.split('\n')[0] : undefined;
+    return [{ kind: 'stderr', text: `tool ${name} failed: ${first ?? 'error'}` }];
+  }
+  return [];
+}
+
+/**
+ * Antigravity `agy -p --output-format stream-json`: typed NDJSON (init, step_update, result).
+ * Usage is read from each finished agent_response step; the result's usage is cumulative over a
+ * resumed conversation and would be counted twice. Tool calls are reported when they start.
+ */
+export function parseAgyLine(line: string, now = Date.now()): NormalizedEvent[] {
+  const e = object(JSON.parse(line));
+  if (e.event === 'init')
+    return typeof e.conversation_id === 'string' ? [{ kind: 'session', sessionId: e.conversation_id }] : [];
+  if (e.event === 'step_update') {
+    const s = object(e.step_update);
+    if (s.step_type === 'agent_response') return agyAgentResponse(s);
+    if (s.step_type === 'tool') return agyToolStep(s);
+    return [];
+  }
+  if (e.event === 'result') {
+    const r = object(e.result);
+    if (r.status !== undefined && r.status !== 'SUCCESS')
+      return agyFailure(typeof r.error === 'string' && r.error ? r.error : 'Antigravity run failed', now);
+    const denied = Array.isArray(r.denied_actions)
+      ? r.denied_actions.map((d) => object(d).action).filter((a) => typeof a === 'string')
+      : [];
+    return denied.length > 0
+      ? [
+          {
+            kind: 'stderr',
+            text: `agy auto-denied permissions that headless mode cannot ask for: ${denied.join(', ')}`,
+          },
+        ]
+      : [];
+  }
+  return [];
+}

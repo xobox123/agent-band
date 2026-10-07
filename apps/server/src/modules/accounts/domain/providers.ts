@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export type Harness = 'claude-cli' | 'codex-cli' | 'gemini-cli';
+export type Harness = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'antigravity-cli';
 export type AccountType = 'cli' | 'api';
 
 export interface ProviderCapabilities {
@@ -85,17 +85,37 @@ const REGISTRY: readonly ProviderDescriptor[] = [
   },
   {
     id: 'gemini',
-    displayName: 'Gemini CLI',
+    displayName: 'Gemini CLI (API key)',
     harness: 'gemini-cli',
-    accountTypes: ['cli', 'api'],
+    // Google no longer serves consumer plans (AI Pro/Ultra, Code Assist for individuals) through Gemini CLI.
+    accountTypes: ['api'],
     accountFields: noFields,
     adapterEnabled: true,
-    runnableTypes: ['cli', 'api'],
+    runnableTypes: ['api'],
     capabilities: {
       // BeforeTool hook per run; Gemini does not deny a call when the hook itself times out or fails to launch.
       runtimeToolEnforcement: true,
-      // Google quotas are daily and per model: no 5h/weekly windows are faked.
+      // Google quota is daily and per model: no 5h/weekly windows are faked.
       limitWindows: [],
+      costReporting: false,
+      skills: false,
+      // No append flag exists: the prompt is prefixed with it.
+      systemPrompt: true,
+    },
+  },
+  {
+    id: 'antigravity',
+    displayName: 'Antigravity CLI (Google AI plan)',
+    harness: 'antigravity-cli',
+    // The login lives in the OS keyring and cannot be isolated per account: one default account per machine.
+    accountTypes: ['cli'],
+    accountFields: noFields,
+    adapterEnabled: true,
+    runnableTypes: ['cli'],
+    capabilities: {
+      // A PreToolUse hook registered in the workspace .agents/hooks.json denies calls the policy rejects.
+      runtimeToolEnforcement: true,
+      limitWindows: ['5h', 'weekly'],
       costReporting: false,
       skills: false,
       // No append flag exists: the prompt is prefixed with it.
