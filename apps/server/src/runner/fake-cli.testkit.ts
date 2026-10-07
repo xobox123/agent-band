@@ -75,7 +75,13 @@ if (args[0] === 'app-server') {
       send({ id: m.id, result: { ordinaryUsageAllowed: false, rateLimits: { limitId: 'codex', primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: 1791368863 }, secondary: { usedPercent: 16, windowDurationMins: 10080, resetsAt: 1791955663 }, credits: { hasCredits: false, unlimited: false, balance: '0' }, planType: 'plus', rateLimitReachedType: 'rate_limit_reached' } } });
     else if (m.method === 'account/usage/read')
       send({ id: m.id, result: { summary: { lifetimeTokens: 10 }, dailyUsageBuckets: [{ startDate: '2026-07-09', tokens: 292114 }, { startDate: '2026-07-10', tokens: 5 }] } });
-    else if (m.method === 'account/login/start') {
+    else if (m.method === 'model/list') {
+      if (!process.env.FAKE_MODEL_LIST) return send({ id: m.id, error: { code: -32601, message: 'unknown method' } });
+      const pages = JSON.parse(fs.readFileSync(process.env.FAKE_MODEL_LIST, 'utf8'));
+      const i = m.params && m.params.cursor ? Number(m.params.cursor) : 0;
+      const page = pages[i];
+      send({ id: m.id, result: { data: page.data, nextCursor: i + 1 < pages.length ? String(i + 1) : null } });
+    } else if (m.method === 'account/login/start') {
       send({ id: m.id, result: { type: 'chatgpt', loginId: 'l1', authUrl: 'https://auth.openai.com/oauth/authorize?native=1' } });
       setTimeout(() => { fs.writeFileSync(path.join(home, 'auth.json'), '{"type":"chatgpt"}'); send({ method: 'account/login/completed', params: { success: true, loginId: 'l1' } }); }, 200);
     } else if (m.id !== undefined) send({ id: m.id, error: { code: -32601, message: 'unknown method' } });

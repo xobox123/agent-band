@@ -203,3 +203,22 @@ export const RefreshLimitsResult = z.object({
   details: UsageDetails.nullable(),
 });
 export type RefreshLimitsResult = z.infer<typeof RefreshLimitsResult>;
+
+export const ModelOption = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string().optional(),
+  isDefault: z.boolean(),
+  source: z.enum(['native', 'builtin']),
+  /** Aliases and the account default; the entries most people want. */
+  recommended: z.boolean().optional(),
+});
+export type ModelOption = z.infer<typeof ModelOption>;
+
+export const ModelList = z.object({
+  items: z.array(ModelOption),
+  fetchedAt: IsoDate,
+  /** Set when the list is a fallback, for example the provider could not be reached. */
+  note: z.string().optional(),
+});
+export type ModelList = z.infer<typeof ModelList>;

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type {
   AccountDto,
   LoginResult,
+  ModelList,
   UsageDetails,
   ProbeResult,
   RefreshLimitsResult,
@@ -14,7 +15,13 @@ import type { Db } from './platform/db.ts';
 import { invalid } from './platform/errors.ts';
 import type { Authorizer } from './ports/index.ts';
 import {
+  CLAUDE_MODELS,
+  GEMINI_MODELS,
+  cliEnv,
   defaultConfigDir,
+  fetchOpenAiCompatibleModels,
+  listCodexModels,
+  readCodexModelsCache,
   probeAccount,
   probeApiKey,
   readClaudeUsage,
@@ -29,6 +36,7 @@ import type { createUsage } from './modules/usage/index.ts';
 
 const CONNECTION_INTERVAL_MS = 30 * 60_000;
 const LIMITS_INTERVAL_MS = 5 * 60_000;
+const MODELS_TTL_MS = 60 * 60_000;
 
 export interface AccountConnectionDeps {
   db: Db;
@@ -69,6 +77,7 @@ function update(result: ProbeResult): ConnectionUpdate {
 export function createAccountConnection(deps: AccountConnectionDeps) {
   const { db, accounts, usage, system } = deps;
   const logins = new Map<string, Promise<void>>();
+  const modelCache = new Map<string, { at: number; list: ModelList }>();
 
   async function manage(actor: ActorContext) {
     await deps.authorizer.authorize(db, actor, 'read', {});
@@ -139,7 +148,55 @@ export function createAccountConnection(deps: AccountConnectionDeps) {
     }
   }
 
+  async function loadModels(account: AccountDto): Promise<ModelList> {
+    const at = new Date().toISOString();
+    if (account.provider === 'claude') return { items: [...CLAUDE_MODELS], fetchedAt: at };
+    if (account.provider === 'gemini') {
+      return { items: [...GEMINI_MODELS], fetchedAt: at, note: 'Gemini adapter is disabled' };
+    }
+    if (account.provider === 'openai_compatible') {
+      const run = await accounts.getAccountForRun(db, account.orgId, account.id);
+      const baseUrl = typeof run.providerConfig.baseUrl === 'string' ? run.providerConfig.baseUrl : '';
+      const items = await fetchOpenAiCompatibleModels(baseUrl, run.secret);
+      return { items, fetchedAt: at, note: 'Adapter is disabled; listing only' };
+    }
+    const opts = { ...(deps.bins && { bins: deps.bins }) };
+    try {
+      const items = await listCodexModels(cliEnv('openai', account.configDir), opts);
+      return { items, fetchedAt: at };
+    } catch (err) {
+      const home = account.configDir ?? defaultConfigDir('openai');
+      try {
+        return {
+          items: await readCodexModelsCache(home),
+          fetchedAt: at,
+          note: 'Read from the Codex models cache; the app-server did not answer',
+        };
+      } catch {
+        throw err;
+      }
+    }
+  }
+
   return {
+    /** Models the account's provider offers; cached for an hour per account. */
+    async listModels(actor: ActorContext, id: string): Promise<ModelList> {
+      await deps.authorizer.authorize(db, actor, 'read', {});
+      const account = await accounts.getAccount(db, actor, id);
+      const hit = modelCache.get(id);
+      if (hit && Date.now() - hit.at < MODELS_TTL_MS) return hit.list;
+      let list: ModelList;
+      try {
+        list = await loadModels(account);
+      } catch (err) {
+        throw invalid([
+          { path: 'models', message: err instanceof Error ? err.message : 'could not list models' },
+        ]);
+      }
+      modelCache.set(id, { at: Date.now(), list });
+      return list;
+    },
+
     async probe(actor: ActorContext, id: string): Promise<ProbeResult> {
       await manage(actor);
       return probeAndRecord(await accounts.getAccount(db, actor, id), actor.principalId);

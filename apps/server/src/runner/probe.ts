@@ -51,7 +51,7 @@ export function isDefaultConfigDir(provider: CliProvider, dir: string | null): b
   return dir === null || resolve(dir) === defaultConfigDir(provider);
 }
 /** The default dir is left implicit: setting the variable changes where the CLI looks up its login. */
-function cliEnv(provider: CliProvider, dir: string | null): NodeJS.ProcessEnv {
+export function cliEnv(provider: CliProvider, dir: string | null): NodeJS.ProcessEnv {
   return isDefaultConfigDir(provider, dir) || dir === null
     ? { ...process.env }
     : { ...process.env, [ENV_KEY[provider]]: dir };
