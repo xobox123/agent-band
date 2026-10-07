@@ -13,6 +13,7 @@ import {
   ProbeResult,
   RefreshLimitsResult,
   ProviderList,
+  SetPausedBody,
   SetProviderIdentityBody,
   UpdateAccountBody,
 } from '@agent-band/contracts';
@@ -203,6 +204,21 @@ export function accountRoutes(c: Composition): FastifyPluginCallbackZod {
         },
       },
       async (req) => c.accountConnection.refreshLimits(await c.resolveActor(req), req.params.id),
+    );
+
+    app.put(
+      '/accounts/:id/pause',
+      {
+        schema: {
+          tags: ['accounts'],
+          summary: 'Pause or resume an account; its agents get no new tasks while paused',
+          params: IdParams,
+          body: SetPausedBody,
+          response: { 200: AccountDto },
+        },
+      },
+      async (req) =>
+        c.accounts.setAccountPaused(db, await c.resolveActor(req), req.params.id, req.body.paused),
     );
 
     app.delete(

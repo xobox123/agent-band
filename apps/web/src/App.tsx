@@ -20,6 +20,7 @@ import { PeopleScreen } from './screens/people/PeopleScreen.tsx';
 import { PoliciesScreen } from './screens/policies/PoliciesScreen.tsx';
 import { RunsScreen } from './screens/runs/RunsScreen.tsx';
 import { SchedulesScreen } from './screens/schedules/SchedulesScreen.tsx';
+import { SettingsScreen } from './screens/settings/SettingsScreen.tsx';
 import { SkillsScreen } from './screens/skills/SkillsScreen.tsx';
 import { TasksScreen } from './screens/tasks/TasksScreen.tsx';
 
@@ -57,6 +58,8 @@ function screenFor(route: RouteId) {
       return <PeopleScreen />;
     case 'audit':
       return <AuditScreen />;
+    case 'settings':
+      return <SettingsScreen />;
   }
 }
 

@@ -28,9 +28,11 @@ export async function makeApi(
 ): Promise<TestApi> {
   const database = await openTestDatabase();
   let current: ActorContext | null = null;
+  const home = mkdtempSync(join(tmpdir(), 'ab-test-'));
   const c = await createComposition({
     database,
-    home: opts.home ?? mkdtempSync(join(tmpdir(), 'ab-test-')),
+    home: opts.home ?? home,
+    workspaceRoot: join(home, 'workspaces'),
     cliBins: opts.cliBins ?? {
       claude: { cmd: '/nonexistent/claude' },
       openai: { cmd: '/nonexistent/codex' },

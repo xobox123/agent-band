@@ -3,7 +3,16 @@ import { z } from 'zod';
 export const taskKinds = ['task', 'goal', 'review'] as const;
 export type TaskKind = (typeof taskKinds)[number];
 
-export const goalStatuses = ['planning', 'waiting', 'continuing', 'completed', 'failed'] as const;
+export const goalStatuses = [
+  'planning',
+  'awaiting_approval',
+  'waiting',
+  'continuing',
+  'completed',
+  'failed',
+] as const;
+export const goalApprovals = ['auto', 'required'] as const;
+export type GoalApproval = (typeof goalApprovals)[number];
 export type GoalStatus = (typeof goalStatuses)[number];
 
 export const taskOutcomes = ['success', 'partial', 'failed', 'cancelled'] as const;

@@ -37,7 +37,7 @@ describe('router', () => {
     ]) {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     }
-    expect(ALL_ITEMS).toHaveLength(12);
+    expect(ALL_ITEMS).toHaveLength(13);
   });
 
   it('renders the selected screen and follows hash changes', async () => {

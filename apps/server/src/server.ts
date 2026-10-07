@@ -31,6 +31,7 @@ export async function start(config: Config, opts: StartOptions = {}): Promise<Ru
     const composition = await createComposition({
       database,
       home: config.home,
+      ...(config.workspaceRoot && { workspaceRoot: config.workspaceRoot }),
       resolveActor: opts.resolveActor,
     });
     if (config.role === 'api') {

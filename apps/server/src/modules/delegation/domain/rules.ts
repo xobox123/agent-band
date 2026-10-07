@@ -35,7 +35,8 @@ export const CreateSubtaskInput = z
   .object({
     title: text(200),
     prompt: z.string().min(1).max(100_000),
-    workDir: z.string().startsWith('/').max(4096),
+    /** Defaults to the goal's folder. */
+    workDir: z.string().startsWith('/').max(4096).optional(),
     target: TaskTarget,
     priority: z.number().int().min(0).max(3).optional(),
     mode: z.enum(['read-only', 'edit', 'full-auto']).optional(),

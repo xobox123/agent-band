@@ -45,24 +45,24 @@ describe('Board new task form', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New task' }));
     const dialog = screen.getByRole('dialog', { name: 'New task' });
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    expect(within(dialog).getByText('Title is required.')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Create and start' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: /^Missing: Title, Prompt/ })).toBeInTheDocument();
     expect(createTask).not.toHaveBeenCalled();
 
     fireEvent.change(within(dialog).getByLabelText(/^Title/), { target: { value: 'Write docs' } });
     fireEvent.change(within(dialog).getByLabelText(/^Prompt/), { target: { value: 'Document the API' } });
-    fireEvent.change(within(dialog).getByLabelText(/^Work directory/), {
+    fireEvent.change(within(dialog).getByLabelText(/^Project folder/), {
       target: { value: 'relative/path' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    fireEvent.blur(within(dialog).getByLabelText(/^Project folder/));
     expect(within(dialog).getByText(/absolute path/)).toBeInTheDocument();
 
-    fireEvent.change(within(dialog).getByLabelText(/^Work directory/), { target: { value: '/work/repo' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Project folder/), { target: { value: '/work/repo' } });
     fireEvent.change(within(dialog).getByLabelText('Target type'), { target: { value: 'label' } });
     fireEvent.change(within(dialog).getByLabelText(/^Label/), { target: { value: 'backend' } });
     fireEvent.change(within(dialog).getByLabelText(/^Priority/), { target: { value: '1' } });
     fireEvent.change(within(dialog).getByLabelText(/^Mode/), { target: { value: 'edit' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create and start' }));
 
     await waitFor(() => {
       expect(createTask).toHaveBeenCalledWith({
@@ -73,6 +73,7 @@ describe('Board new task form', () => {
         priority: 1,
         mode: 'edit',
         maxAttempts: 3,
+        draft: false,
       });
     });
     await waitFor(() => {
@@ -89,10 +90,10 @@ describe('Board new task form', () => {
     const dialog = screen.getByRole('dialog', { name: 'New task' });
     fireEvent.change(within(dialog).getByLabelText(/^Title/), { target: { value: 'x' } });
     fireEvent.change(within(dialog).getByLabelText(/^Prompt/), { target: { value: 'y' } });
-    fireEvent.change(within(dialog).getByLabelText(/^Work directory/), { target: { value: '/w' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Project folder/), { target: { value: '/w' } });
     fireEvent.change(within(dialog).getByLabelText('Target type'), { target: { value: 'label' } });
     fireEvent.change(within(dialog).getByLabelText(/^Label/), { target: { value: 'gpu' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create and start' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('outside the allowed roots');
     expect(within(dialog).getByLabelText(/^Title/)).toHaveValue('x');
   });

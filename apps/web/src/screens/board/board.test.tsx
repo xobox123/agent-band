@@ -16,11 +16,7 @@ function setup() {
     cancel: vi.fn((id: string) => mock.cancel(id)),
     createTask: vi.fn((task: NewTask) => mock.createTask(task)),
   };
-  const source: BoardDataSource = {
-    load: (f) => mock.load(f),
-    subscribe: (fn) => mock.subscribe(fn),
-    ...spies,
-  };
+  const source: BoardDataSource = { ...mock, ...spies };
   render(
     <DataSourceProvider source={source}>
       <BoardScreen />
@@ -56,7 +52,7 @@ describe('Board', () => {
     expect(within(column('Queued')).getAllByRole('article')).toHaveLength(7);
     expect(within(column('Running')).getAllByRole('article')).toHaveLength(3);
     expect(within(column('Failed / Denied')).getAllByRole('article')).toHaveLength(2);
-    expect(within(column('Done')).getAllByRole('article')).toHaveLength(2);
+    expect(within(column('Done')).getAllByRole('article')).toHaveLength(3);
     expect(within(column('Rate limited')).getAllByRole('article')).toHaveLength(1);
   });
 
@@ -113,7 +109,7 @@ describe('Board', () => {
     });
     expect(card('AB-29')).toBeInTheDocument();
     expect(card('AB-36')).toBeInTheDocument();
-    expect(screen.getAllByRole('article')).toHaveLength(3);
+    expect(screen.getAllByRole('article')).toHaveLength(4);
   });
 
   it('groups cards into swimlanes by agent', async () => {

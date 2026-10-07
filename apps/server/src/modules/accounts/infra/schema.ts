@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 export const accounts = pgTable(
   'accounts',
@@ -15,6 +15,7 @@ export const accounts = pgTable(
     providerIdentity: text('provider_identity'),
     connection: jsonb('connection'),
     labels: text('labels').array().notNull().default([]),
+    paused: boolean('paused').notNull().default(false),
     limits: jsonb('limits').notNull(),
     createdBy: uuid('created_by').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

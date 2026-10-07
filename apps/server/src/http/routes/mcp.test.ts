@@ -176,9 +176,7 @@ describe('MCP protocol', () => {
       expect(t.inputSchema['$schema']).toBeUndefined();
     }
     const create = tools.find((t) => t.name === 'create_subtask');
-    expect(create?.inputSchema['required']).toEqual(
-      expect.arrayContaining(['title', 'prompt', 'workDir', 'target']),
-    );
+    expect(create?.inputSchema['required']).toEqual(expect.arrayContaining(['title', 'prompt', 'target']));
     expect(create?.description).toContain('asynchronously');
   });
 
@@ -341,6 +339,7 @@ describe('goal runs through the worker', () => {
       apiPort: 4870,
       events: c.events,
       audit: c.ports.audit,
+      orgSettings: c.ports.orgSettings,
       tasks: c.tasks,
       runs: c.runs,
       usage: c.usage,

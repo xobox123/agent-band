@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { ActorContext } from '../../../platform/actor.ts';
 import type { Db } from '../../../platform/db.ts';
@@ -28,7 +31,10 @@ async function ensurePrincipal(
   return (await createPrincipal(tx, { orgId, kind, handle, displayName })).id;
 }
 
-export async function bootstrapLocalOrg(db: Db): Promise<{
+export async function bootstrapLocalOrg(
+  db: Db,
+  opts: { workspaceRoot?: string } = {},
+): Promise<{
   orgId: string;
   localUser: ActorContext;
   dispatcher: ActorContext;
@@ -44,6 +50,16 @@ export async function bootstrapLocalOrg(db: Db): Promise<{
       org = created[0];
     }
     if (!org) throw new Error('organization insert returned no row');
+    if (org.workspaceRoot === null) {
+      const root = opts.workspaceRoot ?? join(homedir(), 'agent-band', 'workspaces');
+      const rows = await tx
+        .update(organizations)
+        .set({ workspaceRoot: root })
+        .where(eq(organizations.id, org.id))
+        .returning();
+      org = rows[0] ?? org;
+    }
+    mkdirSync(org.workspaceRoot ?? '', { recursive: true, mode: 0o700 });
     const orgId = org.id;
 
     const dispatcherId = await ensurePrincipal(tx, orgId, 'system', DISPATCHER_HANDLE, 'Dispatcher');

@@ -8,6 +8,7 @@ export interface StatusInfo {
 
 const TABLE: Record<StatusKind, Record<string, StatusInfo>> = {
   task: {
+    draft: { label: 'Backlog', token: '--text-dim' },
     scheduled: { label: 'Scheduled', token: '--accent' },
     queued: { label: 'Queued', token: '--muted' },
     claimed: { label: 'Claimed', token: '--warn' },

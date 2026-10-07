@@ -24,6 +24,7 @@ describe('StatusDot', () => {
     'run:failed': ['Failed', '--crit'],
     'run:rate_limited': ['Rate limited', '--warn'],
     'run:cancelled': ['Cancelled', '--text-dim'],
+    'task:draft': ['Backlog', '--text-dim'],
     'agent:running': ['Running', '--ok'],
     'agent:idle': ['Idle', '--muted'],
     'agent:blocked': ['Blocked', '--warn'],

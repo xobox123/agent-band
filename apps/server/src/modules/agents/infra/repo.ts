@@ -38,6 +38,7 @@ export function agentToDto(r: AgentRow, groupIds: string[]): AgentDto {
     groupIds,
     policyId: r.policyId,
     enabled: r.enabled,
+    paused: r.paused,
     gitIdentity: { name: r.gitName, email: r.gitEmail },
     createdBy: r.createdBy,
     createdAt: r.createdAt.toISOString(),

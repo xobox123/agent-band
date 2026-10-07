@@ -29,6 +29,7 @@ export interface AccountForRun {
   providerConfig: Record<string, unknown>;
   configDir: string | null;
   providerIdentity: string | null;
+  paused: boolean;
   limits: AccountDto['limits'];
   secret: string | null;
 }
@@ -56,6 +57,7 @@ function toDto(r: Row): AccountDto {
     limits: r.limits as AccountDto['limits'],
     providerIdentity: r.providerIdentity,
     connection: (r.connection as AccountDto['connection']) ?? null,
+    paused: r.paused,
     hasSecret: r.secretEnc !== null,
     secretUpdatedAt: r.secretUpdatedAt?.toISOString() ?? null,
     createdBy: r.createdBy,
@@ -304,6 +306,33 @@ export function createAccountUseCases(deps: AccountsDeps) {
     });
   }
 
+  async function setAccountPaused(
+    db: Db,
+    actor: ActorContext,
+    id: string,
+    paused: boolean,
+  ): Promise<AccountDto> {
+    await deps.authorizer.authorize(db, actor, 'org.manage', {});
+    await load(db, actor.orgId, id);
+    return withTx(db, async (tx) => {
+      const [row] = await tx
+        .update(accounts)
+        .set({ paused, updatedAt: new Date() })
+        .where(and(eq(accounts.orgId, actor.orgId), eq(accounts.id, id)))
+        .returning();
+      if (!row) throw notFound('Account');
+      await deps.audit.append(tx, {
+        orgId: actor.orgId,
+        actorId: actor.principalId,
+        action: paused ? 'account.pause' : 'account.resume',
+        targetType: 'account',
+        targetId: id,
+      });
+      await publish(tx, 'account.updated', { orgId: actor.orgId, accountId: id });
+      return toDto(row);
+    });
+  }
+
   /** System use only: stores the provider-specific usage extras next to the connection state. */
   async function recordUsageDetails(
     db: Db,
@@ -377,6 +406,7 @@ export function createAccountUseCases(deps: AccountsDeps) {
       providerConfig: r.providerConfig as Record<string, unknown>,
       configDir: r.configDir,
       providerIdentity: r.providerIdentity,
+      paused: r.paused,
       limits: r.limits as AccountDto['limits'],
       secret: r.secretEnc === null ? null : decryptSecret(deps.secretKey(), r.secretEnc, r.id),
     };
@@ -396,6 +426,7 @@ export function createAccountUseCases(deps: AccountsDeps) {
     setAccountProviderIdentity,
     recordConnection,
     recordUsageDetails,
+    setAccountPaused,
     deleteAccount,
     listAccounts,
     getAccount,

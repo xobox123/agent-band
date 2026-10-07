@@ -5,7 +5,7 @@ export const ScheduleTemplate = z
   .object({
     title: z.string().trim().min(1).max(200),
     prompt: z.string().min(1).max(100_000),
-    workDir: z.string().startsWith('/').max(4096),
+    workDir: z.string().startsWith('/').max(4096).optional(),
     target: TaskTarget,
     priority: z.number().int().min(0).max(3).default(2),
     mode: z.enum(['read-only', 'edit', 'full-auto']).optional(),

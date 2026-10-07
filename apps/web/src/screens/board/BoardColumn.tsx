@@ -3,7 +3,7 @@ import type { Priority } from '../../data/types.ts';
 import { TaskCard } from './TaskCard.tsx';
 import { targetKey } from './dndApi.ts';
 import type { DndApi } from './dndApi.ts';
-import type { ColumnDef, TaskView } from './model.ts';
+import type { BacklogApi, ColumnDef, TaskView } from './model.ts';
 
 const PAGE = 50;
 
@@ -15,6 +15,7 @@ interface Props {
   selectedId: string | null;
   pendingIds: Set<string>;
   dnd: DndApi;
+  backlog: BacklogApi;
   onOpen: (taskId: string) => void;
   onSetPriority: (taskId: string, priority: Priority) => void;
   onCancel: (taskId: string) => void;
@@ -31,6 +32,7 @@ export function BoardColumn({
   selectedId,
   pendingIds,
   dnd,
+  backlog,
   onOpen,
   onSetPriority,
   onCancel,
@@ -54,6 +56,7 @@ export function BoardColumn({
       selected={selectedId === view.task.id}
       pending={pendingIds.has(view.task.id)}
       dnd={dnd}
+      backlog={backlog}
       onOpen={onOpen}
       onSetPriority={onSetPriority}
       onCancel={onCancel}

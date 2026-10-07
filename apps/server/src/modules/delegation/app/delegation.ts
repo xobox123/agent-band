@@ -55,6 +55,8 @@ export interface RunContext {
   policy: EffectivePolicy;
   /** Mode the leader run itself was granted. */
   mode: Mode;
+  /** Mode subtasks are capped by: the leader's mode before the plan-approval read-only cap. */
+  delegationMode: Mode;
 }
 
 export interface DelegateAgentView {
@@ -259,6 +261,7 @@ export function createDelegation(deps: DelegationDeps) {
       parentTaskId: root.id,
       depth: ctx.task.depth + 1,
       dependsOn,
+      ...(goal.approval === 'required' && { proposed: true }),
     });
   }
 
@@ -286,7 +289,7 @@ export function createDelegation(deps: DelegationDeps) {
       const run = await deps.runs.getRun(db, actor, runId);
       if (run.status !== 'running') throw conflict('run_not_running', 'Run is not running');
       const task = await deps.tasks.getTask(db, actor, run.taskId);
-      const policy = run.effectivePolicy as unknown as EffectivePolicy & { mode?: Mode };
+      const policy = run.effectivePolicy as unknown as EffectivePolicy & { mode?: Mode; plannedMode?: Mode };
       return {
         orgId: auth.orgId,
         runId,
@@ -297,6 +300,7 @@ export function createDelegation(deps: DelegationDeps) {
         actor,
         policy,
         mode: policy.mode ?? policy.maxMode,
+        delegationMode: policy.plannedMode ?? policy.mode ?? policy.maxMode,
       };
     },
 
@@ -327,11 +331,11 @@ export function createDelegation(deps: DelegationDeps) {
         await checkTarget(outer, ctx, v.target, ['worker', 'reviewer']);
         const goal = await activeGoal(outer, ctx);
         const tree = await deps.tasks.listTree(outer, ctx.orgId, ctx.rootTaskId);
-        const mode = capSubtaskMode(v.mode, ctx.mode, ctx.policy.maxMode);
+        const mode = capSubtaskMode(v.mode, ctx.delegationMode, ctx.policy.maxMode);
         const task = await addChild(outer, ctx, goal, tree, {
           title: v.title,
           prompt: v.prompt,
-          workDir: v.workDir,
+          workDir: v.workDir ?? ctx.task.workDir,
           target: v.target,
           ...(v.priority !== undefined && { priority: v.priority }),
           mode,

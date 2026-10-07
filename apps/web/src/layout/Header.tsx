@@ -1,4 +1,5 @@
 import { StatusDot } from '../components/StatusDot.tsx';
+import { PauseButton } from './PauseBanner.tsx';
 
 interface Props {
   title: string;
@@ -16,6 +17,7 @@ export function Header({ title, count, connection }: Props) {
         </span>
       ) : null}
       <span className="header-spacer" />
+      <PauseButton />
       <span className="header-conn" aria-label="Connection state">
         <StatusDot kind="indicator" value={connection} />
       </span>

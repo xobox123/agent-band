@@ -13,7 +13,7 @@ import type { Db } from '../platform/db.ts';
 import { AppError } from '../platform/errors.ts';
 import type { EventStream } from '../platform/outbox.ts';
 import type { Tx } from '../platform/tx.ts';
-import type { AuditLog, EffectivePolicySource, EffectiveSkillsSource } from '../ports/index.ts';
+import type { AuditLog, EffectivePolicySource, EffectiveSkillsSource, OrgSettings } from '../ports/index.ts';
 import { getProvider, type AccountForRun } from '../modules/accounts/index.ts';
 import type { AgentDto } from '../modules/agents/index.ts';
 import type { createAgentUseCases } from '../modules/agents/index.ts';
@@ -36,7 +36,7 @@ import {
   writeMcpConfig,
 } from '../execution/index.ts';
 import { FRESH_SNAPSHOT_MS } from '../modules/usage/index.ts';
-import { LEADER_PROMPT } from './leader-prompt.ts';
+import { LEADER_PROMPT, PLAN_APPROVAL_PROMPT } from './leader-prompt.ts';
 
 type Availability = Awaited<ReturnType<ReturnType<typeof createUsage>['accountAvailability']>>;
 
@@ -54,6 +54,7 @@ export interface WorkerDeps {
   usage: ReturnType<typeof createUsage>;
   agents: Pick<ReturnType<typeof createAgentUseCases>, 'getAgent' | 'listAgents'>;
   accounts: { getAccountForRun(db: Db, orgId: string, id: string): Promise<AccountForRun> };
+  orgSettings: OrgSettings;
   policy: EffectivePolicySource;
   skills: EffectiveSkillsSource;
   adapterFor(account: AccountForRun): ProviderAdapter | undefined;
@@ -85,6 +86,9 @@ interface Candidate {
   skills: Awaited<ReturnType<EffectiveSkillsSource['forAgent']>>;
   skillsLoadable: boolean;
   mode: RunSpec['mode'];
+  /** Mode before the plan-approval read-only cap, when the cap lowered it. */
+  plannedMode?: RunSpec['mode'];
+  planApproval?: boolean;
 }
 
 interface InFlight {
@@ -160,13 +164,17 @@ export function createWorker(deps: WorkerDeps): Worker {
     return deps.agents.listAgents(deps.db, d, { groupId: target.agentGroupId });
   }
 
-  async function evaluate(task: Task, agent: AgentDto): Promise<{ c?: Candidate; reasons: string[] }> {
+  async function evaluate(
+    task: Task,
+    agent: AgentDto,
+  ): Promise<{ c?: Candidate; reasons: string[]; paused?: boolean }> {
     let account: AccountForRun;
     try {
       account = await deps.accounts.getAccountForRun(deps.db, orgId, agent.accountId);
     } catch {
       return { reasons: [`agent ${agent.handle}: account not found`] };
     }
+    if (agent.paused || account.paused) return { reasons: [], paused: true };
     const provider = getProvider(account.provider);
     const skillsLoadable = provider?.harness === 'claude-cli' && account.type === 'cli';
     const policy = await deps.policy.forAgent(deps.db, orgId, agent.id);
@@ -200,8 +208,21 @@ export function createWorker(deps: WorkerDeps): Worker {
       }),
     );
     if (!decision.allow) return { reasons: decision.reasons.map((r) => `agent ${agent.handle}: ${r}`) };
+    // Under plan approval the leader only plans: it never gets more than read-only.
+    const goal = task.kind === 'goal' ? await deps.tasks.getGoalState(deps.db, orgId, task.id) : undefined;
+    const capped = goal?.approval === 'required' && decision.mode !== 'read-only';
     return {
-      c: { agent, account, policy, policyHash, skills, skillsLoadable, mode: decision.mode },
+      c: {
+        agent,
+        account,
+        policy,
+        policyHash,
+        skills,
+        skillsLoadable,
+        mode: capped ? 'read-only' : decision.mode,
+        ...(capped && { plannedMode: decision.mode }),
+        ...(goal?.approval === 'required' && { planApproval: true }),
+      },
       reasons: [],
     };
   }
@@ -227,6 +248,7 @@ export function createWorker(deps: WorkerDeps): Worker {
             ...c.policy,
             hash: c.policyHash,
             mode: c.mode,
+            ...(c.plannedMode ? { plannedMode: c.plannedMode } : {}),
             ...(!c.skillsLoadable ? { skillsNote: 'skills not supported for provider' } : {}),
           },
           skills: c.skills.map(({ skillId, version, contentHash }) => ({ skillId, version, contentHash })),
@@ -263,8 +285,13 @@ export function createWorker(deps: WorkerDeps): Worker {
   }
 
   async function dispatch(task: Task): Promise<void> {
+    if ((await deps.orgSettings.get(deps.db, orgId)).paused) {
+      await release(task, 'paused');
+      return;
+    }
     const candidates = await resolveCandidates(task);
     const denials: string[] = [];
+    let pausedCount = 0;
     let blocked: { c: Candidate; text: string; retryAt?: Date } | undefined;
     const token = newRunToken();
 
@@ -279,7 +306,11 @@ export function createWorker(deps: WorkerDeps): Worker {
     for (const agent of candidates) {
       // Without explicit failover the first unavailable account ends the search.
       if (blocked && !blocked.c.policy.allowAccountFailover) break;
-      const { c, reasons } = await evaluate(task, agent);
+      const { c, reasons, paused } = await evaluate(task, agent);
+      if (paused) {
+        pausedCount++;
+        continue;
+      }
       if (!c) {
         denials.push(...reasons);
         continue;
@@ -319,6 +350,10 @@ export function createWorker(deps: WorkerDeps): Worker {
     }
     if (blocked) {
       await release(task, blocked.text, blocked.retryAt);
+      return;
+    }
+    if (pausedCount > 0) {
+      await release(task, 'paused');
       return;
     }
     await deps.db.transaction((tx) =>
@@ -376,7 +411,11 @@ export function createWorker(deps: WorkerDeps): Worker {
         const goal = await deps.tasks.getGoalState(deps.db, orgId, task.id);
         if (goal?.status === 'continuing' && goal.leaderSessionId) resumeSessionId = goal.leaderSessionId;
       }
-      const systemPrompt = [systemPromptOf(c.agent), isGoal ? LEADER_PROMPT : undefined]
+      const systemPrompt = [
+        systemPromptOf(c.agent),
+        isGoal ? LEADER_PROMPT : undefined,
+        c.planApproval ? PLAN_APPROVAL_PROMPT : undefined,
+      ]
         .filter(Boolean)
         .join('\n\n');
       const spec: RunSpec = {

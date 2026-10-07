@@ -1,4 +1,12 @@
-import type { BoardEvent, BoardFilter, BoardSnapshot, NewTask, Priority } from './types.ts';
+import type {
+  BoardEvent,
+  BoardFilter,
+  BoardSnapshot,
+  NewTask,
+  Priority,
+  StartWhen,
+  TaskPatch,
+} from './types.ts';
 
 export interface BoardDataSource {
   load(filter: BoardFilter): Promise<BoardSnapshot>;
@@ -12,6 +20,13 @@ export interface BoardDataSource {
   setPriority(taskId: string, priority: Priority): Promise<void>;
   cancel(taskId: string): Promise<void>;
   createTask(task: NewTask): Promise<void>;
+  /** Moves backlog tasks to the queue, all or none. */
+  startTasks(ids: string[], when: StartWhen): Promise<void>;
+  updateTask(taskId: string, patch: TaskPatch): Promise<void>;
+  deleteTask(taskId: string): Promise<void>;
+  approvePlan(goalId: string, when: StartWhen): Promise<void>;
+  rejectPlan(goalId: string, feedback: string): Promise<void>;
+  addPlanTask(goalId: string, task: NewTask): Promise<void>;
 }
 
 export const emptyFilter: BoardFilter = { text: '', agentId: null, label: null, accountId: null };

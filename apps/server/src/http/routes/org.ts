@@ -13,6 +13,7 @@ import {
   RoleBindingList,
   RoleBindingQuery,
   SetOrgPolicyBody,
+  SetPausedBody,
   TeamDto,
   TeamList,
   TeamParams,
@@ -21,7 +22,7 @@ import {
 } from '@agent-band/contracts';
 import type { Composition } from '../../composition.ts';
 import { requirePolicy } from '../guards.ts';
-import { getOrganization, setOrgPolicy, updateOrganization } from '../../modules/org/index.ts';
+import { getOrganization, setOrgPaused, setOrgPolicy, updateOrganization } from '../../modules/org/index.ts';
 
 export function orgRoutes(c: Composition): FastifyPluginCallbackZod {
   const db = c.database.db;
@@ -47,6 +48,19 @@ export function orgRoutes(c: Composition): FastifyPluginCallbackZod {
         },
       },
       async (req) => updateOrganization(db, await c.resolveActor(req), req.body),
+    );
+
+    app.put(
+      '/organization/pause',
+      {
+        schema: {
+          tags: ['org'],
+          summary: 'Pause or resume the whole organization; running runs continue',
+          body: SetPausedBody,
+          response: { 200: OrganizationDto },
+        },
+      },
+      async (req) => setOrgPaused(db, await c.resolveActor(req), req.body),
     );
 
     app.put(

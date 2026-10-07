@@ -29,6 +29,7 @@ export const AgentDto = z.object({
   groupIds: z.array(Id),
   policyId: Id.nullable(),
   enabled: z.boolean(),
+  paused: z.boolean(),
   gitIdentity: z.object({ name: z.string(), email: z.string() }),
   createdBy: Id,
   createdAt: IsoDate,

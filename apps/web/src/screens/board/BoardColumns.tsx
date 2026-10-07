@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Priority } from '../../data/types.ts';
 import { BoardColumn } from './BoardColumn.tsx';
 import { COLUMNS, laneOf, sortQueued, sortRecent } from './model.ts';
-import type { TaskView } from './model.ts';
+import type { BacklogApi, TaskView } from './model.ts';
 import type { DndApi } from './dndApi.ts';
 
 interface Props {
@@ -13,6 +13,7 @@ interface Props {
   selectedId: string | null;
   pendingIds: Set<string>;
   dnd: DndApi;
+  backlog: BacklogApi;
   onOpen: (taskId: string) => void;
   onSetPriority: (taskId: string, priority: Priority) => void;
   onCancel: (taskId: string) => void;
@@ -95,7 +96,7 @@ export function BoardColumns({ views, swimlanes, ...rest }: Props) {
       {COLUMNS.map((column) => {
         const inColumn = laneViews.filter((v) => column.statuses.includes(v.task.status));
         const sorted =
-          column.id === 'queued'
+          column.id === 'queued' || column.id === 'draft'
             ? sortQueued(inColumn.map((v) => v.task))
             : sortRecent(inColumn.map((v) => v.task));
         const byId = new Map(inColumn.map((v) => [v.task.id, v]));

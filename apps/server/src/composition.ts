@@ -46,7 +46,7 @@ import {
   newSkillVersion,
   unassignSkill,
 } from './modules/skills/index.ts';
-import { createDelegation, createOrchestrator } from './modules/delegation/index.ts';
+import { createDelegation, createGoalApproval, createOrchestrator } from './modules/delegation/index.ts';
 import { verifyRunToken } from './execution/app/run-auth.ts';
 import { createEffectivePolicySource } from './execution/app/sources.ts';
 import { createRuns } from './modules/runs/index.ts';
@@ -67,6 +67,8 @@ export interface CompositionOptions {
   cliBins?: CliBins;
   loginTimeoutMs?: number;
   openUrl?: (url: string) => void;
+  /** Default workspace root of a new organization (default ~/agent-band/workspaces). */
+  workspaceRoot?: string;
   /** Replaces the local-user resolver; tests inject other actors here. */
   resolveActor?: (request: FastifyRequest, local: ActorContext) => ActorContext | Promise<ActorContext>;
 }
@@ -75,7 +77,9 @@ export interface CompositionOptions {
 export async function createComposition(opts: CompositionOptions) {
   const { database } = opts;
   const db = database.db;
-  const boot = await bootstrapLocalOrg(database.db);
+  const boot = await bootstrapLocalOrg(database.db, {
+    ...(opts.workspaceRoot && { workspaceRoot: opts.workspaceRoot }),
+  });
 
   const secretKey = opts.secretKey ?? envOrFileKeySource({ home: opts.home });
   const deps: ModuleDeps = { authorizer, audit: auditLog };
@@ -114,6 +118,12 @@ export async function createComposition(opts: CompositionOptions) {
   });
   const delegation = createDelegation({ ...deps, tasks, runs, agents, verifyRunToken });
   const orchestrator = createOrchestrator({
+    ...deps,
+    tasks,
+    runs,
+    policy: createEffectivePolicySource({ bindings: policyBindings }),
+  });
+  const goalApproval = createGoalApproval({
     ...deps,
     tasks,
     runs,
@@ -161,18 +171,24 @@ export async function createComposition(opts: CompositionOptions) {
       getEffectiveSkills(db, agentId, { orgId, membership: agentMembership }),
   };
 
-  // Secure default: the org gets a baseline policy capping the mode at "edit" (once, audited).
+  // Secure default: the org gets a baseline policy capping the mode at "edit" and allowing the
+  // workspace root (once, audited).
   const org = await getOrganization(db, boot.orgId);
-  if (org.policyId === null) {
-    const existing = await policies.list(boot.dispatcher);
-    if (!existing.some((p) => p.name === BASELINE_POLICY_NAME)) {
-      const baseline = await policies.create(boot.dispatcher, {
-        name: BASELINE_POLICY_NAME,
-        description: 'Organization baseline',
-        rules: { maxMode: 'edit' },
+  const existing = await policies.list(boot.dispatcher);
+  const baseline = existing.find((p) => p.name === BASELINE_POLICY_NAME);
+  if (org.policyId === null && !baseline) {
+    const created = await policies.create(boot.dispatcher, {
+      name: BASELINE_POLICY_NAME,
+      description: 'Organization baseline',
+      rules: { maxMode: 'edit', workDirs: [org.workspaceRoot] },
+    });
+    await setOrgPolicy(db, boot.dispatcher, { policyId: created.id });
+  } else if (baseline) {
+    const detail = await policies.get(boot.dispatcher, baseline.id);
+    if (detail.rules.workDirs === undefined)
+      await policies.update(boot.dispatcher, baseline.id, {
+        rules: { ...detail.rules, workDirs: [org.workspaceRoot] },
       });
-      await setOrgPolicy(db, boot.dispatcher, { policyId: baseline.id });
-    }
   }
 
   const resolveActor: ResolveActor = (request) => {
@@ -213,6 +229,7 @@ export async function createComposition(opts: CompositionOptions) {
     usage,
     delegation,
     orchestrator,
+    goalApproval,
     audit,
   };
 }

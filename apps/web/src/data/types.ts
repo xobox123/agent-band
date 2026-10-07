@@ -1,7 +1,7 @@
 // Board view models. Status enums and DTOs come from @agent-band/contracts; src/data/adapt.ts maps DTOs here.
-import type { AgentStatus, RunStatus, TaskStatus } from '@agent-band/contracts';
+import type { AgentStatus, GoalStatus, RunStatus, StartWhen, TaskStatus } from '@agent-band/contracts';
 
-export type { AgentStatus, RunStatus, TaskStatus };
+export type { AgentStatus, GoalStatus, RunStatus, StartWhen, TaskStatus };
 
 /** 0 is highest (P0), 3 is lowest (P3). Default is 2. */
 export type Priority = 0 | 1 | 2 | 3;
@@ -21,6 +21,14 @@ export interface Task {
   rank: number;
   target: TaskTarget;
   workDir: string;
+  mode: 'read-only' | 'edit' | 'full-auto' | null;
+  kind: 'task' | 'goal' | 'review';
+  parentTaskId: string | null;
+  /** A leader's proposal waiting for plan approval. */
+  proposed: boolean;
+  dependsOn: string[];
+  /** The scheduled start is the reset of an account limit window. */
+  startAfterReset: boolean;
   /** Latest run, if any. */
   runId: string | null;
   /** When a scheduled task is released. */
@@ -66,6 +74,7 @@ export interface Agent {
   handle: string;
   role: 'leader' | 'worker' | 'reviewer';
   enabled: boolean;
+  paused: boolean;
   accountId: string;
   model: string | null;
   labels: string[];
@@ -82,6 +91,7 @@ export interface Account {
   provider: string;
   dailyTokenBudget: number | null;
   tokensToday: number;
+  paused: boolean;
 }
 
 export interface AgentGroup {
@@ -96,6 +106,14 @@ export interface BoardFilter {
   accountId: string | null;
 }
 
+export interface GoalInfo {
+  rootTaskId: string;
+  status: GoalStatus;
+  approval: 'auto' | 'required';
+  round: number;
+  leaderAgentId: string | null;
+}
+
 export interface BoardSnapshot {
   /** Latest outbox id at read time. */
   cursor: string;
@@ -107,6 +125,8 @@ export interface BoardSnapshot {
   agents: Agent[];
   accounts: Account[];
   groups: AgentGroup[];
+  goals: GoalInfo[];
+  org: { paused: boolean; workspaceRoot: string };
 }
 
 export interface BoardEvent {
@@ -116,11 +136,28 @@ export interface BoardEvent {
 export interface NewTask {
   title: string;
   prompt: string;
-  workDir: string;
+  /** Omit to use a folder under the workspace root. */
+  workDir?: string;
   target: TaskTarget;
   priority: Priority;
   mode?: 'read-only' | 'edit' | 'full-auto';
   /** ISO date-time in the future. */
   runAt?: string;
   maxAttempts?: number;
+  /** Create in the backlog instead of the queue. */
+  draft?: boolean;
+  kind?: 'task' | 'goal';
+  approval?: 'auto' | 'required';
+}
+
+export interface TaskPatch {
+  title?: string;
+  prompt?: string;
+  workDir?: string;
+  target?: TaskTarget;
+  priority?: Priority;
+  mode?: 'read-only' | 'edit' | 'full-auto' | null;
+  runAt?: string | null;
+  maxAttempts?: number;
+  dependsOn?: string[];
 }

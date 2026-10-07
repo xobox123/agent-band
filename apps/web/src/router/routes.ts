@@ -9,6 +9,7 @@ export type RouteId =
   | 'skills'
   | 'policies'
   | 'accounts'
+  | 'settings'
   | 'people'
   | 'audit';
 
@@ -59,6 +60,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: 'accounts', label: 'Accounts' },
       { id: 'people', label: 'People and teams' },
       { id: 'audit', label: 'Audit' },
+      { id: 'settings', label: 'Settings' },
     ],
   },
 ];

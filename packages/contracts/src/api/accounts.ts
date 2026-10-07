@@ -92,6 +92,7 @@ export const AccountDto = z.object({
   }),
   providerIdentity: z.string().nullable(),
   connection: AccountConnection.nullable(),
+  paused: z.boolean(),
   hasSecret: z.boolean(),
   secretUpdatedAt: IsoDate.nullable(),
   createdBy: Id,

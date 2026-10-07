@@ -7,6 +7,7 @@ import {
   doublePrecision,
   timestamp,
   jsonb,
+  boolean,
   uniqueIndex,
   index,
   check,
@@ -14,6 +15,7 @@ import {
 import type { TaskTarget } from '../domain/task.ts';
 import { taskStatuses } from '../domain/task.ts';
 import {
+  goalApprovals,
   goalStatuses,
   taskKinds,
   type GoalLimits,
@@ -51,6 +53,8 @@ export const tasks = pgTable(
     parentTaskId: uuid('parent_task_id'),
     rootTaskId: uuid('root_task_id'),
     depth: integer('depth').notNull().default(0),
+    proposed: boolean('proposed').notNull().default(false),
+    startAfterReset: boolean('start_after_reset').notNull().default(false),
     dependsOn: uuid('depends_on').array().notNull().default([]),
     result: jsonb('result').$type<TaskResult>(),
     eligibility: jsonb('eligibility').$type<Eligibility>(),
@@ -79,6 +83,7 @@ export const goalStates = pgTable(
     leaderAgentId: uuid('leader_agent_id'),
     leaderSessionId: text('leader_session_id'),
     status: text('status', { enum: goalStatuses }).notNull().default('planning'),
+    approval: text('approval', { enum: goalApprovals }).notNull().default('auto'),
     treeTokensUsed: doublePrecision('tree_tokens_used').notNull().default(0),
     limits: jsonb('limits').$type<GoalLimits>().notNull(),
     goalPrompt: text('goal_prompt').notNull(),

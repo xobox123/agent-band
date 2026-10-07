@@ -60,7 +60,16 @@ export interface PolicyBindings {
 
 /** Organisation settings needed by other modules, owned by the org module. */
 export interface OrgSettings {
-  get(db: DbOrTx, orgId: string): Promise<{ taskKeyPrefix: string; timezone: string }>;
+  get(
+    db: DbOrTx,
+    orgId: string,
+  ): Promise<{
+    taskKeyPrefix: string;
+    timezone: string;
+    paused: boolean;
+    /** Absolute folder under which tasks get their own working folder by default. */
+    workspaceRoot: string;
+  }>;
 }
 
 /** Effective policy of an agent (org + groups + agent merged), owned by the policy module. */

@@ -78,6 +78,13 @@
       "when": 1791354253340,
       "tag": "0010_account_connection",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791358704073,
+      "tag": "0011_planning_mode",
+      "breakpoints": true
     }
   ]
 }

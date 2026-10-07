@@ -1,6 +1,8 @@
 import type { Api } from '../api/client.ts';
 import type { EventsClient } from '../api/events.ts';
+import type { CreateTaskBody } from '@agent-band/contracts';
 import { toAccount, toAgent, toGroup, toTargetDto, toTask } from './adapt.ts';
+import type { NewTask } from './types.ts';
 import type { BoardDataSource } from './source.ts';
 import type { BoardEvent, Run } from './types.ts';
 
@@ -9,7 +11,7 @@ const BOARD_EVENTS = ['task.', 'run.updated', 'agent', 'account.', 'org.'];
 export function createLiveDataSource(api: Api, events: EventsClient, throttleMs = 400): BoardDataSource {
   return {
     async load(filter) {
-      const [board, agents, accounts, groups, dashboard] = await Promise.all([
+      const [board, agents, accounts, groups, dashboard, goals, org] = await Promise.all([
         api.board({
           text: filter.text,
           agentId: filter.agentId,
@@ -20,6 +22,8 @@ export function createLiveDataSource(api: Api, events: EventsClient, throttleMs 
         api.accounts.list(),
         api.groups.list(),
         api.dashboard().catch(() => null),
+        api.goals().catch(() => ({ items: [] })),
+        api.organization().catch(() => null),
       ]);
 
       const statusOf = new Map((dashboard?.agents ?? []).map((a) => [a.agent.id, a]));
@@ -53,6 +57,14 @@ export function createLiveDataSource(api: Api, events: EventsClient, throttleMs 
         agents: agentList,
         accounts: accounts.items.map((a) => toAccount(a, tokensOf.get(a.id) ?? 0)),
         groups: groups.items.map(toGroup),
+        goals: goals.items.map((g) => ({
+          rootTaskId: g.goal.rootTaskId,
+          status: g.goal.status,
+          approval: g.goal.approval,
+          round: g.goal.round,
+          leaderAgentId: g.goal.leaderAgentId,
+        })),
+        org: { paused: org?.paused ?? false, workspaceRoot: org?.workspaceRoot ?? '' },
       };
     },
 
@@ -83,16 +95,58 @@ export function createLiveDataSource(api: Api, events: EventsClient, throttleMs 
       await api.tasks.cancel(taskId);
     },
     async createTask(task) {
-      await api.tasks.create({
+      await api.tasks.create(toBody(task));
+    },
+    async startTasks(ids, when) {
+      await api.tasks.start(ids, when);
+    },
+    async updateTask(taskId, patch) {
+      await api.tasks.update(taskId, {
+        ...(patch.title !== undefined && { title: patch.title }),
+        ...(patch.prompt !== undefined && { prompt: patch.prompt }),
+        ...(patch.workDir !== undefined && { workDir: patch.workDir }),
+        ...(patch.target !== undefined && { target: toTargetDto(patch.target) }),
+        ...(patch.priority !== undefined && { priority: patch.priority }),
+        ...(patch.mode !== undefined && { mode: patch.mode }),
+        ...(patch.runAt !== undefined && { runAt: patch.runAt }),
+        ...(patch.maxAttempts !== undefined && { maxAttempts: patch.maxAttempts }),
+        ...(patch.dependsOn !== undefined && { dependsOn: patch.dependsOn }),
+      });
+    },
+    async deleteTask(taskId) {
+      await api.tasks.remove(taskId);
+    },
+    async approvePlan(goalId, when) {
+      await api.goalPlan.approve(goalId, when);
+    },
+    async rejectPlan(goalId, feedback) {
+      await api.goalPlan.reject(goalId, feedback);
+    },
+    async addPlanTask(goalId, task) {
+      await api.goalPlan.addTask(goalId, {
         title: task.title,
         prompt: task.prompt,
-        workDir: task.workDir,
         target: toTargetDto(task.target),
         priority: task.priority,
+        ...(task.workDir ? { workDir: task.workDir } : {}),
         ...(task.mode ? { mode: task.mode } : {}),
-        ...(task.runAt ? { runAt: task.runAt } : {}),
-        ...(task.maxAttempts ? { maxAttempts: task.maxAttempts } : {}),
       });
     },
   };
+
+  function toBody(task: NewTask): CreateTaskBody {
+    return {
+      title: task.title,
+      prompt: task.prompt,
+      target: toTargetDto(task.target),
+      priority: task.priority,
+      ...(task.workDir ? { workDir: task.workDir } : {}),
+      ...(task.mode ? { mode: task.mode } : {}),
+      ...(task.runAt ? { runAt: task.runAt } : {}),
+      ...(task.maxAttempts ? { maxAttempts: task.maxAttempts } : {}),
+      ...(task.draft ? { draft: true } : {}),
+      ...(task.kind === 'goal' ? { kind: 'goal' as const } : {}),
+      ...(task.approval ? { approval: task.approval } : {}),
+    };
+  }
 }

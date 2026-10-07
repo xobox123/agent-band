@@ -411,3 +411,80 @@
   background: var(--accent);
   opacity: 0.7;
 }
+
+.pause-banner {
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.advanced {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.advanced summary {
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
+.radio-group {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.radio-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.radio-row .form-help {
+  display: block;
+}
+
+.form-check {
+  grid-column: 1 / -1;
+}
+
+.settings {
+  max-width: 640px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.btn-link {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  padding: 0 4px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field.is-invalid,
+.field[aria-invalid='true'] {
+  border-color: var(--crit);
+}
+
+.field-error {
+  color: var(--crit);
+  font-size: var(--fs-sm);
+}
+
+.req {
+  color: var(--crit);
+}
+
+.missing-hint {
+  text-align: left;
+}

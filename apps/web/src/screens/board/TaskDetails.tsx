@@ -4,8 +4,9 @@ import { StatusDot } from '../../components/StatusDot.tsx';
 import type { Priority } from '../../data/types.ts';
 import { formatClock } from '../../lib/schedule.ts';
 import { exactCount } from './format.ts';
-import { CANCELLABLE, PRIORITIES } from './model.ts';
-import type { TaskView } from './model.ts';
+import { CANCELLABLE, PRIORITIES, startable } from './model.ts';
+import type { BacklogApi, TaskView } from './model.ts';
+import { PlanReview } from './PlanReview.tsx';
 
 interface Props {
   view: TaskView;
@@ -15,6 +16,20 @@ interface Props {
   onCancel: (taskId: string) => void;
   onSetPriority: (taskId: string, priority: Priority) => void;
   onOpenLogs: (view: TaskView) => void;
+  backlog: BacklogApi;
+  plan?: PlanProps | undefined;
+}
+
+/** Plan review wiring for a goal awaiting approval. */
+export interface PlanProps {
+  items: TaskView[];
+  titleOf: (taskId: string) => string;
+  leader: string;
+  busy: boolean;
+  error: string | null;
+  onApprove: () => void;
+  onRequestChanges: (feedback: string) => void;
+  onAdd: () => void;
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -26,7 +41,17 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export function TaskDetails({ view, now, outsideView, onClose, onCancel, onSetPriority, onOpenLogs }: Props) {
+export function TaskDetails({
+  view,
+  now,
+  outsideView,
+  onClose,
+  onCancel,
+  onSetPriority,
+  onOpenLogs,
+  backlog,
+  plan,
+}: Props) {
   const { task, run, account } = view;
   const copy = () => {
     void navigator.clipboard.writeText(task.id).catch(() => undefined);
@@ -69,6 +94,39 @@ export function TaskDetails({ view, now, outsideView, onClose, onCancel, onSetPr
           >
             Open logs
           </button>
+          {task.status === 'draft' ? (
+            <>
+              {startable(task) ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    backlog.start(task.id);
+                  }}
+                >
+                  Start
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  backlog.edit(task.id);
+                }}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => {
+                  backlog.remove(task.id);
+                }}
+              >
+                Delete
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             className="btn btn-danger"
@@ -93,7 +151,13 @@ export function TaskDetails({ view, now, outsideView, onClose, onCancel, onSetPr
           </button>
         </Row>
         <Row label="Priority">{`P${String(task.priority)}`}</Row>
-        {task.runAt ? <Row label="Run at">{new Date(task.runAt).toLocaleString()}</Row> : null}
+        {task.runAt ? (
+          <Row label="Run at">
+            {new Date(task.runAt).toLocaleString()}
+            {task.startAfterReset ? ' (after limit reset)' : ''}
+          </Row>
+        ) : null}
+        {view.proposedBy ? <Row label="Proposed by">{view.proposedBy}</Row> : null}
         {task.resumeAt ? (
           <Row label="Resumes at">{`${formatClock(task.resumeAt)} (attempt ${String(task.attempt)}/${String(task.maxAttempts)})`}</Row>
         ) : null}
@@ -103,7 +167,7 @@ export function TaskDetails({ view, now, outsideView, onClose, onCancel, onSetPr
           </Row>
         ) : null}
         <Row label="Assignee / target">{view.assignee}</Row>
-        <Row label="Work directory">
+        <Row label="Folder">
           <span className="mono">{task.workDir}</span>
         </Row>
         <Row label="Created by">{task.createdBy}</Row>
@@ -130,6 +194,21 @@ export function TaskDetails({ view, now, outsideView, onClose, onCancel, onSetPr
           </Row>
         ) : null}
       </dl>
+      {plan ? (
+        <PlanReview
+          leader={plan.leader}
+          round={view.goal?.round ?? 1}
+          items={plan.items}
+          titleOf={plan.titleOf}
+          busy={plan.busy}
+          error={plan.error}
+          onApprove={plan.onApprove}
+          onRequestChanges={plan.onRequestChanges}
+          onAdd={plan.onAdd}
+          onEdit={backlog.edit}
+          onRemove={backlog.remove}
+        />
+      ) : null}
       {task.noEligibleReason ? (
         <section>
           <h3 className="section-title">No eligible agent</h3>

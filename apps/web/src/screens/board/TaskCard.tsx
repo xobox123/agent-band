@@ -3,8 +3,8 @@ import { AgentHoverCard } from '../../components/AgentHoverCard.tsx';
 import { Badge } from '../../components/Badge.tsx';
 import { StatusDot } from '../../components/StatusDot.tsx';
 import type { Priority } from '../../data/types.ts';
-import { CANCELLABLE, PRIORITIES, hoverInfoOf } from './model.ts';
-import type { TaskView } from './model.ts';
+import { CANCELLABLE, PRIORITIES, hoverInfoOf, startable } from './model.ts';
+import type { BacklogApi, TaskView } from './model.ts';
 import { formatClock, formatRelative } from '../../lib/schedule.ts';
 import { compactCount, exactCount } from './format.ts';
 import { targetKey } from './dndApi.ts';
@@ -17,6 +17,7 @@ interface Props {
   selected: boolean;
   pending: boolean;
   dnd: DndApi;
+  backlog: BacklogApi;
   onOpen: (taskId: string) => void;
   onSetPriority: (taskId: string, priority: Priority) => void;
   onCancel: (taskId: string) => void;
@@ -30,12 +31,14 @@ export function TaskCard({
   selected,
   pending,
   dnd,
+  backlog,
   onOpen,
   onSetPriority,
   onCancel,
   onOpenAgent,
 }: Props) {
   const { task, run } = view;
+  const isDraft = task.status === 'draft';
   const [menu, setMenu] = useState(false);
   const draggable = CANCELLABLE.includes(task.status) && !pending;
   const target = { kind: 'card', task, laneKey } as const;
@@ -77,11 +80,26 @@ export function TaskCard({
       onDragEnd={dnd.end}
     >
       <div className="card-top">
+        {isDraft && startable(task) ? (
+          <input
+            type="checkbox"
+            className="card-check"
+            aria-label={`Select ${task.key}`}
+            checked={backlog.selected.has(task.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+            onChange={() => {
+              backlog.toggle(task.id);
+            }}
+          />
+        ) : null}
         <span className="mono card-key">{task.key}</span>
         <Badge tone={task.priority === 0 ? 'crit' : 'neutral'} title={`Priority P${String(task.priority)}`}>
           {`P${String(task.priority)}`}
         </Badge>
         {pending ? <Badge tone="accent">Pending</Badge> : null}
+        {task.kind === 'goal' ? <Badge tone="accent">Goal</Badge> : null}
         {errorText ? (
           <span className="card-error" role="img" aria-label={`Error: ${errorText}`} title={errorText}>
             ⚠
@@ -116,6 +134,42 @@ export function TaskCard({
                 }
               }}
             >
+              {isDraft && startable(task) ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    backlog.start(task.id);
+                  }}
+                >
+                  Start
+                </button>
+              ) : null}
+              {isDraft ? (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenu(false);
+                      backlog.edit(task.id);
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenu(false);
+                      backlog.remove(task.id);
+                    }}
+                  >
+                    Delete
+                  </button>
+                </>
+              ) : null}
               {task.status === 'queued'
                 ? PRIORITIES.map((p) => (
                     <button
@@ -143,7 +197,7 @@ export function TaskCard({
                 >
                   Cancel
                 </button>
-              ) : (
+              ) : isDraft ? null : (
                 <span className="menu-empty dim">No actions available</span>
               )}
             </div>
@@ -162,7 +216,36 @@ export function TaskCard({
         ) : null}
       </div>
       {noEligible ? <div className="card-reason dim">{task.noEligibleReason}</div> : null}
-      {task.status === 'scheduled' && task.runAt ? (
+      {view.proposedBy ? (
+        <div className="card-reason">
+          <Badge tone="accent">{`Proposed by ${view.proposedBy}`}</Badge>
+          {task.parentTaskId ? (
+            <button
+              type="button"
+              className="btn btn-link"
+              onClick={(e) => {
+                e.stopPropagation();
+                backlog.review(task.parentTaskId ?? '');
+              }}
+            >
+              Review plan
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {view.goal?.status === 'awaiting_approval' ? (
+        <div className="card-reason">
+          <Badge tone="warn">Plan awaiting approval</Badge>
+        </div>
+      ) : null}
+      {task.status === 'scheduled' && task.startAfterReset && task.runAt ? (
+        <div className="card-reason dim">
+          <time dateTime={task.runAt} title={new Date(task.runAt).toLocaleString()}>
+            {`starts after limit reset at ${formatClock(task.runAt)}`}
+          </time>
+        </div>
+      ) : null}
+      {task.status === 'scheduled' && task.runAt && !task.startAfterReset ? (
         <div className="card-reason dim">
           <time dateTime={task.runAt} title={new Date(task.runAt).toLocaleString()}>
             {`Runs ${formatRelative(task.runAt, now)}`}

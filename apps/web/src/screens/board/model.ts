@@ -1,8 +1,18 @@
-import type { Account, Agent, AgentGroup, BoardSnapshot, Priority, Run, Task } from '../../data/types.ts';
+import type {
+  Account,
+  Agent,
+  AgentGroup,
+  BoardSnapshot,
+  GoalInfo,
+  Priority,
+  Run,
+  Task,
+} from '../../data/types.ts';
 import type { AgentHoverInfo } from '../../components/AgentHoverCard.tsx';
 import { formatDuration } from './format.ts';
 
-export type ColumnId = 'scheduled' | 'queued' | 'running' | 'rate_limited' | 'done' | 'failed' | 'cancelled';
+export type ColumnId =
+  'draft' | 'scheduled' | 'queued' | 'running' | 'rate_limited' | 'done' | 'failed' | 'cancelled';
 
 export interface ColumnDef {
   id: ColumnId;
@@ -12,6 +22,7 @@ export interface ColumnDef {
 }
 
 export const COLUMNS: ColumnDef[] = [
+  { id: 'draft', title: 'Backlog', statuses: ['draft'], empty: 'Backlog is empty' },
   { id: 'scheduled', title: 'Scheduled', statuses: ['scheduled'], empty: 'No scheduled tasks' },
   { id: 'queued', title: 'Queued', statuses: ['queued'], empty: 'No queued tasks' },
   { id: 'running', title: 'Running', statuses: ['claimed', 'running'], empty: 'No running tasks' },
@@ -32,6 +43,9 @@ export function columnOf(status: Task['status']): ColumnId {
 
 export const CANCELLABLE: Task['status'][] = ['scheduled', 'queued', 'claimed', 'running', 'rate_limited'];
 
+/** Backlog tasks that can be started directly (leader proposals start with their plan). */
+export const startable = (t: Task): boolean => t.status === 'draft' && !t.proposed;
+
 export const PRIORITIES: Priority[] = [0, 1, 2, 3];
 
 export interface Lookup {
@@ -39,6 +53,18 @@ export interface Lookup {
   agents: Map<string, Agent>;
   accounts: Map<string, Account>;
   groups: Map<string, AgentGroup>;
+  tasks: Map<string, Task>;
+  goals: Map<string, GoalInfo>;
+}
+
+/** Backlog actions the board offers on draft cards. */
+export interface BacklogApi {
+  selected: Set<string>;
+  toggle: (taskId: string) => void;
+  start: (taskId: string) => void;
+  edit: (taskId: string) => void;
+  remove: (taskId: string) => void;
+  review: (goalId: string) => void;
 }
 
 export function buildLookup(snapshot: BoardSnapshot): Lookup {
@@ -47,6 +73,8 @@ export function buildLookup(snapshot: BoardSnapshot): Lookup {
     agents: new Map(snapshot.agents.map((a) => [a.id, a])),
     accounts: new Map(snapshot.accounts.map((a) => [a.id, a])),
     groups: new Map(snapshot.groups.map((g) => [g.id, g])),
+    tasks: new Map(snapshot.tasks.map((t) => [t.id, t])),
+    goals: new Map(snapshot.goals.map((g) => [g.rootTaskId, g])),
   };
 }
 
@@ -72,6 +100,18 @@ export interface TaskView {
   labels: { text: string; tip: string }[];
   elapsed: (now: number) => string;
   tokens: number | null;
+  /** Name of the leader that proposed this subtask. */
+  proposedBy: string | null;
+  /** Plan state when this task is a goal. */
+  goal: GoalInfo | undefined;
+}
+
+function proposerOf(task: Task, lookup: Lookup): string {
+  const parent = task.parentTaskId ? lookup.tasks.get(task.parentTaskId) : undefined;
+  const goal = parent ? lookup.goals.get(parent.id) : undefined;
+  const leaderId =
+    goal?.leaderAgentId ?? (parent?.target.type === 'agent' ? parent.target.agentId : undefined);
+  return (leaderId ? lookup.agents.get(leaderId)?.name : undefined) ?? 'the leader';
 }
 
 export function viewOf(task: Task, lookup: Lookup): TaskView {
@@ -116,6 +156,8 @@ export function viewOf(task: Task, lookup: Lookup): TaskView {
     hasAgent: agent !== undefined,
     labels,
     tokens,
+    proposedBy: task.proposed ? proposerOf(task, lookup) : null,
+    goal: lookup.goals.get(task.id),
     elapsed: (now) => {
       if (!run) return 'Not started';
       const end = run.finishedAt ? Date.parse(run.finishedAt) : now;

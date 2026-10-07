@@ -6,6 +6,9 @@ import { withTx } from '../../../platform/tx.ts';
 import { authorizer, bootstrapLocalOrg, createPrincipal, orgUseCases } from '../../org/index.ts';
 import type { AuditRow } from '../domain/hash.ts';
 import { appendAudit, auditLog, createAudit } from '../index.ts';
+import { tmpdir as osTmp } from 'node:os';
+import { join as pathJoin } from 'node:path';
+const TEST_OPTS = { workspaceRoot: pathJoin(osTmp(), 'agent-band-test-ws') };
 
 const at = <T>(v: T | undefined): T => {
   if (v === undefined) throw new Error('unexpected undefined');
@@ -21,7 +24,7 @@ afterEach(async () => {
 async function setup() {
   database = await openTestDatabase();
   const db = database.db;
-  const boot = await bootstrapLocalOrg(db);
+  const boot = await bootstrapLocalOrg(db, TEST_OPTS);
   const audit = createAudit(authorizer);
   const append = (n: number, extra: Partial<{ action: string; targetId: string; actorId: string }> = {}) =>
     withTx(db, (tx) =>

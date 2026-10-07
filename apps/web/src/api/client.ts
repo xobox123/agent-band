@@ -16,6 +16,12 @@ import type {
   CreatePolicyBody,
   CreateRoleBindingBody,
   CreateTaskBody,
+  AddPlanTaskBody,
+  GoalListItem,
+  GoalStateDto,
+  StartWhen,
+  UpdateOrganizationBody,
+  UpdateTaskBody,
   CreateTeamBody,
   AssignSkillBody,
   DashboardDto,
@@ -67,6 +73,30 @@ export class ApiError extends Error {
     this.requestId = init.requestId;
     this.details = init.details;
   }
+}
+
+/**
+ * Field messages from a validation_failed problem. Accepts zod-style `path` (array or dotted string) and
+ * JSON-pointer `instancePath`; `alias` may rename a path to the form's field name.
+ */
+export function fieldErrors(error: unknown, alias?: (path: string) => string): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!(error instanceof ApiError) || !Array.isArray(error.details)) return out;
+  for (const item of error.details as unknown[]) {
+    if (typeof item !== 'object' || item === null) continue;
+    const i = item as { path?: unknown; instancePath?: unknown; message?: unknown };
+    const raw = Array.isArray(i.path)
+      ? i.path.join('.')
+      : typeof i.path === 'string'
+        ? i.path
+        : typeof i.instancePath === 'string'
+          ? i.instancePath.replace(/^\//, '').replace(/\//g, '.')
+          : '';
+    if (raw === '' || typeof i.message !== 'string') continue;
+    const name = alias ? alias(raw) : raw;
+    out[name] ??= i.message;
+  }
+  return out;
 }
 
 export function errorMessage(error: unknown): string {
@@ -161,6 +191,10 @@ export function createApi(fetchImpl?: typeof fetch) {
     board: (query?: Query) => get<BoardDto>('/board', query),
     dashboard: () => get<DashboardDto>('/dashboard'),
     organization: () => get<OrganizationDto>('/organization'),
+    updateOrganization: (body: UpdateOrganizationBody) =>
+      send<OrganizationDto>('PATCH', '/organization', body),
+    setOrgPaused: (paused: boolean) => send<OrganizationDto>('PUT', '/organization/pause', { paused }),
+    goals: () => get<Page<GoalListItem>>('/goals'),
 
     tasks: {
       list: (query?: Query) => get<Page<TaskDto> & { nextCursor: string | null }>('/tasks', query),
@@ -169,6 +203,16 @@ export function createApi(fetchImpl?: typeof fetch) {
         send<TaskDto>('POST', `/tasks/${id}/reorder`, beforeId ? { beforeId } : {}),
       setPriority: (id: string, priority: number) => send<TaskDto>('PATCH', `/tasks/${id}`, { priority }),
       cancel: (id: string) => send<TaskDto>('POST', `/tasks/${id}/cancel`),
+      update: (id: string, body: UpdateTaskBody) => send<TaskDto>('PATCH', `/tasks/${id}`, body),
+      remove: (id: string) => send<undefined>('DELETE', `/tasks/${id}`),
+      start: (ids: string[], when: StartWhen) => send<Page<TaskDto>>('POST', '/tasks/start', { ids, when }),
+    },
+
+    goalPlan: {
+      approve: (id: string, when: StartWhen) => send<GoalStateDto>('POST', `/goals/${id}/approve`, { when }),
+      reject: (id: string, feedback: string) =>
+        send<GoalStateDto>('POST', `/goals/${id}/reject`, { feedback }),
+      addTask: (id: string, body: AddPlanTaskBody) => send<TaskDto>('POST', `/goals/${id}/subtasks`, body),
     },
 
     schedules: {
@@ -187,6 +231,7 @@ export function createApi(fetchImpl?: typeof fetch) {
       get: (id: string) => get<AgentDto>(`/agents/${id}`),
       create: (body: CreateAgentBody) => send<AgentDto>('POST', '/agents', body),
       update: (id: string, body: UpdateAgentBody) => send<AgentDto>('PATCH', `/agents/${id}`, body),
+      setPaused: (id: string, paused: boolean) => send<AgentDto>('PUT', `/agents/${id}/pause`, { paused }),
       remove: (id: string) => send<undefined>('DELETE', `/agents/${id}`),
       effectivePolicy: (id: string) => get<EffectivePolicyDto>(`/agents/${id}/effective-policy`),
       effectiveSkills: (id: string) => get<EffectiveSkillList>(`/agents/${id}/effective-skills`),
@@ -209,6 +254,8 @@ export function createApi(fetchImpl?: typeof fetch) {
       list: () => get<Page<AccountDto>>('/accounts'),
       create: (body: CreateAccountBody) => send<AccountDto>('POST', '/accounts', body),
       update: (id: string, body: UpdateAccountBody) => send<AccountDto>('PATCH', `/accounts/${id}`, body),
+      setPaused: (id: string, paused: boolean) =>
+        send<AccountDto>('PUT', `/accounts/${id}/pause`, { paused }),
       remove: (id: string) => send<undefined>('DELETE', `/accounts/${id}`),
       probe: (id: string) => send<ProbeResult>('POST', `/accounts/${id}/probe`),
       probeConfig: (body: ProbeConfigBody) => send<ProbeResult>('POST', '/accounts/probe-config', body),

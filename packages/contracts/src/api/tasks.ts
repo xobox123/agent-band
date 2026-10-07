@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Id, IsoDate, listOf, PagingQuery } from './common.ts';
 
 export const TaskStatus = z.enum([
+  'draft',
   'scheduled',
   'queued',
   'claimed',
@@ -34,6 +35,9 @@ export const TaskResult = z.object({
   outcome: z.enum(['success', 'partial', 'failed', 'cancelled']),
 });
 export type TaskResult = z.infer<typeof TaskResult>;
+
+export const GoalApproval = z.enum(['auto', 'required']);
+export type GoalApproval = z.infer<typeof GoalApproval>;
 
 export const GoalLimits = z.object({
   maxRounds: z.number().int().min(1),
@@ -83,6 +87,10 @@ export const TaskDto = z.object({
   depth: z.number().int().min(0),
   /** Not claimable until every listed task is done. */
   dependsOn: z.array(Id),
+  /** A subtask proposed by a leader under plan approval (a draft until the plan is approved). */
+  proposed: z.boolean(),
+  /** The task was started with "when limits reset": runAt is the reset time. */
+  startAfterReset: z.boolean(),
   result: TaskResult.nullable(),
   /** Why a queued task is waiting for an agent (no eligible agent, account limits); null otherwise. */
   latestRun: RunDto.pick({
@@ -106,7 +114,8 @@ export const CreateTaskBody = z
   .object({
     title: z.string().trim().min(1).max(200),
     prompt: z.string().min(1).max(100_000),
-    workDir: z.string().startsWith('/').max(4096),
+    /** Omit to get a folder under the workspace root named after the task key. */
+    workDir: z.string().startsWith('/').max(4096).optional(),
     target: TaskTarget,
     priority: TaskPriority.default(2),
     rank: z.number().default(0),
@@ -117,6 +126,12 @@ export const CreateTaskBody = z
     /** `goal` targets a leader agent; it plans and delegates subtasks. */
     kind: z.enum(['task', 'goal']).optional(),
     goalLimits: GoalLimitsBody.optional(),
+    /** Create in the backlog (status `draft`); nothing runs until it is started. */
+    draft: z.boolean().optional(),
+    /** Not claimable until every listed task is done. */
+    dependsOn: z.array(Id).max(50).optional(),
+    /** Goals only: `required` makes the leader's plan wait for human approval. */
+    approval: GoalApproval.optional(),
   })
   .strict();
 export type CreateTaskBody = z.input<typeof CreateTaskBody>;
@@ -132,9 +147,54 @@ export const TaskQuery = PagingQuery.extend({
 export type TaskQuery = z.infer<typeof TaskQuery>;
 
 export const ReorderTaskBody = z.object({ beforeId: Id.optional() }).strict();
-export const UpdateTaskBody = z.object({ priority: TaskPriority }).strict();
+export const UpdateTaskBody = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    prompt: z.string().min(1).max(100_000),
+    workDir: z.string().startsWith('/').max(4096),
+    target: TaskTarget,
+    priority: TaskPriority,
+    mode: TaskMode.nullable(),
+    runAt: z.iso.datetime({ offset: true }).nullable(),
+    maxAttempts: z.number().int().min(1).max(20),
+    dependsOn: z.array(Id).max(50),
+  })
+  .partial()
+  .strict()
+  .refine((b) => Object.keys(b).length > 0, 'at least one field is required');
+export type UpdateTaskBody = z.input<typeof UpdateTaskBody>;
+
+/** When a started task becomes claimable. */
+export const StartWhen = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('now') }).strict(),
+  z.object({ mode: z.literal('at'), at: z.iso.datetime({ offset: true }) }).strict(),
+  /** At the reset of the target account's limit window; behaves like `now` without a usage snapshot. */
+  z.object({ mode: z.literal('limit_reset') }).strict(),
+]);
+export type StartWhen = z.infer<typeof StartWhen>;
+export const StartTaskBody = z.object({ when: StartWhen.default({ mode: 'now' }) }).strict();
+export const StartTasksBody = z
+  .object({ ids: z.array(Id).min(1).max(200), when: StartWhen.default({ mode: 'now' }) })
+  .strict();
+export type StartTasksBody = z.input<typeof StartTasksBody>;
+export const ApprovePlanBody = StartTaskBody;
+export const RejectPlanBody = z.object({ feedback: z.string().trim().min(1).max(4000) }).strict();
+export const AddPlanTaskBody = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    prompt: z.string().min(1).max(100_000),
+    workDir: z.string().startsWith('/').max(4096).optional(),
+    target: TaskTarget,
+    priority: TaskPriority.default(2),
+    mode: TaskMode.optional(),
+    maxAttempts: z.number().int().min(1).max(20).optional(),
+    dependsOn: z.array(Id).max(50).optional(),
+  })
+  .strict();
+export type AddPlanTaskBody = z.input<typeof AddPlanTaskBody>;
 
 export const BoardColumns = z.object({
+  draft: z.array(TaskDto),
   scheduled: z.array(TaskDto),
   queued: z.array(TaskDto),
   running: z.array(TaskDto),
@@ -154,7 +214,14 @@ export const BoardDto = z.object({
 });
 export type BoardDto = z.infer<typeof BoardDto>;
 
-export const GoalStatus = z.enum(['planning', 'waiting', 'continuing', 'completed', 'failed']);
+export const GoalStatus = z.enum([
+  'planning',
+  'awaiting_approval',
+  'waiting',
+  'continuing',
+  'completed',
+  'failed',
+]);
 export type GoalStatus = z.infer<typeof GoalStatus>;
 
 export const GoalStateDto = z.object({
@@ -163,6 +230,7 @@ export const GoalStateDto = z.object({
   round: z.number().int().min(1),
   leaderAgentId: Id.nullable(),
   status: GoalStatus,
+  approval: GoalApproval,
   /** Billable tokens (input + output) of all runs in the tree. */
   treeTokensUsed: z.number().nonnegative(),
   limits: GoalLimits,

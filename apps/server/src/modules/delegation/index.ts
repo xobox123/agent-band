@@ -7,6 +7,12 @@ export {
   type SubtaskView,
 } from './app/delegation.ts';
 export {
+  createGoalApproval,
+  type GoalApproval,
+  type ApprovalDeps,
+  type PlanTaskInput,
+} from './app/approval.ts';
+export {
   createOrchestrator,
   type Orchestrator,
   type OrchestratorDeps,
@@ -18,4 +24,4 @@ export {
   DelegateAgentFilter,
   RequestReviewInput,
 } from './domain/rules.ts';
-export { buildContinuationPrompt, type ChildSummary } from './domain/continuation.ts';
+export { buildContinuationPrompt, buildRejectionPrompt, type ChildSummary } from './domain/continuation.ts';

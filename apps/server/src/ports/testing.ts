@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Tx } from '../platform/tx.ts';
 import type { RunEventWriter } from './index.ts';
 import type { ActorContext } from '../platform/actor.ts';
@@ -81,7 +83,16 @@ export class FakePolicyBindings implements PolicyBindings {
 }
 
 export class FakeOrgSettings implements OrgSettings {
-  constructor(public readonly settings = { taskKeyPrefix: 'AB', timezone: 'UTC' }) {}
+  readonly settings: Awaited<ReturnType<OrgSettings['get']>>;
+  constructor(overrides: Partial<Awaited<ReturnType<OrgSettings['get']>>> = {}) {
+    this.settings = {
+      taskKeyPrefix: 'AB',
+      timezone: 'UTC',
+      paused: false,
+      workspaceRoot: join(tmpdir(), 'agent-band-test-workspaces'),
+      ...overrides,
+    };
+  }
   get(): ReturnType<OrgSettings['get']> {
     return Promise.resolve(this.settings);
   }

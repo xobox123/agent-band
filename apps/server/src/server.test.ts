@@ -34,6 +34,7 @@ it('boots with a temp AGENT_BAND_HOME, serves readyz, the API and the SPA, and s
 
   const config = loadConfig({
     AGENT_BAND_HOME: home,
+    AGENT_BAND_WORKSPACE_ROOT: join(home, 'workspaces'),
     AGENT_BAND_PORT: String(await freePort()),
     LOG_LEVEL: 'silent',
   });
@@ -69,6 +70,7 @@ it('role all starts a worker with no active runs and stops it cleanly', async ()
   const composition = await createComposition({
     database,
     home,
+    workspaceRoot: join(home, 'workspaces'),
     secretKey: fixedKeySource(Buffer.alloc(32, 7)),
   });
   const all = await startAll(config, composition);
@@ -93,6 +95,7 @@ it('role api runs the scheduler loop and stops it with the role', async () => {
   const composition = await createComposition({
     database,
     home,
+    workspaceRoot: join(home, 'workspaces'),
     secretKey: fixedKeySource(Buffer.alloc(32, 7)),
   });
   const api = await startApi(config, composition);
