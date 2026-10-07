@@ -121,9 +121,11 @@ export function TaskDetails({ view, now, outsideView, onClose, onCancel, onSetPr
         {account ? (
           <Row label="Account budget">
             <LimitBar
+              name="Daily tokens"
               value={budgetPct}
               label={`${account.name} daily tokens`}
               title={`${exactCount(account.tokensToday)} tokens today`}
+              reset="resets daily"
             />
           </Row>
         ) : null}

@@ -11,7 +11,7 @@ import type { Column } from '../../components/Table.tsx';
 import { Toolbar } from '../../components/Toolbar.tsx';
 import { useMutation, useResource } from '../../hooks/useResource.ts';
 import { useItemCount } from '../../layout/WorkspaceContext.tsx';
-import { formatTime } from '../../lib/format.ts';
+import { copyText, formatTime } from '../../lib/format.ts';
 import { exactCount } from '../board/format.ts';
 import {
   AccountActions,
@@ -137,7 +137,7 @@ export function AccountsScreen() {
       {account ? (
         <DetailsPanel
           title={account.name}
-          subtitle={account.id}
+          subtitle={`${providerName(account.provider)} · ${account.type === 'api' ? 'API key' : 'subscription'}`}
           onClose={() => {
             setSelected(null);
           }}
@@ -209,6 +209,20 @@ export function AccountsScreen() {
               <pre className="prompt">{JSON.stringify(account.providerConfig, null, 2)}</pre>
             </dd>
           </dl>
+          <div className="id-row">
+            <span className="dim">ID</span>
+            <code className="mono-wrap">{account.id}</code>
+            <button
+              type="button"
+              className="btn"
+              aria-label="Copy account ID"
+              onClick={() => {
+                copyText(account.id);
+              }}
+            >
+              Copy
+            </button>
+          </div>
         </DetailsPanel>
       ) : null}
       {form && state.data ? (

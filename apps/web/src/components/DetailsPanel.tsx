@@ -6,7 +6,7 @@ import { useWorkspace } from '../layout/WorkspaceContext.tsx';
 
 interface Props {
   title: string;
-  /** ID or key shown under the title. */
+  /** Short descriptor shown under the title. */
   subtitle?: string;
   onClose: () => void;
   banner?: ReactNode;
@@ -24,7 +24,7 @@ export function DetailsPanel({ title, subtitle, onClose, banner, footer, childre
       <header className="details-head">
         <div>
           <h2 className="details-title">{title}</h2>
-          {subtitle ? <div className="mono dim">{subtitle}</div> : null}
+          {subtitle ? <div className="dim">{subtitle}</div> : null}
         </div>
         <button type="button" className="btn btn-icon" aria-label="Close details" onClick={onClose}>
           ✕
