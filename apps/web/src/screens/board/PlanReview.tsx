@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Badge } from '../../components/Badge.tsx';
+import { DictationTextarea } from '../../components/DictationButton.tsx';
 import type { TaskView } from './model.ts';
 
 interface Props {
@@ -90,7 +91,7 @@ export function PlanReview({
         <div className="plan-feedback">
           <label className="form-field">
             <span className="form-label">What should change?</span>
-            <textarea
+            <DictationTextarea
               className="field"
               rows={4}
               aria-label="Feedback for the leader"

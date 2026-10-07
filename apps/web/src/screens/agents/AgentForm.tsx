@@ -7,6 +7,7 @@ import type {
   UpdateAgentBody,
 } from '@agent-band/contracts';
 import { useState } from 'react';
+import { DictationTextarea } from '../../components/DictationButton.tsx';
 import { Field, FormDialog } from '../../components/FormDialog.tsx';
 import { ModelPicker } from './ModelPicker.tsx';
 import { splitList, toggleIn } from '../../lib/format.ts';
@@ -171,7 +172,7 @@ export function AgentForm({
       </Field>
       <div className="wide form-field">
         <Field label="Persona" name="persona" help="Who this agent is; this does not grant permissions.">
-          <textarea
+          <DictationTextarea
             className="field"
             rows={3}
             value={persona}
@@ -187,7 +188,7 @@ export function AgentForm({
           name="systemPrompt"
           help="Appended instructions; do not include credentials."
         >
-          <textarea
+          <DictationTextarea
             className="field"
             rows={3}
             value={systemPrompt}
