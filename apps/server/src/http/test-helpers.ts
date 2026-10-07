@@ -7,6 +7,7 @@ import { fixedKeySource } from '../modules/accounts/index.ts';
 import type { ActorContext } from '../platform/actor.ts';
 import { openTestDatabase, type Database } from '../platform/db.ts';
 import { withTx } from '../platform/tx.ts';
+import type { CliBins } from '../runner/index.ts';
 import { buildApp } from './app.ts';
 
 export const TEST_SECRET = 'sk-test-super-secret-value-123';
@@ -22,12 +23,19 @@ export interface TestApi {
   close(): Promise<void>;
 }
 
-export async function makeApi(opts: { heartbeatMs?: number; webDist?: string } = {}): Promise<TestApi> {
+export async function makeApi(
+  opts: { heartbeatMs?: number; webDist?: string; cliBins?: CliBins; home?: string } = {},
+): Promise<TestApi> {
   const database = await openTestDatabase();
   let current: ActorContext | null = null;
   const c = await createComposition({
     database,
-    home: mkdtempSync(join(tmpdir(), 'ab-test-')),
+    home: opts.home ?? mkdtempSync(join(tmpdir(), 'ab-test-')),
+    cliBins: opts.cliBins ?? {
+      claude: { cmd: '/nonexistent/claude' },
+      openai: { cmd: '/nonexistent/codex' },
+    },
+    openUrl: () => undefined,
     secretKey: fixedKeySource(Buffer.alloc(32, 7)),
     resolveActor: (req, local) => (current ? { ...current, requestId: req.id } : local),
   });

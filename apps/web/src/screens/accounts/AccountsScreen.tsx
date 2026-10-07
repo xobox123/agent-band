@@ -13,14 +13,26 @@ import { useMutation, useResource } from '../../hooks/useResource.ts';
 import { useItemCount } from '../../layout/WorkspaceContext.tsx';
 import { formatTime } from '../../lib/format.ts';
 import { exactCount } from '../board/format.ts';
-import { AccountForm } from './AccountForm.tsx';
+import {
+  AccountActions,
+  AccountIdentity,
+  AccountLimits,
+  UsageExtras,
+} from '../../components/AccountStatus.tsx';
+import { planLabel } from '../../lib/account.ts';
+import { formatCost } from '../../lib/format.ts';
+import { AccountForm, type FollowUp } from './AccountForm.tsx';
 
 export function AccountsScreen() {
   const api = useApi();
   const state = useResource(
     async () => {
-      const [accounts, providers] = await Promise.all([api.accounts.list(), api.providers()]);
-      return { accounts: accounts.items, providers: providers.items };
+      const [accounts, providers, dashboard] = await Promise.all([
+        api.accounts.list(),
+        api.providers(),
+        api.dashboard().catch(() => null),
+      ]);
+      return { accounts: accounts.items, providers: providers.items, dashboard };
     },
     [],
     ['account.'],
@@ -33,6 +45,7 @@ export function AccountsScreen() {
   const rows = state.data?.accounts ?? [];
   useItemCount(state.data ? rows.length : null);
   const account = rows.find((a) => a.id === selected);
+  const dashRow = state.data?.dashboard?.accounts.find((a) => a.account.id === selected);
   const providerName = (id: string) => state.data?.providers.find((p) => p.id === id)?.displayName ?? id;
 
   const columns: Column<AccountDto>[] = [
@@ -44,6 +57,22 @@ export function AccountsScreen() {
       cell: (a) => providerName(a.provider),
     },
     { id: 'type', header: 'Type', sortValue: (a) => a.type, cell: (a) => a.type },
+    {
+      id: 'login',
+      header: 'Login',
+      cell: (a) =>
+        a.connection ? (
+          <span>
+            <span className="conn-dot" data-ok={String(a.connection.loggedIn)} aria-hidden="true" />{' '}
+            {a.connection.loggedIn
+              ? [a.connection.email, planLabel(a.provider, a.connection.plan)].filter(Boolean).join(' - ') ||
+                'Logged in'
+              : 'Not logged in'}
+          </span>
+        ) : (
+          <span className="dim">Not checked</span>
+        ),
+    },
     { id: 'secret', header: 'Secret', cell: (a) => (a.hasSecret ? 'Stored' : 'None') },
     { id: 'slots', header: 'Max runs', cell: (a) => String(a.limits.maxConcurrentRuns) },
     {
@@ -54,10 +83,15 @@ export function AccountsScreen() {
     { id: 'updated', header: 'Updated', sortValue: (a) => a.updatedAt, cell: (a) => formatTime(a.updatedAt) },
   ];
 
-  const afterSave = (saved?: AccountDto) => {
+  const [autoLogin, setAutoLogin] = useState<'console' | 'subscription' | undefined>();
+  const afterSave = (saved?: AccountDto, followUp: FollowUp = null) => {
     if (saved) {
       setForm(null);
       setSelected(saved.id);
+      setAutoLogin(
+        followUp === 'login-console' ? 'console' : followUp === 'login' ? 'subscription' : undefined,
+      );
+      if (followUp === 'probe') void api.accounts.probe(saved.id).then(state.reload, state.reload);
       state.reload();
     }
   };
@@ -135,6 +169,18 @@ export function AccountsScreen() {
             </>
           }
         >
+          <AccountIdentity account={account} />
+          {account.type === 'cli' ? (
+            <>
+              <AccountLimits
+                account={account}
+                windows={dashRow?.windows ?? []}
+                updatedAt={dashRow?.windowsUpdatedAt ?? null}
+              />
+              <UsageExtras account={account} />
+            </>
+          ) : null}
+          <AccountActions key={account.id} account={account} onChanged={state.reload} autoLogin={autoLogin} />
           <dl className="kv">
             <dt>Provider</dt>
             <dd>{providerName(account.provider)}</dd>
@@ -148,6 +194,12 @@ export function AccountsScreen() {
             </dd>
             <dt>Config directory</dt>
             <dd className="mono-wrap">{account.configDir ?? 'CLI default'}</dd>
+            <dt>Cost</dt>
+            <dd>
+              {account.type === 'api'
+                ? `${formatCost(dashRow?.costToday)} today, ${formatCost(dashRow?.costThisMonth)} this month`
+                : 'Subscription'}
+            </dd>
             <dt>Provider identity</dt>
             <dd>{account.providerIdentity ?? 'Not recorded'}</dd>
             <dt>Labels</dt>
@@ -165,11 +217,19 @@ export function AccountsScreen() {
           providers={state.data.providers}
           pending={mutation.pending}
           error={mutation.error}
-          onCreate={(body) => {
-            void mutation.run(() => api.accounts.create(body)).then(afterSave);
+          onCreate={(body, followUp) => {
+            void mutation
+              .run(() => api.accounts.create(body))
+              .then((saved) => {
+                afterSave(saved, followUp);
+              });
           }}
           onUpdate={(id, body) => {
-            void mutation.run(() => api.accounts.update(id, body)).then(afterSave);
+            void mutation
+              .run(() => api.accounts.update(id, body))
+              .then((saved) => {
+                afterSave(saved);
+              });
           }}
           onCancel={() => {
             setForm(null);

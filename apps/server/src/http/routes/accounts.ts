@@ -6,11 +6,32 @@ import {
   AccountQuery,
   CreateAccountBody,
   IdParams,
+  LoginBody,
+  LoginResult,
+  ProbeConfigBody,
+  ProbeResult,
+  RefreshLimitsResult,
   ProviderList,
   SetProviderIdentityBody,
   UpdateAccountBody,
 } from '@agent-band/contracts';
 import type { Composition } from '../../composition.ts';
+
+/** After an API key is stored, prepares the harness home and records the connection; failures are not fatal. */
+async function verifyAfterChange(
+  c: Composition,
+  actor: Parameters<Composition['accountConnection']['probe']>[0],
+  id: string,
+  isApiKey: boolean,
+) {
+  if (!isApiKey) return null;
+  try {
+    await c.accountConnection.probe(actor, id);
+  } catch {
+    return null;
+  }
+  return c.accounts.getAccount(c.database.db, actor, id);
+}
 
 export function accountRoutes(c: Composition): FastifyPluginCallbackZod {
   const db = c.database.db;
@@ -58,8 +79,10 @@ export function accountRoutes(c: Composition): FastifyPluginCallbackZod {
         },
       },
       async (req, reply) => {
-        const account = await c.accounts.createAccount(db, await c.resolveActor(req), req.body);
-        return reply.code(201).send(account);
+        const actor = await c.resolveActor(req);
+        const account = await c.accounts.createAccount(db, actor, req.body);
+        const connected = await verifyAfterChange(c, actor, account.id, account.type === 'api');
+        return reply.code(201).send(connected ?? account);
       },
     );
 
@@ -87,7 +110,12 @@ export function accountRoutes(c: Composition): FastifyPluginCallbackZod {
           response: { 200: AccountDto },
         },
       },
-      async (req) => c.accounts.updateAccount(db, await c.resolveActor(req), req.params.id, req.body),
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        const account = await c.accounts.updateAccount(db, actor, req.params.id, req.body);
+        const isKey = account.type === 'api' && req.body.secret !== undefined;
+        return (await verifyAfterChange(c, actor, account.id, isKey)) ?? account;
+      },
     );
 
     app.put(
@@ -108,6 +136,59 @@ export function accountRoutes(c: Composition): FastifyPluginCallbackZod {
           req.params.id,
           req.body.providerIdentity,
         ),
+    );
+
+    app.post(
+      '/accounts/probe-config',
+      {
+        schema: {
+          tags: ['accounts'],
+          summary: 'Check a CLI login before saving the account (no tokens spent)',
+          body: ProbeConfigBody,
+          response: { 200: ProbeResult },
+        },
+      },
+      async (req) => c.accountConnection.probeConfig(await c.resolveActor(req), req.body),
+    );
+
+    app.post(
+      '/accounts/:id/probe',
+      {
+        schema: {
+          tags: ['accounts'],
+          summary: 'Check the CLI login and store identity and plan (no tokens spent)',
+          params: IdParams,
+          response: { 200: ProbeResult },
+        },
+      },
+      async (req) => c.accountConnection.probe(await c.resolveActor(req), req.params.id),
+    );
+
+    app.post(
+      '/accounts/:id/login',
+      {
+        schema: {
+          tags: ['accounts'],
+          summary: "Start the provider's own browser login for this account",
+          params: IdParams,
+          body: LoginBody.nullish(),
+          response: { 200: LoginResult },
+        },
+      },
+      async (req) => c.accountConnection.login(await c.resolveActor(req), req.params.id, req.body?.mode),
+    );
+
+    app.post(
+      '/accounts/:id/refresh-limits',
+      {
+        schema: {
+          tags: ['accounts'],
+          summary: 'Read the limit windows from the provider CLI (free, no model call)',
+          params: IdParams,
+          response: { 200: RefreshLimitsResult },
+        },
+      },
+      async (req) => c.accountConnection.refreshLimits(await c.resolveActor(req), req.params.id),
     );
 
     app.delete(

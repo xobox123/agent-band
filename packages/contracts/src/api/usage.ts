@@ -13,8 +13,21 @@ export type LimitWindowDto = z.infer<typeof LimitWindowDto>;
 
 export const DashboardAccount = z.object({
   account: AccountDto,
-  availabilityReason: z.enum(['concurrency_full', 'budget_exhausted', 'blocked', 'ok']),
+  availabilityReason: z.enum([
+    'concurrency_full',
+    'budget_exhausted',
+    'cost_exhausted',
+    'blocked',
+    'reserve',
+    'ok',
+  ]),
   windows: z.array(LimitWindowDto),
+  /** When the windows were last read; windows older than 15 minutes are stale. */
+  windowsUpdatedAt: IsoDate.nullable(),
+  reserveDetail: z.string().nullable(),
+  /** Reported spend in USD (API accounts); null when the provider reports no cost. */
+  costToday: z.number(),
+  costThisMonth: z.number(),
   tokensToday: z.number(),
   /** Cache reads, reported separately; not counted in budgets. */
   cachedTokensToday: z.number(),

@@ -567,6 +567,10 @@ describe('cross-cutting', () => {
 const EXPECTED_ROUTES = [
   'GET /api/v1/accounts',
   'POST /api/v1/accounts',
+  'POST /api/v1/accounts/probe-config',
+  'POST /api/v1/accounts/{id}/login',
+  'POST /api/v1/accounts/{id}/probe',
+  'POST /api/v1/accounts/{id}/refresh-limits',
   'GET /api/v1/accounts/{id}',
   'PATCH /api/v1/accounts/{id}',
   'DELETE /api/v1/accounts/{id}',

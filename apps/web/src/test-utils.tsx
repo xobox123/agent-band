@@ -119,6 +119,7 @@ export function accountDto(over: Record<string, unknown> = {}) {
     labels: [],
     limits: { maxConcurrentRuns: 2, dailyTokenBudget: 1_000_000 },
     providerIdentity: null,
+    connection: null,
     hasSecret: false,
     secretUpdatedAt: null,
     createdBy: ID(200),

@@ -3,7 +3,12 @@ import { useState } from 'react';
 import { useApi } from '../../api/context.tsx';
 import { AgentHoverCard } from '../../components/AgentHoverCard.tsx';
 import { EmptyState } from '../../components/EmptyState.tsx';
-import { LimitBar } from '../../components/LimitBar.tsx';
+import {
+  AccountActions,
+  AccountIdentity,
+  AccountLimits,
+  UsageExtras,
+} from '../../components/AccountStatus.tsx';
 import { Resource } from '../../components/Resource.tsx';
 import { StatusDot } from '../../components/StatusDot.tsx';
 import { Table } from '../../components/Table.tsx';
@@ -11,7 +16,7 @@ import type { Column } from '../../components/Table.tsx';
 import { Toolbar } from '../../components/Toolbar.tsx';
 import { useResource } from '../../hooks/useResource.ts';
 import { useItemCount } from '../../layout/WorkspaceContext.tsx';
-import { formatTime } from '../../lib/format.ts';
+import { formatCost, formatTime } from '../../lib/format.ts';
 import { exactCount } from '../board/format.ts';
 import { AgentDetails } from '../agents/AgentDetails.tsx';
 
@@ -126,6 +131,10 @@ export function DashboardScreen() {
                     ({
                       account,
                       windows,
+                      windowsUpdatedAt,
+                      reserveDetail,
+                      costToday,
+                      costThisMonth,
                       tokensToday,
                       cachedTokensToday,
                       runningRuns,
@@ -140,19 +149,23 @@ export function DashboardScreen() {
                             <span className="dim">{availabilityReason}</span>
                             <span className="chip">{`${account.provider} / ${account.type}`}</span>
                           </div>
-                          {(['5h', 'weekly'] as const).map((w) => {
-                            const win = windows.find((x) => x.window === w);
-                            return (
-                              <div key={w} className="panel-row">
-                                <span>{w === '5h' ? '5h window' : 'Weekly window'}</span>
-                                <LimitBar
-                                  value={win ? win.usedPercent : null}
-                                  label={`${account.name} ${w}`}
-                                  title={win?.resetsAt ? `Resets ${formatTime(win.resetsAt)}` : undefined}
-                                />
-                              </div>
-                            );
-                          })}
+                          <AccountIdentity account={account} />
+                          {account.type === 'api' ? (
+                            <div className="panel-row">
+                              <span>Spend</span>
+                              <span>{`${formatCost(costToday)} today, ${formatCost(costThisMonth)} this month`}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <AccountLimits
+                                account={account}
+                                windows={windows}
+                                updatedAt={windowsUpdatedAt}
+                              />
+                              {reserveDetail ? <p className="dim">{reserveDetail}</p> : null}
+                              <UsageExtras account={account} />
+                            </>
+                          )}
                           <div className="panel-row">
                             <span>Tokens today</span>
                             <span className="tokens-cell">
@@ -177,6 +190,7 @@ export function DashboardScreen() {
                             )}
                             {blockedUntil ? <span>{`until ${formatTime(blockedUntil)}`}</span> : null}
                           </div>
+                          <AccountActions account={account} onChanged={state.reload} />
                         </article>
                       );
                     },

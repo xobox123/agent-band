@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ID, NOW, Providers, accountDto, agentDto, list, testApi } from '../test-utils.tsx';
 import type { Routes } from '../test-utils.tsx';
 import { AccountsScreen } from './accounts/AccountsScreen.tsx';
@@ -63,6 +63,11 @@ describe('Dashboard', () => {
             { window: '5h', usedPercent: 42, resetsAt: NOW },
             { window: 'weekly', usedPercent: 71, resetsAt: null },
           ],
+          windowsUpdatedAt: new Date().toISOString(),
+          reserveDetail: null,
+          costToday: 0,
+          costThisMonth: 0,
+          availabilityReason: 'ok',
           tokensToday: 250_000,
           cachedTokensToday: 1_500_000,
           runningRuns: 1,
@@ -106,6 +111,78 @@ describe('Dashboard', () => {
     const agents = screen.getByRole('table', { name: 'Agents' });
     expect(within(agents).getByText('Running')).toBeInTheDocument();
     expect(within(agents).getByText('1,234')).toBeInTheDocument();
+  });
+
+  it('shows identity, plan, reset times, the reserve marker and stale readings', async () => {
+    const soon = new Date(Date.now() + 3 * 3_600_000 + 60_000).toISOString();
+    const account = accountDto({
+      limits: { maxConcurrentRuns: 2, stopAt: { fiveHourPercent: 70 } },
+      connection: {
+        loggedIn: true,
+        plan: 'pro',
+        email: 'ann@example.com',
+        orgName: "Ann's Org",
+        authMethod: 'claude.ai',
+        checkedAt: new Date().toISOString(),
+        usageDetails: null,
+      },
+    });
+    const stale = new Date(Date.now() - 30 * 60_000).toISOString();
+    const fresh = {
+      ...(routes['GET /dashboard'] as { accounts: Record<string, unknown>[] }),
+    };
+    fresh.accounts = [
+      {
+        ...fresh.accounts[0],
+        account,
+        windowsUpdatedAt: stale,
+        reserveDetail: 'reserve threshold reached (5h 72% >= 70%)',
+        availabilityReason: 'reserve',
+        windows: [{ window: '5h', usedPercent: 72, resetsAt: soon }],
+      },
+    ];
+    mount({ ...routes, 'GET /dashboard': fresh }, <DashboardScreen />);
+    const card = await screen.findByRole('article', { name: 'Account Claude Max' });
+    expect(within(card).getByText('ann@example.com')).toBeInTheDocument();
+    expect(within(card).getByText("Ann's Org")).toBeInTheDocument();
+    expect(within(card).getByText('Claude Pro')).toBeInTheDocument();
+    expect(within(card).getByText('Logged in')).toBeInTheDocument();
+    expect(within(card).getByText('resets in 3h')).toBeInTheDocument();
+    expect(within(card).getByRole('img', { name: /stops new work at 70%/ })).toBeInTheDocument();
+    expect(within(card).getByText('(stale)')).toBeInTheDocument();
+    expect(within(card).getByText(/reserve threshold reached/)).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Check now' })).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Refresh limits' })).toBeInTheDocument();
+  });
+
+  it('checks the login and refreshes limits from the card without a confirmation', async () => {
+    const calls = mount(
+      {
+        ...routes,
+        [`POST /accounts/${ID(10)}/probe`]: {
+          loggedIn: true,
+          identity: {},
+          checkedAt: NOW,
+          loginCommand: null,
+        },
+        [`POST /accounts/${ID(10)}/refresh-limits`]: {
+          windows: [],
+          updatedAt: null,
+          error: null,
+          details: null,
+        },
+      },
+      <DashboardScreen />,
+    );
+    const card = await screen.findByRole('article', { name: 'Account Claude Max' });
+    fireEvent.click(within(card).getByRole('button', { name: 'Check now' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === 'POST' && c.path === `/accounts/${ID(10)}/probe`)).toBe(true);
+    });
+    fireEvent.click(within(card).getByRole('button', { name: 'Refresh limits' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.path === `/accounts/${ID(10)}/refresh-limits`)).toBe(true);
+    });
   });
 
   it('shows cached tokens as a secondary line, not added to tokens today', async () => {
@@ -286,6 +363,7 @@ describe('Accounts screen', () => {
         displayName: 'Claude Code',
         harness: 'claude-cli',
         accountTypes: ['cli', 'api'],
+        runnableTypes: ['cli', 'api'],
         accountFields: { type: 'object', properties: {} },
         secretField: null,
         adapterEnabled: true,
@@ -293,6 +371,23 @@ describe('Accounts screen', () => {
           runtimeToolEnforcement: true,
           limitWindows: ['5h', 'weekly'],
           costReporting: true,
+          skills: true,
+          systemPrompt: true,
+        },
+      },
+      {
+        id: 'openai',
+        displayName: 'Codex CLI',
+        harness: 'codex-cli',
+        accountTypes: ['cli', 'api'],
+        runnableTypes: ['cli'],
+        accountFields: { type: 'object', properties: {} },
+        secretField: null,
+        adapterEnabled: true,
+        capabilities: {
+          runtimeToolEnforcement: false,
+          limitWindows: ['5h', 'weekly'],
+          costReporting: false,
           skills: true,
           systemPrompt: true,
         },
@@ -313,6 +408,7 @@ describe('Accounts screen', () => {
         },
         secretField: 'apiKey',
         adapterEnabled: false,
+        runnableTypes: [],
         capabilities: {
           runtimeToolEnforcement: false,
           limitWindows: [],
@@ -363,6 +459,221 @@ describe('Accounts screen', () => {
         type: 'api',
         providerConfig: { baseUrl: 'http://localhost:8000/v1', models: ['a', 'b'] },
         secret: 'sk-test',
+      });
+    });
+  });
+});
+
+describe('Accounts form connection methods', () => {
+  const caps = {
+    runtimeToolEnforcement: true,
+    limitWindows: ['5h', 'weekly'],
+    costReporting: true,
+    skills: true,
+    systemPrompt: true,
+  };
+  const providers = {
+    items: [
+      {
+        id: 'claude',
+        displayName: 'Claude Code',
+        harness: 'claude-cli',
+        accountTypes: ['cli', 'api'],
+        runnableTypes: ['cli', 'api'],
+        accountFields: { type: 'object', properties: {} },
+        secretField: null,
+        adapterEnabled: true,
+        capabilities: caps,
+      },
+      {
+        id: 'openai',
+        displayName: 'Codex CLI',
+        harness: 'codex-cli',
+        accountTypes: ['cli', 'api'],
+        runnableTypes: ['cli'],
+        accountFields: { type: 'object', properties: {} },
+        secretField: null,
+        adapterEnabled: true,
+        capabilities: caps,
+      },
+    ],
+  };
+  const created = accountDto({
+    id: ID(11),
+    name: 'Side',
+    configDir: '/home/x/.agent-band/accounts/claude-side',
+  });
+  const routes: Routes = {
+    'GET /accounts': list([]),
+    'GET /providers': providers,
+    'GET /dashboard': {
+      cursor: 1,
+      accounts: [],
+      agents: [],
+      runningRuns: [],
+      queuedCount: 0,
+      tokensToday: 0,
+      cachedTokensToday: 0,
+    },
+    'POST /accounts': created,
+    [`POST /accounts/${ID(11)}/probe`]: { loggedIn: true, identity: {}, checkedAt: NOW, loginCommand: null },
+    [`POST /accounts/${ID(11)}/login`]: {
+      started: true,
+      command: 'CLAUDE_CONFIG_DIR=/x claude auth login',
+      authUrl: 'https://claude.ai/oauth/authorize?x=1',
+    },
+  };
+  async function openForm(extra: Routes = {}) {
+    const calls = mount({ ...routes, ...extra }, <AccountsScreen />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Create account' }));
+    return { calls, dialog: screen.getByRole('dialog', { name: 'Create account' }) };
+  }
+
+  it('offers the three methods, hides the raw directory under Advanced and has no type select', async () => {
+    const { dialog } = await openForm();
+    expect(within(dialog).queryByLabelText('Type')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('radio', { name: /Use my current login/ })).toBeChecked();
+    expect(within(dialog).getByRole('radio', { name: /Add another account/ })).toBeInTheDocument();
+    expect(within(dialog).getByRole('radio', { name: /API key/ })).toBeEnabled();
+    const dir = within(dialog).getByLabelText(/^Config directory/);
+    expect(dir.closest('details')).not.toBeNull();
+    expect(within(dialog).getByText(/Not a project folder/)).toBeInTheDocument();
+    expect(
+      within(dialog).queryByLabelText(/^API key/, { selector: 'input[type=password]' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('disables the api method with "coming soon" when the adapter only runs cli', async () => {
+    const { dialog } = await openForm();
+    fireEvent.change(within(dialog).getByLabelText('Provider'), { target: { value: 'openai' } });
+    expect(within(dialog).getByRole('radio', { name: /API key/ })).toBeDisabled();
+    expect(within(dialog).getByText(/Coming soon for this provider/)).toBeInTheDocument();
+  });
+
+  it('checks the current login and shows email and plan', async () => {
+    const { dialog } = await openForm({
+      'POST /accounts/probe-config': {
+        loggedIn: true,
+        identity: { email: 'ann@example.com', plan: 'pro' },
+        checkedAt: NOW,
+        loginCommand: null,
+      },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Check login' }));
+    expect(await within(dialog).findByText(/Logged in - ann@example.com - Claude Pro/)).toBeInTheDocument();
+  });
+
+  it('shows the exact login command when not logged in and copies it', async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.assign(navigator, { clipboard: { writeText } });
+    const { dialog } = await openForm({
+      'POST /accounts/probe-config': {
+        loggedIn: false,
+        identity: {},
+        checkedAt: NOW,
+        loginCommand: 'CLAUDE_CONFIG_DIR=~/.claude-side claude auth login',
+      },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Check login' }));
+    expect(
+      await within(dialog).findByText('CLAUDE_CONFIG_DIR=~/.claude-side claude auth login'),
+    ).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy command' }));
+    expect(writeText).toHaveBeenCalledWith('CLAUDE_CONFIG_DIR=~/.claude-side claude auth login');
+  });
+
+  it('creates a current-login account without a directory and checks it right away', async () => {
+    const { calls, dialog } = await openForm();
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Mine' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
+    await waitFor(() => {
+      const body = lastBody(calls, 'POST', '/accounts') as Record<string, unknown>;
+      expect(body).toMatchObject({ name: 'Mine', provider: 'claude', type: 'cli' });
+      expect(body).not.toHaveProperty('configDir');
+      expect(body).not.toHaveProperty('managedConfigDir');
+    });
+    await waitFor(() => {
+      expect(calls.some((c) => c.path === `/accounts/${ID(11)}/probe`)).toBe(true);
+    });
+  });
+
+  it('adds another account with a managed directory, starts the login and shows the link and command', async () => {
+    const { calls, dialog } = await openForm({
+      'GET /accounts': list([created]),
+    });
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Add another account/ }));
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Side' } });
+    expect(
+      within(dialog).getByText(/CLAUDE_CONFIG_DIR=~\/\.claude-side claude auth login/),
+    ).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
+    await waitFor(() => {
+      expect(lastBody(calls, 'POST', '/accounts')).toMatchObject({ managedConfigDir: true, type: 'cli' });
+    });
+    await waitFor(() => {
+      expect(calls.some((c) => c.path === `/accounts/${ID(11)}/login`)).toBe(true);
+    });
+    expect(await screen.findByText('Waiting for login in your browser...')).toBeInTheDocument();
+    expect(screen.getByText('https://claude.ai/oauth/authorize?x=1')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open' })).toHaveAttribute(
+      'href',
+      'https://claude.ai/oauth/authorize?x=1',
+    );
+    expect(screen.getByText('CLAUDE_CONFIG_DIR=/x claude auth login')).toBeInTheDocument();
+  });
+
+  it('tests an API key before saving and sends it only in the create body', async () => {
+    const { calls, dialog } = await openForm({
+      'POST /accounts/probe-config': {
+        loggedIn: true,
+        identity: { plan: 'API key' },
+        checkedAt: NOW,
+        note: 'The key is verified on the first run.',
+        loginCommand: null,
+      },
+    });
+    fireEvent.click(within(dialog).getByRole('radio', { name: /API key/ }));
+    expect(within(dialog).queryByLabelText(/^Config directory/)).not.toBeInTheDocument();
+    expect(within(dialog).getByText('Daily cost budget (USD)')).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Billing' } });
+    const key = within(dialog).getByLabelText(/^API key/, { selector: 'input[type=password]' });
+    expect(key).toHaveAttribute('type', 'password');
+    fireEvent.change(key, { target: { value: 'sk-ant-test' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Test key' }));
+    expect(await within(dialog).findByText(/Logged in - API key/)).toBeInTheDocument();
+    expect(lastBody(calls, 'POST', '/accounts/probe-config')).toMatchObject({
+      type: 'api',
+      secret: 'sk-ant-test',
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
+    await waitFor(() => {
+      expect(lastBody(calls, 'POST', '/accounts')).toMatchObject({
+        type: 'api',
+        secret: 'sk-ant-test',
+        provider: 'claude',
+      });
+    });
+  });
+
+  it('sends the reserve thresholds and rejects out-of-range values', async () => {
+    const { calls, dialog } = await openForm();
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Res' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Stop new work at \(5h %\)/), {
+      target: { value: '150' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
+    expect(within(dialog).getByText('Stop thresholds must be between 1 and 100.')).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText(/^Stop new work at \(5h %\)/), {
+      target: { value: '70' },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/^Stop new work at \(weekly %\)/), {
+      target: { value: '90' },
+    });
+    expect(within(dialog).getAllByText('Keeps a reserve for your own use.')).toHaveLength(2);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
+    await waitFor(() => {
+      expect(lastBody(calls, 'POST', '/accounts')).toMatchObject({
+        limits: { stopAt: { fiveHourPercent: 70, weeklyPercent: 90 } },
       });
     });
   });

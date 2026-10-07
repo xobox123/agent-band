@@ -1,8 +1,17 @@
 import { ProviderId } from '@agent-band/contracts';
-import type { AccountDto, CreateAccountBody, ProviderDto, UpdateAccountBody } from '@agent-band/contracts';
+import type {
+  AccountDto,
+  CreateAccountBody,
+  ProbeResult,
+  ProviderDto,
+  UpdateAccountBody,
+} from '@agent-band/contracts';
 import { useState } from 'react';
+import { errorMessage } from '../../api/client.ts';
+import { useApi } from '../../api/context.tsx';
 import { Field, FormDialog } from '../../components/FormDialog.tsx';
-import { splitList } from '../../lib/format.ts';
+import { planLabel, suggestedLoginCommand } from '../../lib/account.ts';
+import { copyText, splitList } from '../../lib/format.ts';
 
 interface FieldSpec {
   name: string;
@@ -35,12 +44,33 @@ function toText(value: unknown): string {
   return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
+export type Method = 'current' | 'another' | 'api';
+/** What the screen does right after the account exists. */
+export type FollowUp = 'probe' | 'login' | 'login-console' | null;
+
+/** Which connection methods a provider offers; `api` is disabled while its adapter cannot run it. */
+export function methodsOf(provider: ProviderDto | undefined) {
+  const types = provider?.accountTypes ?? [];
+  const apiRunnable = provider ? !provider.adapterEnabled || provider.runnableTypes.includes('api') : false;
+  return {
+    cli: types.includes('cli'),
+    api: types.includes('api'),
+    apiDisabled: types.includes('api') && !apiRunnable,
+  };
+}
+
+const METHOD_LABEL: Record<Method, string> = {
+  current: 'Use my current login',
+  another: 'Add another account',
+  api: 'API key',
+};
+
 interface Props {
   account?: AccountDto | undefined;
   providers: ProviderDto[];
   pending: boolean;
   error: unknown;
-  onCreate: (body: CreateAccountBody) => void;
+  onCreate: (body: CreateAccountBody, followUp: FollowUp) => void;
   onUpdate: (id: string, body: UpdateAccountBody) => void;
   onCancel: () => void;
 }
@@ -49,7 +79,18 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
   const [name, setName] = useState(account?.name ?? '');
   const [providerId, setProviderId] = useState(account?.provider ?? providers[0]?.id ?? '');
   const provider = providers.find((p) => p.id === providerId);
-  const [type, setType] = useState<'cli' | 'api'>(account?.type ?? provider?.accountTypes[0] ?? 'cli');
+  const initialMethod = (p: ProviderDto | undefined): Method => {
+    const m = methodsOf(p);
+    return m.cli ? 'current' : 'api';
+  };
+  const [method, setMethod] = useState<Method>(
+    account ? (account.type === 'api' ? 'api' : 'current') : initialMethod(provider),
+  );
+  const [loginMode, setLoginMode] = useState<'subscription' | 'console'>('subscription');
+  const [advanced, setAdvanced] = useState(false);
+  const [check, setCheck] = useState<{ pending: boolean; result?: ProbeResult; error?: string } | null>(null);
+  const api = useApi();
+  const type: 'cli' | 'api' = account ? account.type : method === 'api' ? 'api' : 'cli';
   const [config, setConfig] = useState<Record<string, string>>(
     Object.fromEntries(Object.entries(account?.providerConfig ?? {}).map(([k, v]) => [k, toText(v)])),
   );
@@ -57,12 +98,17 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
   const [secret, setSecret] = useState('');
   const [labels, setLabels] = useState((account?.labels ?? []).join(', '));
   const [budget, setBudget] = useState(String(account?.limits.dailyTokenBudget ?? ''));
+  const [costBudget, setCostBudget] = useState(String(account?.limits.dailyCostBudgetUsd ?? ''));
+  const [stop5h, setStop5h] = useState(String(account?.limits.stopAt?.fiveHourPercent ?? ''));
+  const [stopWeek, setStopWeek] = useState(String(account?.limits.stopAt?.weeklyPercent ?? ''));
   const [concurrent, setConcurrent] = useState(String(account?.limits.maxConcurrentRuns ?? 1));
   const [touched, setTouched] = useState(false);
 
   const specs = fieldSpecs(provider?.accountFields);
-  const typeOptions = provider?.accountTypes ?? ['cli', 'api'];
-  const showSecret = provider?.secretField != null && type === 'api';
+  const methods = methodsOf(provider);
+  const showSecret = type === 'api' && (provider?.secretField != null || method === 'api');
+  const secretLabel = provider?.secretField ?? 'API key';
+  const isCliHarness = providerId === 'claude' || providerId === 'openai';
 
   let invalid: string | null = null;
   if (name.trim() === '') invalid = 'Name is required.';
@@ -72,6 +118,13 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
   } else if (!/^[1-9]\d*$/.test(concurrent)) invalid = 'Max concurrent runs must be a positive integer.';
   else if (budget !== '' && !/^[1-9]\d*$/.test(budget))
     invalid = 'Daily token budget must be a positive integer.';
+  else if (costBudget !== '' && !(Number(costBudget) > 0))
+    invalid = 'Daily cost budget must be a positive number.';
+  else if (
+    [stop5h, stopWeek].some((v) => v !== '' && !(/^\d{1,3}$/.test(v) && Number(v) >= 1 && Number(v) <= 100))
+  )
+    invalid = 'Stop thresholds must be between 1 and 100.';
+  else if (!account && type === 'api' && isCliHarness && secret.trim() === '') invalid = 'Enter the API key.';
 
   const providerConfig = () => {
     const out: Record<string, unknown> = {};
@@ -88,7 +141,34 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
   const limits = () => ({
     maxConcurrentRuns: Number(concurrent),
     ...(budget === '' ? {} : { dailyTokenBudget: Number(budget) }),
+    ...(costBudget === '' ? {} : { dailyCostBudgetUsd: Number(costBudget) }),
+    ...(stop5h === '' && stopWeek === ''
+      ? {}
+      : {
+          stopAt: {
+            ...(stop5h === '' ? {} : { fiveHourPercent: Number(stop5h) }),
+            ...(stopWeek === '' ? {} : { weeklyPercent: Number(stopWeek) }),
+          },
+        }),
   });
+
+  const checkLogin = async () => {
+    setCheck({ pending: true });
+    try {
+      const result = await api.accounts.probeConfig(
+        type === 'api'
+          ? { provider: ProviderId.parse(providerId), type, secret }
+          : {
+              provider: ProviderId.parse(providerId),
+              type,
+              ...(method === 'another' || configDir === '' ? {} : { configDir }),
+            },
+      );
+      setCheck({ pending: false, result });
+    } catch (err) {
+      setCheck({ pending: false, error: errorMessage(err) });
+    }
+  };
 
   const submit = () => {
     setTouched(true);
@@ -97,22 +177,38 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
       onUpdate(account.id, {
         name: name.trim(),
         providerConfig: providerConfig(),
-        configDir: configDir === '' ? null : configDir,
+        ...(type === 'cli' && account.configDir === null && configDir === ''
+          ? {}
+          : type === 'cli'
+            ? { configDir: configDir === '' ? null : configDir }
+            : {}),
         labels: splitList(labels),
         limits: limits(),
         ...(secret === '' ? {} : { secret }),
       });
     } else {
-      onCreate({
-        name: name.trim(),
-        provider: ProviderId.parse(providerId),
-        type,
-        providerConfig: providerConfig(),
-        labels: splitList(labels),
-        limits: limits(),
-        ...(configDir === '' ? {} : { configDir }),
-        ...(secret === '' ? {} : { secret }),
-      });
+      const followUp: FollowUp =
+        method === 'another' && isCliHarness
+          ? loginMode === 'console' && providerId === 'claude'
+            ? 'login-console'
+            : 'login'
+          : method === 'current' && isCliHarness
+            ? 'probe'
+            : null;
+      onCreate(
+        {
+          name: name.trim(),
+          provider: ProviderId.parse(providerId),
+          type,
+          providerConfig: providerConfig(),
+          labels: splitList(labels),
+          limits: limits(),
+          ...(method === 'another' && isCliHarness ? { managedConfigDir: true } : {}),
+          ...(method === 'current' && configDir !== '' ? { configDir } : {}),
+          ...(secret === '' ? {} : { secret }),
+        },
+        followUp,
+      );
     }
   };
 
@@ -148,7 +244,8 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
           onChange={(e) => {
             setProviderId(e.target.value);
             const next = providers.find((p) => p.id === e.target.value);
-            if (next && !next.accountTypes.includes(type)) setType(next.accountTypes[0] ?? 'cli');
+            setMethod(initialMethod(next));
+            setCheck(null);
             setConfig({});
           }}
         >
@@ -159,31 +256,110 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
           ))}
         </select>
       </Field>
-      <Field label="Type">
-        <select
-          className="field"
-          value={type}
-          disabled={Boolean(account)}
-          onChange={(e) => {
-            setType(e.target.value as 'cli' | 'api');
-          }}
-        >
-          {typeOptions.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Config directory" help="Blank uses the CLI default login.">
-        <input
-          className="field mono"
-          value={configDir}
-          onChange={(e) => {
-            setConfigDir(e.target.value);
-          }}
-        />
-      </Field>
+      {account ? null : (
+        <fieldset className="method-cards">
+          <legend className="form-label">Connection method</legend>
+          {(['current', 'another', 'api'] as const).map((m) => {
+            const offered = m === 'api' ? methods.api : methods.cli;
+            if (!offered) return null;
+            const disabled = m === 'api' && methods.apiDisabled;
+            return (
+              <label
+                key={m}
+                className="method-card"
+                data-selected={String(method === m)}
+                aria-disabled={disabled}
+              >
+                <input
+                  type="radio"
+                  name="method"
+                  checked={method === m}
+                  disabled={disabled}
+                  onChange={() => {
+                    setMethod(m);
+                    setCheck(null);
+                  }}
+                />
+                <span>
+                  <strong>{METHOD_LABEL[m]}</strong>
+                  <span className="dim">
+                    {disabled
+                      ? ' Coming soon for this provider.'
+                      : m === 'current'
+                        ? ` Uses the login already on this machine (${providerId === 'openai' ? '~/.codex' : '~/.claude'}).`
+                        : m === 'another'
+                          ? ' Log in a separate account with your browser.'
+                          : ' Pay per use with your own key.'}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+        </fieldset>
+      )}
+      {method === 'another' && !account && providerId === 'claude' ? (
+        <Field label="Login type">
+          <select
+            className="field"
+            value={loginMode}
+            onChange={(e) => {
+              setLoginMode(e.target.value as 'subscription' | 'console');
+            }}
+          >
+            <option value="subscription">Claude subscription</option>
+            <option value="console">Anthropic Console (API billing)</option>
+          </select>
+        </Field>
+      ) : null}
+      {method === 'another' && !account ? (
+        <p className="dim">
+          {`After saving, a browser window opens to log in. To do it yourself: ${suggestedLoginCommand(providerId, name)}`}
+        </p>
+      ) : null}
+      {type === 'cli' && isCliHarness && method !== 'another' ? (
+        <>
+          <div className="panel-row">
+            <button
+              type="button"
+              className="btn"
+              disabled={check?.pending === true}
+              onClick={() => {
+                void checkLogin();
+              }}
+            >
+              Check login
+            </button>
+          </div>
+          {check?.pending ? <p role="status">Checking...</p> : null}
+          {check?.error ? (
+            <p className="form-error" role="alert">
+              {check.error}
+            </p>
+          ) : null}
+          {check?.result ? <CheckResult provider={providerId} result={check.result} /> : null}
+          <details
+            open={advanced}
+            onToggle={(e) => {
+              setAdvanced(e.currentTarget.open);
+            }}
+          >
+            <summary>Advanced</summary>
+            <Field
+              label="Config directory"
+              help="Where the CLI stores this account's login. Not a project folder."
+            >
+              <input
+                className="field mono"
+                value={configDir}
+                placeholder="Leave blank for the default"
+                onChange={(e) => {
+                  setConfigDir(e.target.value);
+                }}
+              />
+            </Field>
+          </details>
+        </>
+      ) : null}
       {specs.map((s) => (
         <Field key={s.name} label={s.name} help={s.kind === 'list' ? 'Comma separated.' : undefined}>
           {s.kind === 'enum' ? (
@@ -214,24 +390,49 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
         </Field>
       ))}
       {showSecret ? (
-        <Field
-          label={provider.secretField ?? 'Secret'}
-          help={
-            account?.hasSecret
-              ? 'A secret is stored. Leave blank to keep it.'
-              : 'Write-only. It is never shown again.'
-          }
-        >
-          <input
-            className="field"
-            type="password"
-            autoComplete="new-password"
-            value={secret}
-            onChange={(e) => {
-              setSecret(e.target.value);
-            }}
-          />
-        </Field>
+        <>
+          <Field
+            label={secretLabel}
+            help={
+              account?.hasSecret
+                ? 'A secret is stored. Leave blank to keep it.'
+                : 'Write-only. It is never shown again.'
+            }
+          >
+            <input
+              className="field"
+              type="password"
+              autoComplete="new-password"
+              value={secret}
+              onChange={(e) => {
+                setSecret(e.target.value);
+              }}
+            />
+          </Field>
+          {isCliHarness ? (
+            <>
+              <div className="panel-row">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={check?.pending === true || secret === ''}
+                  onClick={() => {
+                    void checkLogin();
+                  }}
+                >
+                  Test key
+                </button>
+              </div>
+              {check?.pending ? <p role="status">Checking...</p> : null}
+              {check?.error ? (
+                <p className="form-error" role="alert">
+                  {check.error}
+                </p>
+              ) : null}
+              {check?.result ? <CheckResult provider={providerId} result={check.result} /> : null}
+            </>
+          ) : null}
+        </>
       ) : null}
       <Field label="Labels" help="Comma separated.">
         <input
@@ -252,6 +453,42 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
           }}
         />
       </Field>
+      {type === 'api' ? (
+        <Field label="Daily cost budget (USD)" help="Blank means no budget. New runs stop when it is spent.">
+          <input
+            className="field"
+            inputMode="decimal"
+            value={costBudget}
+            onChange={(e) => {
+              setCostBudget(e.target.value);
+            }}
+          />
+        </Field>
+      ) : null}
+      {type === 'cli' && isCliHarness ? (
+        <>
+          <Field label="Stop new work at (5h %)" help="Keeps a reserve for your own use.">
+            <input
+              className="field"
+              inputMode="numeric"
+              value={stop5h}
+              onChange={(e) => {
+                setStop5h(e.target.value);
+              }}
+            />
+          </Field>
+          <Field label="Stop new work at (weekly %)" help="Keeps a reserve for your own use.">
+            <input
+              className="field"
+              inputMode="numeric"
+              value={stopWeek}
+              onChange={(e) => {
+                setStopWeek(e.target.value);
+              }}
+            />
+          </Field>
+        </>
+      ) : null}
       <Field label="Max concurrent runs">
         <input
           className="field"
@@ -263,5 +500,36 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
         />
       </Field>
     </FormDialog>
+  );
+}
+
+function CheckResult({ provider, result }: { provider: string; result: ProbeResult }) {
+  if (result.loggedIn) {
+    const plan = planLabel(provider, result.identity.plan);
+    return (
+      <p role="status">
+        {[`Logged in`, result.identity.email, plan].filter(Boolean).join(' - ')}
+        {result.note ? <span className="dim">{` ${result.note}`}</span> : null}
+      </p>
+    );
+  }
+  return (
+    <div role="status">
+      <p>{result.error ?? 'Not logged in. Run this in a terminal, then check again:'}</p>
+      {result.loginCommand ? (
+        <div className="panel-row">
+          <code className="mono-wrap">{result.loginCommand}</code>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              copyText(result.loginCommand ?? '');
+            }}
+          >
+            Copy command
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }

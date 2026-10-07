@@ -332,6 +332,37 @@ export function createRuns(deps: ModuleDeps) {
         tokens: rows.find((r) => r.bucket === i)?.tokens ?? 0,
       }));
     },
+    /** Sum of reported run costs (USD) of an account today or this month, in the org timezone. */
+    async costOnPeriod(
+      db: DbOrTx,
+      actor: ActorContext,
+      accountId: string,
+      timezone: string,
+      now: Date,
+      period: 'day' | 'month',
+    ): Promise<number> {
+      const unit = period === 'day' ? 'day' : 'month';
+      return db.transaction(async (tx) => {
+        await deps.authorizer.authorize(tx, actor, 'read', {});
+        const [row] = await tx
+          .select({
+            cost: sql<number>`coalesce(sum((${runEvents.payload}->>'costUsd')::double precision),0)`.mapWith(
+              Number,
+            ),
+          })
+          .from(runEvents)
+          .innerJoin(runs, and(eq(runs.id, runEvents.runId), eq(runs.orgId, actor.orgId)))
+          .where(
+            and(
+              eq(runEvents.orgId, actor.orgId),
+              eq(runEvents.kind, 'usage'),
+              eq(runs.accountId, accountId),
+              sql`date_trunc(${sql.raw(`'${unit}'`)}, ${runEvents.ts} at time zone ${timezone}) = date_trunc(${sql.raw(`'${unit}'`)}, ${now.toISOString()}::timestamptz at time zone ${timezone})`,
+            ),
+          );
+        return row?.cost ?? 0;
+      });
+    },
     async usageOnDay(
       db: DbOrTx,
       actor: ActorContext,

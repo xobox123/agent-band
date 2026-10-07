@@ -289,3 +289,28 @@ Cells describe the strongest verified native mechanism for the stated scope, not
 [^o-net]: [Sandbox config](https://developers.openai.com/codex/config-advanced), [Linux backend](https://github.com/openai/codex/blob/rust-v0.160.1/codex-rs/linux-sandbox/README.md). Applies to the configured executor boundary, not every model/MCP connection.
 
 [^g-net]: [Sandbox profiles/backends](https://github.com/google-gemini/gemini-cli/blob/v0.62.0/docs/cli/sandbox.md). Requires a restrictive/proxied or controlled-container network configuration; default sandboxing leaves network available.
+
+## Native account and usage APIs
+
+Free (no model call) ways to read identity, limits and login per provider. agent-band never reads or stores session tokens; it only spawns the official commands.
+
+### Claude Code
+
+- Identity: `claude auth status` prints JSON (`loggedIn`, `authMethod`, `email`, `orgId`, `orgName`, `subscriptionType`). Not logged in: `loggedIn: false`, exit code 1. With `ANTHROPIC_API_KEY` set it reports `authMethod: api_key` without validating the key, so an API key is only verified on the first run.
+- Limits: `claude -p "/usage" --output-format json` answers locally (cost 0, no model). The `result` text lists "Current session", "Current week (all models)" and optional per-model weeks with a percentage and a reset time in the user's IANA zone.
+- Login: `CLAUDE_CONFIG_DIR=<dir> claude auth login` (subscription), `--console` for Anthropic Console (API billing). Opens a browser and prints the URL.
+- Default config dir: leave `CLAUDE_CONFIG_DIR` unset; setting it changes where the macOS Keychain entry is looked up.
+
+### Codex CLI (0.160)
+
+- `codex app-server` speaks JSON-RPC 2.0 over stdio, one JSON object per line (`CODEX_HOME=<dir>` for non-default accounts; the directory must exist). Handshake: `initialize`, then the `initialized` notification.
+- Identity: `account/read` returns `account: { type, email, planType }` or `account: null`.
+- Limits: `account/rateLimits/read` returns `rateLimits.primary` (300 min window) and `secondary` (10080 min) with `usedPercent` and `resetsAt` (unix seconds), `credits`, `planType`, `ordinaryUsageAllowed`, `rateLimitReachedType`.
+- Usage history: `account/usage/read` returns `dailyUsageBuckets` (date and tokens).
+- Login: `account/login/start` with `{ type: "chatgpt" }` returns `authUrl`; the `account/login/completed` notification ends the flow. Fallback: `codex login`.
+- API key: `OPENAI_API_KEY` in the environment is not used for account state. Run `codex login --with-api-key` once with the key on stdin inside a private `CODEX_HOME`; the key is never passed in argv.
+- Fallback for older versions: `codex login status` text and the newest `$CODEX_HOME/sessions/**/rollout-*.jsonl` token_count line.
+
+### Gemini
+
+To be researched.

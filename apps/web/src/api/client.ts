@@ -6,6 +6,10 @@ import type {
   AuditVerifyDto,
   BoardDto,
   CreateAccountBody,
+  LoginResult,
+  ProbeConfigBody,
+  ProbeResult,
+  RefreshLimitsResult,
   CreateAgentBody,
   CreateGroupBody,
   CreatePolicyBody,
@@ -205,6 +209,11 @@ export function createApi(fetchImpl?: typeof fetch) {
       create: (body: CreateAccountBody) => send<AccountDto>('POST', '/accounts', body),
       update: (id: string, body: UpdateAccountBody) => send<AccountDto>('PATCH', `/accounts/${id}`, body),
       remove: (id: string) => send<undefined>('DELETE', `/accounts/${id}`),
+      probe: (id: string) => send<ProbeResult>('POST', `/accounts/${id}/probe`),
+      probeConfig: (body: ProbeConfigBody) => send<ProbeResult>('POST', '/accounts/probe-config', body),
+      login: (id: string, body?: { mode?: 'console' }) =>
+        send<LoginResult>('POST', `/accounts/${id}/login`, body ?? {}),
+      refreshLimits: (id: string) => send<RefreshLimitsResult>('POST', `/accounts/${id}/refresh-limits`),
     },
 
     policies: {

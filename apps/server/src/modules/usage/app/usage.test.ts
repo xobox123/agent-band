@@ -114,3 +114,71 @@ it('audits only block changes, never reads or snapshots', async () => {
   await database.db.transaction((tx) => api.blockAccount(tx, system, accountId, until));
   expect(deps.audit.entries.map((e) => e.action)).toEqual(['usage.update']);
 });
+it('stops new work at the reserve threshold, only on fresh snapshots of windows that have not reset', async () => {
+  const at = new Date();
+  const in2h = new Date(at.getTime() + 2 * 3_600_000).toISOString();
+  await database.db.transaction((tx) =>
+    api.recordWindows(tx, system, accountId, [
+      { window: '5h', usedPercent: 72, resetsAt: in2h },
+      { window: 'weekly', usedPercent: 10, resetsAt: in2h },
+    ]),
+  );
+  const limits = { maxConcurrentRuns: 1, stopAt: { fiveHourPercent: 70, weeklyPercent: 50 } };
+  const blocked = await api.accountAvailability(database.db, actor, accountId, limits, at);
+  expect(blocked).toMatchObject({
+    ok: false,
+    reason: 'reserve',
+    detail: 'reserve threshold reached (5h 72% >= 70%)',
+  });
+  expect(await api.reserveStatus(database.db, actor, accountId, limits.stopAt, at)).toMatch(/5h 72%/);
+  // below the threshold
+  expect(
+    await api.accountAvailability(
+      database.db,
+      actor,
+      accountId,
+      { maxConcurrentRuns: 1, stopAt: { fiveHourPercent: 80 } },
+      at,
+    ),
+  ).toEqual({ ok: true });
+  // a stale snapshot is not trusted
+  const stale = new Date(at.getTime() + 16 * 60_000);
+  expect(await api.accountAvailability(database.db, actor, accountId, limits, stale)).toEqual({ ok: true });
+  // the window has reset
+  const afterReset = new Date(at.getTime() + 3 * 3_600_000);
+  expect(await api.accountAvailability(database.db, actor, accountId, limits, afterReset)).toEqual({
+    ok: true,
+  });
+  // a fresh reading below the threshold resumes work
+  await database.db.transaction((tx) =>
+    api.recordWindows(tx, system, accountId, [{ window: '5h', usedPercent: 20, resetsAt: in2h }]),
+  );
+  expect(await api.accountAvailability(database.db, actor, accountId, limits, new Date())).toEqual({
+    ok: true,
+  });
+  expect(await api.snapshotsUpdatedAt(database.db, actor, accountId)).toBeInstanceOf(Date);
+  expect(await api.snapshotsUpdatedAt(database.db, actor, randomUUID())).toBeNull();
+});
+it('enforces the daily cost budget', async () => {
+  const costOnPeriod = vi.fn(() => Promise.resolve(4.5));
+  const withCost = createUsage({
+    ...deps,
+    orgSettings: new FakeOrgSettings({ taskKeyPrefix: 'AB', timezone: 'UTC' }),
+    usageOnDay,
+    runningCount,
+    costOnPeriod,
+  });
+  expect(
+    await withCost.accountAvailability(database.db, actor, accountId, {
+      maxConcurrentRuns: 1,
+      dailyCostBudgetUsd: 4,
+    }),
+  ).toEqual({ ok: false, reason: 'daily_cost_budget' });
+  expect(
+    await withCost.accountAvailability(database.db, actor, accountId, {
+      maxConcurrentRuns: 1,
+      dailyCostBudgetUsd: 5,
+    }),
+  ).toEqual({ ok: true });
+  expect(await withCost.costOn(database.db, actor, accountId, 'month')).toBe(4.5);
+});
