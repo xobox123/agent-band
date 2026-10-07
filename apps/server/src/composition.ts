@@ -2,6 +2,8 @@ import type { FastifyRequest } from 'fastify';
 import type { ActorContext } from './platform/actor.ts';
 import type { Database } from './platform/db.ts';
 import { EventStream, latestOutboxId } from './platform/outbox.ts';
+import { createAccountConnection } from './account-connection.ts';
+import type { CliBins } from './runner/index.ts';
 import type { AgentMembership, ModuleDeps, OrgSettings, PolicyBindings } from './ports/index.ts';
 import {
   createAccountUseCases,
@@ -61,6 +63,10 @@ export interface CompositionOptions {
   /** AGENT_BAND_HOME, used for the secret key file. */
   home: string;
   secretKey?: SecretKeySource;
+  /** Replaces the provider CLIs used for login checks; tests inject fake scripts. */
+  cliBins?: CliBins;
+  loginTimeoutMs?: number;
+  openUrl?: (url: string) => void;
   /** Replaces the local-user resolver; tests inject other actors here. */
   resolveActor?: (request: FastifyRequest, local: ActorContext) => ActorContext | Promise<ActorContext>;
 }
@@ -75,7 +81,7 @@ export async function createComposition(opts: CompositionOptions) {
   const deps: ModuleDeps = { authorizer, audit: auditLog };
   const settings: OrgSettings = orgSettings;
 
-  const accounts = createAccountUseCases({ ...deps, secretKey, accountHasAgents });
+  const accounts = createAccountUseCases({ ...deps, secretKey, home: opts.home, accountHasAgents });
   const agents = createAgentUseCases({
     ...deps,
     principals: principalRegistry,
@@ -103,6 +109,8 @@ export async function createComposition(opts: CompositionOptions) {
     orgSettings: settings,
     usageOnDay: (db, actor, scope, tz, now, kind) => runs.usageOnDay(db, actor, scope, tz, now, kind),
     runningCount: (db, actor, accountId) => runs.runningCount(db, actor, accountId),
+    costOnPeriod: (db, actor, accountId, tz, now, period) =>
+      runs.costOnPeriod(db, actor, accountId, tz, now, period),
   });
   const delegation = createDelegation({ ...deps, tasks, runs, agents, verifyRunToken });
   const orchestrator = createOrchestrator({
@@ -113,6 +121,16 @@ export async function createComposition(opts: CompositionOptions) {
   });
   const audit = createAudit(authorizer);
   const events = new EventStream(database);
+  const accountConnection = createAccountConnection({
+    db,
+    accounts,
+    usage,
+    authorizer,
+    system: boot.dispatcher,
+    ...(opts.cliBins && { bins: opts.cliBins }),
+    ...(opts.loginTimeoutMs !== undefined && { loginTimeoutMs: opts.loginTimeoutMs }),
+    ...(opts.openUrl && { openUrl: opts.openUrl }),
+  });
 
   const policies = {
     create: (actor: ActorContext, input: Parameters<typeof createPolicy>[3]) =>
@@ -186,6 +204,7 @@ export async function createComposition(opts: CompositionOptions) {
     skills,
     org: orgUseCases,
     accounts,
+    accountConnection,
     agents,
     groups,
     tasks,

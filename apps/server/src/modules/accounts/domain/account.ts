@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import { z } from 'zod';
 import { invalid } from '../../../platform/errors.ts';
 
@@ -11,14 +12,28 @@ const safeInt = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 export const limitsSchema = z
   .object({
     dailyTokenBudget: safeInt.optional(),
+    dailyCostBudgetUsd: z.number().positive().max(1_000_000).optional(),
     maxConcurrentRuns: safeInt.default(1),
+    stopAt: z
+      .object({
+        fiveHourPercent: z.number().int().min(1).max(100).optional(),
+        weeklyPercent: z.number().int().min(1).max(100).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
-const configDirSchema = z
+/** A leading `~/` means the user's home, so the form can suggest `~/.claude-work`. */
+export function expandHome(p: string): string {
+  return p === '~' ? homedir() : p.startsWith('~/') ? homedir() + p.slice(1) : p;
+}
+
+export const configDirSchema = z
   .string()
   .min(1)
   .max(4096)
+  .transform(expandHome)
   .refine((p) => p.startsWith('/'), 'must be an absolute path')
   .refine((p) => !p.includes('\0'), 'must not contain NUL')
   .refine((p) => !p.split('/').includes('..'), 'must not contain ".." segments');
@@ -35,6 +50,7 @@ export const createAccountSchema = z
     type: z.enum(['cli', 'api']),
     providerConfig: z.record(z.string(), z.unknown()).default({}),
     configDir: configDirSchema.optional(),
+    managedConfigDir: z.boolean().optional(),
     secret: secretSchema.optional(),
     labels: labelsSchema.default([]),
     limits: limitsSchema.default({ maxConcurrentRuns: 1 }),

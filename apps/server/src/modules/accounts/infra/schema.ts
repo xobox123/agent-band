@@ -13,6 +13,7 @@ export const accounts = pgTable(
     secretEnc: text('secret_enc'),
     secretUpdatedAt: timestamp('secret_updated_at', { withTimezone: true }),
     providerIdentity: text('provider_identity'),
+    connection: jsonb('connection'),
     labels: text('labels').array().notNull().default([]),
     limits: jsonb('limits').notNull(),
     createdBy: uuid('created_by').notNull(),

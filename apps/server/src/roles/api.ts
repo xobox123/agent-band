@@ -56,10 +56,13 @@ export async function startApi(
     },
   );
 
+  const connections = composition.accountConnection.startBackground();
+
   try {
     await app.listen({ host: '127.0.0.1', port: config.port });
   } catch (err) {
     clearInterval(timer);
+    connections.stop();
     await scheduler.stop();
     await orchestrator.stop();
     await composition.events.stop();
@@ -74,6 +77,7 @@ export async function startApi(
     port,
     async stop() {
       clearInterval(timer);
+      connections.stop();
       await scheduler.stop();
       await orchestrator.stop();
       await app.close();

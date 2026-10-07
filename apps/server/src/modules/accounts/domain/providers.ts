@@ -20,6 +20,8 @@ export interface ProviderDescriptor {
   /** Name of the write-only secret field, when the provider has one. */
   secretField?: string;
   adapterEnabled: boolean;
+  /** Account types the adapter can run today; the rest are accepted by the API but not runnable yet. */
+  runnableTypes: AccountType[];
   capabilities: ProviderCapabilities;
 }
 
@@ -31,6 +33,7 @@ export interface ProviderInfo {
   accountFields: unknown;
   secretField: string | null;
   adapterEnabled: boolean;
+  runnableTypes: AccountType[];
   capabilities: ProviderCapabilities;
 }
 
@@ -55,6 +58,7 @@ const REGISTRY: readonly ProviderDescriptor[] = [
     accountTypes: ['cli', 'api'],
     accountFields: noFields,
     adapterEnabled: true,
+    runnableTypes: ['cli', 'api'],
     capabilities: {
       runtimeToolEnforcement: true,
       limitWindows: ['5h', 'weekly'],
@@ -70,6 +74,7 @@ const REGISTRY: readonly ProviderDescriptor[] = [
     accountTypes: ['cli', 'api'],
     accountFields: noFields,
     adapterEnabled: true,
+    runnableTypes: ['cli', 'api'],
     capabilities: {
       runtimeToolEnforcement: false,
       limitWindows: ['5h', 'weekly'],
@@ -85,6 +90,7 @@ const REGISTRY: readonly ProviderDescriptor[] = [
     accountTypes: ['cli'],
     accountFields: noFields,
     adapterEnabled: false,
+    runnableTypes: [],
     capabilities: {
       runtimeToolEnforcement: false,
       limitWindows: [],
@@ -101,6 +107,7 @@ const REGISTRY: readonly ProviderDescriptor[] = [
     accountFields: openaiCompatibleFields,
     secretField: 'apiKey',
     adapterEnabled: false,
+    runnableTypes: [],
     capabilities: {
       runtimeToolEnforcement: false,
       limitWindows: [],
@@ -124,6 +131,7 @@ export function listProviders(): ProviderInfo[] {
     accountFields: z.toJSONSchema(p.accountFields),
     secretField: p.secretField ?? null,
     adapterEnabled: p.adapterEnabled,
+    runnableTypes: [...p.runnableTypes],
     capabilities: { ...p.capabilities, limitWindows: [...p.capabilities.limitWindows] },
   }));
 }

@@ -35,6 +35,7 @@ export async function startWorker(
     policy: createEffectivePolicySource({ bindings: composition.ports.policyBindings }),
     skills: createEffectiveSkillsSource({ membership: composition.ports.agentMembership }),
     adapterFor: defaultAdapterFor,
+    refreshLimits: (accountId) => composition.accountConnection.refreshLimitsFor(accountId),
   });
   await worker.start();
   return {

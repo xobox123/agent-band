@@ -39,6 +39,7 @@ export async function makeKit(existing?: Database) {
   const accountUc = createAccountUseCases({
     ...deps,
     secretKey: fixedKeySource(randomBytes(32)),
+    home: tmpdir(),
     accountHasAgents,
   });
   const agentUc = createAgentUseCases({

@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import type { RunSpec } from '@agent-band/contracts';
 import { openPolicy } from '../ports/testing.ts';
 import { runs as runsTable } from '../modules/runs/infra/schema.ts';
+import { FakeAdapter } from '../runner/index.ts';
 import { makeKit, waitFor, type Script } from './worker.testkit.ts';
 
 type Kit = Awaited<ReturnType<typeof makeKit>>;
@@ -464,6 +465,60 @@ describe('worker eligibility', () => {
 
     await kit.agent('ghost1', acc.id, { labels: ['ghost'] });
     kit.script = () => ({ events: [{ kind: 'text', text: 'ok' }] });
+    await reachStatus(task.id, 'done');
+  });
+
+  it('injects an api key only into the spawned environment and never records it', async () => {
+    const key = 'sk-ant-worker-secret';
+    const acc = await kit.accountUc.createAccount(kit.db, kit.actor, {
+      name: 'billing',
+      provider: 'claude',
+      type: 'api',
+      secret: key,
+      limits: { maxConcurrentRuns: 2 },
+    });
+    kit.adapters.set(acc.id, new FakeAdapter((s) => kit.script(s)));
+    const agent = await kit.agent('keyed', acc.id);
+    let spec: RunSpec | undefined;
+    kit.script = (s) => {
+      spec = s;
+      return {
+        events: [
+          { kind: 'text', text: 'done' },
+          { kind: 'usage', inputTokens: 1, outputTokens: 1, cachedTokens: 0, costUsd: 0.02 },
+        ],
+      };
+    };
+    const task = await kit.task({ target: { agentId: agent.id } });
+    await run(kit);
+    await reachStatus(task.id, 'done');
+    expect(spec?.env?.ANTHROPIC_API_KEY).toBe(key);
+    expect(spec?.configDir).toBe(acc.configDir);
+    const r = await runOf(task.id);
+    const events = await kit.runs.listRunEvents(kit.db, kit.actor, r?.id ?? '');
+    expect(JSON.stringify(events)).not.toContain(key);
+    expect(JSON.stringify(kit.deps.audit.entries)).not.toContain(key);
+    expect(JSON.stringify(r)).not.toContain(key);
+  });
+
+  it('does not start new work on an account whose fresh window is over the reserve threshold', async () => {
+    const acc = await kit.account('reserve', 'claude', {
+      maxConcurrentRuns: 2,
+      stopAt: { fiveHourPercent: 70 },
+    } as never);
+    const agent = await kit.agent('res', acc.id);
+    const resetsAt = new Date(Date.now() + 3_600_000).toISOString();
+    await kit.db.transaction((tx) =>
+      kit.usage.recordWindows(tx, kit.dispatcher, acc.id, [{ window: '5h', usedPercent: 72, resetsAt }]),
+    );
+    const task = await kit.task({ target: { agentId: agent.id } });
+    await run(kit, { refreshLimits: () => Promise.resolve() });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(await status(task.id)).not.toBe('done');
+    expect(await runOf(task.id)).toBeUndefined();
+    await kit.db.transaction((tx) =>
+      kit.usage.recordWindows(tx, kit.dispatcher, acc.id, [{ window: '5h', usedPercent: 10, resetsAt }]),
+    );
     await reachStatus(task.id, 'done');
   });
 });

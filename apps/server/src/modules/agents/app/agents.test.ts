@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
@@ -33,6 +34,7 @@ function setup(authorizer?: Authorizer) {
   const accountUc = createAccountUseCases({
     ...deps,
     secretKey: fixedKeySource(randomBytes(32)),
+    home: tmpdir(),
     accountHasAgents,
   });
   const shared = { ...deps, ...(authorizer ? { authorizer } : {}) };

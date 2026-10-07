@@ -1,7 +1,9 @@
+import { mkdirSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { and, eq } from 'drizzle-orm';
 import type { ActorContext } from '../../../platform/actor.ts';
 import type { Db } from '../../../platform/db.ts';
-import { conflict, invalid, notFound } from '../../../platform/errors.ts';
+import { conflict, forbidden, invalid, notFound } from '../../../platform/errors.ts';
 import { publish } from '../../../platform/outbox.ts';
 import { withTx } from '../../../platform/tx.ts';
 import type { DbOrTx, ModuleDeps } from '../../../ports/index.ts';
@@ -33,6 +35,8 @@ export interface AccountForRun {
 
 export interface AccountsDeps extends ModuleDeps {
   secretKey: SecretKeySource;
+  /** AGENT_BAND_HOME; managed account login directories live under it. */
+  home: string;
   /** Provided by the agents module; used to refuse deleting an account that agents still use. */
   accountHasAgents: (db: DbOrTx, orgId: string, accountId: string) => Promise<boolean>;
 }
@@ -51,6 +55,7 @@ function toDto(r: Row): AccountDto {
     labels: r.labels,
     limits: r.limits as AccountDto['limits'],
     providerIdentity: r.providerIdentity,
+    connection: (r.connection as AccountDto['connection']) ?? null,
     hasSecret: r.secretEnc !== null,
     secretUpdatedAt: r.secretUpdatedAt?.toISOString() ?? null,
     createdBy: r.createdBy,
@@ -58,6 +63,24 @@ function toDto(r: Row): AccountDto {
     updatedAt: r.updatedAt.toISOString(),
   };
 }
+
+export interface ConnectionUpdate {
+  loggedIn: boolean;
+  plan: string | null;
+  email: string | null;
+  orgName: string | null;
+  authMethod: string | null;
+  checkedAt: string;
+  /** Stable identity (email and org) when the CLI exposed it. */
+  identity: string | null;
+}
+
+const slugOf = (name: string): string =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40) || 'account';
 
 function checkConfig(provider: string, type: AccountType, config: unknown): Record<string, unknown> {
   const check = validateProviderConfig(provider, type, config);
@@ -94,9 +117,26 @@ export function createAccountUseCases(deps: AccountsDeps) {
     const providerConfig = checkConfig(v.provider, v.type, v.providerConfig);
     checkSecretAllowed(v.type, v.secret !== undefined);
     checkConfigDirAllowed(v.type, v.configDir);
+    const cliHarness = v.provider === 'claude' || v.provider === 'openai';
+    // API-key accounts of the CLI harnesses get their own private home so they never touch a stored login.
+    const managed = v.managedConfigDir === true || (v.type === 'api' && cliHarness);
+    if (v.managedConfigDir) {
+      if (v.type !== 'cli' || v.configDir) {
+        throw invalid([
+          { path: 'managedConfigDir', message: 'only for cli accounts, and not together with configDir' },
+        ]);
+      }
+    }
 
     return withTx(db, async (tx) => {
       const id = crypto.randomUUID();
+      let configDir = v.configDir ?? null;
+      if (managed) {
+        const base = join(deps.home, 'accounts');
+        const wanted = `${v.provider}-${slugOf(v.name)}`;
+        configDir = join(base, existsSync(join(base, wanted)) ? `${wanted}-${id.slice(0, 6)}` : wanted);
+        mkdirSync(configDir, { recursive: true, mode: 0o700 });
+      }
       const now = new Date();
       const [row] = await tx
         .insert(accounts)
@@ -107,7 +147,7 @@ export function createAccountUseCases(deps: AccountsDeps) {
           provider: v.provider,
           type: v.type,
           providerConfig,
-          configDir: v.configDir ?? null,
+          configDir,
           secretEnc: v.secret === undefined ? null : encryptSecret(deps.secretKey(), v.secret, id),
           secretUpdatedAt: v.secret === undefined ? null : now,
           labels: v.labels,
@@ -125,7 +165,13 @@ export function createAccountUseCases(deps: AccountsDeps) {
         action: 'account.created',
         targetType: 'account',
         targetId: id,
-        data: { name: dto.name, provider: dto.provider, type: dto.type, hasSecret: dto.hasSecret },
+        data: {
+          name: dto.name,
+          provider: dto.provider,
+          type: dto.type,
+          hasSecret: dto.hasSecret,
+          managedConfigDir: managed,
+        },
       });
       await publish(tx, 'account.created', { orgId: actor.orgId, accountId: id });
       return dto;
@@ -213,6 +259,67 @@ export function createAccountUseCases(deps: AccountsDeps) {
     });
   }
 
+  /** System use only (after a CLI probe): stores the connection state and, when it changes, the identity. */
+  async function recordConnection(
+    db: Db,
+    actor: ActorContext,
+    id: string,
+    update: ConnectionUpdate,
+    onBehalfOf?: string,
+  ): Promise<AccountDto> {
+    if (actor.kind !== 'system') throw forbidden('System actor required');
+    await deps.authorizer.authorize(db, actor, 'read', {});
+    const current = await load(db, actor.orgId, id);
+    return withTx(db, async (tx) => {
+      const identityChanged = update.identity !== null && update.identity !== current.providerIdentity;
+      const [row] = await tx
+        .update(accounts)
+        .set({
+          connection: {
+            loggedIn: update.loggedIn,
+            plan: update.plan,
+            email: update.email,
+            orgName: update.orgName,
+            authMethod: update.authMethod,
+            checkedAt: update.checkedAt,
+            usageDetails: (current.connection as { usageDetails?: unknown } | null)?.usageDetails ?? null,
+          },
+          ...(identityChanged && { providerIdentity: update.identity }),
+        })
+        .where(and(eq(accounts.orgId, actor.orgId), eq(accounts.id, id)))
+        .returning();
+      if (!row) throw notFound('Account');
+      if (identityChanged) {
+        await deps.audit.append(tx, {
+          orgId: actor.orgId,
+          actorId: onBehalfOf ?? actor.principalId,
+          action: 'account.identity_set',
+          targetType: 'account',
+          targetId: id,
+          data: { providerIdentity: update.identity, source: 'probe' },
+        });
+      }
+      await publish(tx, 'account.updated', { orgId: actor.orgId, accountId: id });
+      return toDto(row);
+    });
+  }
+
+  /** System use only: stores the provider-specific usage extras next to the connection state. */
+  async function recordUsageDetails(
+    db: Db,
+    actor: ActorContext,
+    id: string,
+    details: unknown,
+  ): Promise<void> {
+    if (actor.kind !== 'system') throw forbidden('System actor required');
+    const current = await load(db, actor.orgId, id);
+    if (!current.connection) return;
+    await db
+      .update(accounts)
+      .set({ connection: { ...current.connection, usageDetails: details } })
+      .where(and(eq(accounts.orgId, actor.orgId), eq(accounts.id, id)));
+  }
+
   async function deleteAccount(db: Db, actor: ActorContext, id: string): Promise<void> {
     await deps.authorizer.authorize(db, actor, 'org.manage', {});
     const current = await load(db, actor.orgId, id);
@@ -287,6 +394,8 @@ export function createAccountUseCases(deps: AccountsDeps) {
     createAccount,
     updateAccount,
     setAccountProviderIdentity,
+    recordConnection,
+    recordUsageDetails,
     deleteAccount,
     listAccounts,
     getAccount,

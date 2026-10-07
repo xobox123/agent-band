@@ -7,6 +7,7 @@ import { forbidden, invalid } from '../../../platform/errors.ts';
 import { accountBlocks, usageSnapshots } from '../infra/schema.ts';
 import {
   blockingReset,
+  reserveReached,
   type AccountLimits,
   type Availability,
   type LimitWindow,
@@ -23,6 +24,14 @@ export interface UsageDeps extends ModuleDeps {
     kind?: 'billable' | 'cached',
   ): Promise<number>;
   runningCount(db: DbOrTx, actor: ActorContext, accountId: string): Promise<number>;
+  costOnPeriod?(
+    db: DbOrTx,
+    actor: ActorContext,
+    accountId: string,
+    timezone: string,
+    now: Date,
+    period: 'day' | 'month',
+  ): Promise<number>;
 }
 export function createUsage(deps: UsageDeps) {
   function system(actor: ActorContext) {
@@ -36,12 +45,15 @@ export function createUsage(deps: UsageDeps) {
   ) {
     await deps.authorizer.authorize(tx, actor, action, scope.agentId ? { agentId: scope.agentId } : {});
   }
-  async function latest(tx: Tx, actor: ActorContext, accountId: string): Promise<LimitWindow[]> {
-    const rows = await tx
+  async function latestRows(tx: Tx, actor: ActorContext, accountId: string) {
+    return tx
       .selectDistinctOn([usageSnapshots.window])
       .from(usageSnapshots)
       .where(and(eq(usageSnapshots.orgId, actor.orgId), eq(usageSnapshots.accountId, accountId)))
       .orderBy(usageSnapshots.window, desc(usageSnapshots.id));
+  }
+  async function latest(tx: Tx, actor: ActorContext, accountId: string): Promise<LimitWindow[]> {
+    const rows = await latestRows(tx, actor, accountId);
     return rows.map((r) => ({
       window: r.window,
       usedPercent: r.usedPercent,
@@ -93,10 +105,57 @@ export function createUsage(deps: UsageDeps) {
         });
       }
     },
+    /** When the newest window snapshot of the account was taken; null when there is none. */
+    async snapshotsUpdatedAt(db: Db, actor: ActorContext, accountId: string): Promise<Date | null> {
+      return db.transaction(async (tx) => {
+        await authorize(tx, actor, 'read');
+        const rows = await latestRows(tx, actor, accountId);
+        return rows.map((r) => r.ts).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+      });
+    },
+    /** The reserve rule's verdict for display; null when no threshold is hit by a fresh snapshot. */
+    async reserveStatus(
+      db: Db,
+      actor: ActorContext,
+      accountId: string,
+      stopAt: AccountLimits['stopAt'],
+      now = new Date(),
+    ): Promise<string | null> {
+      if (!stopAt) return null;
+      return db.transaction(async (tx) => {
+        await authorize(tx, actor, 'read');
+        const rows = await latestRows(tx, actor, accountId);
+        return (
+          reserveReached(
+            rows.map((r) => ({
+              window: r.window,
+              usedPercent: r.usedPercent,
+              resetsAt: r.resetsAt?.toISOString() ?? null,
+              observedAt: r.ts,
+            })),
+            stopAt,
+            now,
+          )?.detail ?? null
+        );
+      });
+    },
     async latestWindows(db: Db, actor: ActorContext, accountId: string): Promise<LimitWindow[]> {
       return db.transaction(async (tx) => {
         await authorize(tx, actor, 'read');
         return latest(tx, actor, accountId);
+      });
+    },
+    async costOn(
+      db: Db,
+      actor: ActorContext,
+      accountId: string,
+      period: 'day' | 'month',
+      now = new Date(),
+    ): Promise<number> {
+      return db.transaction(async (tx) => {
+        await authorize(tx, actor, 'read');
+        const { timezone } = await deps.orgSettings.get(tx, actor.orgId);
+        return (await deps.costOnPeriod?.(tx, actor, accountId, timezone, now, period)) ?? 0;
       });
     },
     async tokensToday(db: Db, actor: ActorContext, scope: UsageScope, now = new Date()): Promise<number> {
@@ -177,6 +236,27 @@ export function createUsage(deps: UsageDeps) {
           (await tokens(tx, actor, { accountId }, now)) >= limits.dailyTokenBudget
         )
           return { ok: false, reason: 'daily_budget' };
+        if (limits.dailyCostBudgetUsd !== undefined && deps.costOnPeriod) {
+          const { timezone } = await deps.orgSettings.get(tx, actor.orgId);
+          if (
+            (await deps.costOnPeriod(tx, actor, accountId, timezone, now, 'day')) >= limits.dailyCostBudgetUsd
+          )
+            return { ok: false, reason: 'daily_cost_budget' };
+        }
+        if (limits.stopAt) {
+          const rows = await latestRows(tx, actor, accountId);
+          const hit = reserveReached(
+            rows.map((r) => ({
+              window: r.window,
+              usedPercent: r.usedPercent,
+              resetsAt: r.resetsAt?.toISOString() ?? null,
+              observedAt: r.ts,
+            })),
+            limits.stopAt,
+            now,
+          );
+          if (hit) return { ok: false, reason: 'reserve', ...hit };
+        }
         return { ok: true };
       });
     },

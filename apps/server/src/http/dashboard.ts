@@ -20,12 +20,17 @@ export async function buildDashboard(c: Composition, actor: ActorContext): Promi
 
   const accountRows = await Promise.all(
     accounts.map(async (account) => {
-      const [windows, tokens, cached, blockedUntil] = await Promise.all([
-        c.usage.latestWindows(db, actor, account.id),
-        c.usage.tokensToday(db, actor, { accountId: account.id }),
-        c.usage.cachedTokensToday(db, actor, { accountId: account.id }),
-        c.usage.accountBlock(db, actor, account.id),
-      ]);
+      const [windows, tokens, cached, blockedUntil, updatedAt, reserve, costToday, costMonth] =
+        await Promise.all([
+          c.usage.latestWindows(db, actor, account.id),
+          c.usage.tokensToday(db, actor, { accountId: account.id }),
+          c.usage.cachedTokensToday(db, actor, { accountId: account.id }),
+          c.usage.accountBlock(db, actor, account.id),
+          c.usage.snapshotsUpdatedAt(db, actor, account.id),
+          c.usage.reserveStatus(db, actor, account.id, account.limits.stopAt),
+          c.usage.costOn(db, actor, account.id, 'day'),
+          c.usage.costOn(db, actor, account.id, 'month'),
+        ]);
       const runningRuns = running.filter((r) => r.accountId === account.id).length;
       const availabilityReason: DashboardDto['accounts'][number]['availabilityReason'] = blockedUntil
         ? 'blocked'
@@ -33,11 +38,20 @@ export async function buildDashboard(c: Composition, actor: ActorContext): Promi
           ? 'concurrency_full'
           : account.limits.dailyTokenBudget !== undefined && tokens >= account.limits.dailyTokenBudget
             ? 'budget_exhausted'
-            : 'ok';
+            : account.limits.dailyCostBudgetUsd !== undefined &&
+                costToday >= account.limits.dailyCostBudgetUsd
+              ? 'cost_exhausted'
+              : reserve
+                ? 'reserve'
+                : 'ok';
       return {
         availabilityReason,
         account,
         windows,
+        windowsUpdatedAt: updatedAt?.toISOString() ?? null,
+        reserveDetail: reserve,
+        costToday,
+        costThisMonth: costMonth,
         tokensToday: tokens,
         cachedTokensToday: cached,
         runningRuns: running.filter((r) => r.accountId === account.id).length,

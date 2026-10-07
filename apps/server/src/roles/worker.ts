@@ -35,6 +35,7 @@ import {
   writeClaudePlugin,
   writeMcpConfig,
 } from '../execution/index.ts';
+import { FRESH_SNAPSHOT_MS } from '../modules/usage/index.ts';
 import { LEADER_PROMPT } from './leader-prompt.ts';
 
 type Availability = Awaited<ReturnType<ReturnType<typeof createUsage>['accountAvailability']>>;
@@ -59,6 +60,8 @@ export interface WorkerDeps {
   pollIntervalMs?: number;
   /** How long a released task is skipped by this worker before it is claimed again. */
   retryDelayMs?: number;
+  /** Free limit refresh for an account; called when its reserve threshold needs a fresh reading. */
+  refreshLimits?: (accountId: string) => Promise<void>;
   /** Length of one policy minute in ms (tests shorten it). */
   minuteMs?: number;
   runsRoot?: string;
@@ -97,6 +100,10 @@ function describeUnavailable(a: Extract<Availability, { ok: false }>, accountId:
       return `account ${accountId} is rate limited${a.resetsAt ? ` until ${a.resetsAt.toISOString()}` : ''}`;
     case 'concurrency':
       return `account ${accountId} is at its concurrent run limit`;
+    case 'reserve':
+      return `account ${accountId}: ${a.detail ?? 'reserve threshold reached'}`;
+    case 'daily_cost_budget':
+      return `account ${accountId} exhausted its daily cost budget`;
     case 'daily_budget':
       return `account ${accountId} exhausted its daily token budget`;
   }
@@ -289,6 +296,14 @@ export function createWorker(deps: WorkerDeps): Worker {
           }),
         );
       }
+      if (c.account.limits.stopAt && deps.refreshLimits) {
+        const at = await deps.usage.snapshotsUpdatedAt(deps.db, d, c.account.id);
+        if (!at || Date.now() - at.getTime() > FRESH_SNAPSHOT_MS) {
+          await deps.refreshLimits(c.account.id).catch((err: unknown) => {
+            log('warn', `could not refresh limits for account ${c.account.id}`, err);
+          });
+        }
+      }
       const started = await tryStart(task, c, token);
       if ('abandoned' in started) return;
       if ('run' in started) {
@@ -380,7 +395,13 @@ export function createWorker(deps: WorkerDeps): Worker {
         ...(c.skillsLoadable ? { skillsDir: dir } : {}),
         gitIdentity: c.agent.gitIdentity,
         agentId: c.agent.id,
-        env: { AGENT_BAND_RUN_TOKEN: token },
+        env: {
+          AGENT_BAND_RUN_TOKEN: token,
+          // Only for api accounts, only in the spawned process environment; never logged or recorded.
+          ...(c.account.type === 'api' && c.account.secret
+            ? { [c.account.provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY']: c.account.secret }
+            : {}),
+        },
       };
       if (c.policy.maxRunMinutes !== undefined) {
         timer = setTimeout(() => {
