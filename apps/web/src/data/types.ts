@@ -1,5 +1,12 @@
 // Board view models. Status enums and DTOs come from @agent-band/contracts; src/data/adapt.ts maps DTOs here.
-import type { AgentStatus, GoalStatus, RunStatus, StartWhen, TaskStatus } from '@agent-band/contracts';
+import type {
+  AgentStatus,
+  GoalStatus,
+  ReviewDto,
+  RunStatus,
+  StartWhen,
+  TaskStatus,
+} from '@agent-band/contracts';
 
 export type { AgentStatus, GoalStatus, RunStatus, StartWhen, TaskStatus };
 
@@ -41,6 +48,10 @@ export interface Task {
   error: string | null;
   /** Dispatcher-supplied reason when a queued task has no eligible agent. */
   noEligibleReason: string | null;
+  /** Project the task works in, its git branch and the review of its changes. */
+  projectId?: string | null;
+  branch?: string | null;
+  review?: ReviewDto | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -114,6 +125,12 @@ export interface GoalInfo {
   leaderAgentId: string | null;
 }
 
+export interface ProjectOption {
+  id: string;
+  name: string;
+  defaultBranch: string;
+}
+
 export interface BoardSnapshot {
   /** Latest outbox id at read time. */
   cursor: string;
@@ -126,6 +143,8 @@ export interface BoardSnapshot {
   accounts: Account[];
   groups: AgentGroup[];
   goals: GoalInfo[];
+  /** Projects a new task can run in. */
+  projects?: ProjectOption[];
   org: { paused: boolean; workspaceRoot: string };
 }
 
@@ -148,6 +167,8 @@ export interface NewTask {
   draft?: boolean;
   kind?: 'task' | 'goal';
   approval?: 'auto' | 'required';
+  /** Run in a git worktree of this project. */
+  projectId?: string;
 }
 
 export interface TaskPatch {

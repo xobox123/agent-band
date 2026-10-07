@@ -9,6 +9,8 @@ import {
   GoalStateDto,
   IdParams,
   RejectPlanBody,
+  RejectReviewBody,
+  RequestReviewBody,
   StartTaskBody,
   StartTasksBody,
   ToBacklogBody,
@@ -18,6 +20,7 @@ import {
   RunDto,
   RunList,
   RunQuery,
+  TaskDiffDto,
   TaskDto,
   TaskList,
   TaskQuery,
@@ -120,6 +123,10 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
             throw invalid([{ path: 'target', message: 'a goal needs an agent with role leader' }]);
         }
         if (body.workDir) await assertWorkDirAllowed(c, actor, body.target, body.workDir);
+        else if (body.projectId) {
+          const project = await c.projects.get(db, actor, body.projectId);
+          await assertWorkDirAllowed(c, actor, body.target, project.worktreesRoot);
+        }
         const task = await c.tasks.createTask(db, actor, {
           ...body,
           ...(runAt ? { runAt: new Date(runAt) } : {}),
@@ -374,11 +381,83 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
           response: { 200: TaskDto },
         },
       },
-      async (req) =>
-        dto(
-          await c.resolveActor(req),
-          await c.tasks.cancelTask(db, await c.resolveActor(req), req.params.id),
-        ),
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        const before = await c.tasks.getTask(db, actor, req.params.id);
+        const tree = before.kind === 'goal' ? await c.tasks.listTree(db, actor.orgId, before.id) : [before];
+        const cancelled = await c.tasks.cancelTask(db, actor, req.params.id);
+        // Running tasks are cleaned up by the worker once their process has stopped.
+        for (const t of tree.filter((x) => x.branch && !['claimed', 'running', 'done'].includes(x.status)))
+          await c.projectRuns.cleanup(db, t).catch((err: unknown) => {
+            req.log.warn({ err, task: t.key }, 'could not clean up the task worktree');
+          });
+        return dto(actor, cancelled);
+      },
+    );
+
+    app.get(
+      '/tasks/:id/diff',
+      {
+        schema: {
+          tags: ['review'],
+          summary: 'Unified diff of a project task against its base, with per-file stats and review state',
+          params: IdParams,
+          response: { 200: TaskDiffDto },
+        },
+      },
+      async (req) => c.review.diff(db, await c.resolveActor(req), req.params.id),
+    );
+
+    app.post(
+      '/tasks/:id/review/approve',
+      {
+        schema: {
+          tags: ['review'],
+          summary: 'Merge the task branch into its base with --no-ff; a conflict keeps the branch',
+          params: IdParams,
+          response: { 200: TaskDto },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        return dto(actor, await c.review.approve(db, actor, req.params.id));
+      },
+    );
+
+    app.post(
+      '/tasks/:id/review/reject',
+      {
+        schema: {
+          tags: ['review'],
+          summary: 'Reject the changes: requeue the task in its worktree with the feedback in the prompt',
+          params: IdParams,
+          body: RejectReviewBody,
+          response: { 200: TaskDto },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        return dto(actor, await c.review.reject(db, actor, req.params.id, req.body.feedback));
+      },
+    );
+
+    app.post(
+      '/tasks/:id/review/request',
+      {
+        schema: {
+          tags: ['review'],
+          summary: 'Ask a reviewer agent: creates a read-only task in the same worktree',
+          params: IdParams,
+          body: RequestReviewBody,
+          response: { 201: TaskDto },
+        },
+      },
+      async (req, reply) => {
+        const actor = await c.resolveActor(req);
+        return reply
+          .code(201)
+          .send(await dto(actor, await c.review.requestReview(db, actor, req.params.id, req.body)));
+      },
     );
 
     app.post(

@@ -49,6 +49,7 @@ import {
 import { createDelegation, createGoalApproval, createOrchestrator } from './modules/delegation/index.ts';
 import { findRunIdByToken, verifyRunToken } from './execution/app/run-auth.ts';
 import { createEffectivePolicySource } from './execution/app/sources.ts';
+import { createProjectRuns, createProjects, createReview } from './modules/projects/index.ts';
 import { createRuns } from './modules/runs/index.ts';
 import { createScheduler } from './modules/scheduler/index.ts';
 import { createTasks } from './modules/tasks/index.ts';
@@ -96,7 +97,10 @@ export async function createComposition(opts: CompositionOptions) {
   const policyBindings: PolicyBindings = createPolicyBindings({
     orgPolicyId: async (db, orgId) => (await getOrganization(db, orgId)).policyId,
   });
-  const tasks = createTasks({ ...deps, orgSettings: settings });
+  const projects = createProjects({ ...deps, orgSettings: settings });
+  const tasks = createTasks({ ...deps, orgSettings: settings, projects: projects.lookup });
+  const projectRuns = createProjectRuns({ projects });
+  const review = createReview({ ...deps, tasks, projects, runs: projectRuns });
   const runs = createRuns(deps);
   const scheduler = createScheduler({
     ...deps,
@@ -224,6 +228,9 @@ export async function createComposition(opts: CompositionOptions) {
     agents,
     groups,
     tasks,
+    projects,
+    projectRuns,
+    review,
     scheduler,
     runs,
     usage,

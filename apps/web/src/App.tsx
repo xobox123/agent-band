@@ -18,6 +18,7 @@ import { DashboardScreen } from './screens/dashboard/DashboardScreen.tsx';
 import { GroupsScreen } from './screens/groups/GroupsScreen.tsx';
 import { PeopleScreen } from './screens/people/PeopleScreen.tsx';
 import { PoliciesScreen } from './screens/policies/PoliciesScreen.tsx';
+import { ProjectsScreen } from './screens/projects/ProjectsScreen.tsx';
 import { RunsScreen } from './screens/runs/RunsScreen.tsx';
 import { SchedulesScreen } from './screens/schedules/SchedulesScreen.tsx';
 import { SettingsScreen } from './screens/settings/SettingsScreen.tsx';
@@ -42,6 +43,8 @@ function screenFor(route: RouteId) {
       return <AgentsScreen />;
     case 'agent-groups':
       return <GroupsScreen />;
+    case 'projects':
+      return <ProjectsScreen />;
     case 'tasks':
       return <TasksScreen />;
     case 'runs':

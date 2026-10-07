@@ -5,3 +5,6 @@ export function formatTaskKey(prefix: string, seq: number): string {
   if (!Number.isSafeInteger(seq) || seq < 1) throw new Error(`invalid task sequence: ${seq}`);
   return `${prefix}-${seq}`;
 }
+
+/** Git branch of a task worktree; goals and tasks use the same scheme. */
+export const branchOf = (taskKey: string): string => `ab/${taskKey}`;

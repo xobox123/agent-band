@@ -13,7 +13,12 @@ import type {
   RefreshLimitsResult,
   CreateAgentBody,
   CreateGroupBody,
+  CreateProjectBody,
   CreatePolicyBody,
+  ProjectDto,
+  TaskDiffDto,
+  UpdateProjectBody,
+  ValidateRepoDto,
   CreateRoleBindingBody,
   CreateTaskBody,
   AddPlanTaskBody,
@@ -231,6 +236,26 @@ export function createApi(fetchImpl?: typeof fetch) {
       remove: (id: string) => send<undefined>('DELETE', `/tasks/${id}`),
       toBacklog: (ids: string[]) => send<Page<TaskDto>>('POST', '/tasks/to-backlog', { ids }),
       start: (ids: string[], when: StartWhen) => send<Page<TaskDto>>('POST', '/tasks/start', { ids, when }),
+      diff: (id: string) => get<TaskDiffDto>(`/tasks/${id}/diff`),
+      approveReview: (id: string) => send<TaskDto>('POST', `/tasks/${id}/review/approve`),
+      rejectReview: (id: string, feedback: string) =>
+        send<TaskDto>('POST', `/tasks/${id}/review/reject`, { feedback }),
+      requestReview: (id: string, body: { prompt?: string } = {}) =>
+        send<TaskDto>('POST', `/tasks/${id}/review/request`, body),
+    },
+
+    projects: {
+      list: () => get<Page<ProjectDto>>('/projects'),
+      get: (id: string) => get<ProjectDto>(`/projects/${id}`),
+      create: (body: CreateProjectBody) => send<ProjectDto>('POST', '/projects', body),
+      update: (id: string, body: UpdateProjectBody) => send<ProjectDto>('PATCH', `/projects/${id}`, body),
+      validate: (path: string) => get<ValidateRepoDto>('/projects/validate', { path }),
+      allowAgents: (id: string, policyId: string) =>
+        send<{ policyId: string; added: boolean; workDirs: string[] }>(
+          'POST',
+          `/projects/${id}/allow-agents`,
+          { policyId },
+        ),
     },
 
     goalPlan: {

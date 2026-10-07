@@ -11,7 +11,7 @@ const BOARD_EVENTS = ['task.', 'run.updated', 'agent', 'account.', 'org.'];
 export function createLiveDataSource(api: Api, events: EventsClient, throttleMs = 400): BoardDataSource {
   return {
     async load(filter) {
-      const [board, agents, accounts, groups, dashboard, goals, org] = await Promise.all([
+      const [board, agents, accounts, groups, dashboard, goals, org, projects] = await Promise.all([
         api.board({
           text: filter.text,
           agentId: filter.agentId,
@@ -24,6 +24,7 @@ export function createLiveDataSource(api: Api, events: EventsClient, throttleMs 
         api.dashboard().catch(() => null),
         api.goals().catch(() => ({ items: [] })),
         api.organization().catch(() => null),
+        api.projects.list().catch(() => ({ items: [] })),
       ]);
 
       const statusOf = new Map((dashboard?.agents ?? []).map((a) => [a.agent.id, a]));
@@ -64,6 +65,7 @@ export function createLiveDataSource(api: Api, events: EventsClient, throttleMs 
           round: g.goal.round,
           leaderAgentId: g.goal.leaderAgentId,
         })),
+        projects: projects.items.map((p) => ({ id: p.id, name: p.name, defaultBranch: p.defaultBranch })),
         org: { paused: org?.paused ?? false, workspaceRoot: org?.workspaceRoot ?? '' },
       };
     },
@@ -150,6 +152,7 @@ export function createLiveDataSource(api: Api, events: EventsClient, throttleMs 
       ...(task.draft ? { draft: true } : {}),
       ...(task.kind === 'goal' ? { kind: 'goal' as const } : {}),
       ...(task.approval ? { approval: task.approval } : {}),
+      ...(task.projectId ? { projectId: task.projectId } : {}),
     };
   }
 }

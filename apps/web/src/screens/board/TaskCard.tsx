@@ -3,7 +3,7 @@ import { AgentHoverCard } from '../../components/AgentHoverCard.tsx';
 import { Badge } from '../../components/Badge.tsx';
 import { StatusDot } from '../../components/StatusDot.tsx';
 import type { Priority } from '../../data/types.ts';
-import { CANCELLABLE, PRIORITIES, hoverInfoOf, restorable, startable } from './model.ts';
+import { CANCELLABLE, PRIORITIES, hoverInfoOf, restorable, reviewBadges, startable } from './model.ts';
 import type { BacklogApi, TaskView } from './model.ts';
 import { formatClock, formatRelative } from '../../lib/schedule.ts';
 import { compactCount, exactCount } from './format.ts';
@@ -245,6 +245,18 @@ export function TaskCard({
         ) : null}
       </div>
       {noEligible ? <div className="card-reason dim">{task.noEligibleReason}</div> : null}
+      {task.branch ? (
+        <div className="card-reason">
+          <span className="mono dim" title="Branch">
+            {task.branch}
+          </span>{' '}
+          {reviewBadges(task).map((b) => (
+            <Badge key={b.text} tone={b.tone} {...(b.title ? { title: b.title } : {})}>
+              {b.text}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
       {view.proposedBy ? (
         <div className="card-reason">
           <Badge tone="accent">{`Proposed by ${view.proposedBy}`}</Badge>
