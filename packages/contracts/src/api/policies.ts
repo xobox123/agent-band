@@ -78,7 +78,28 @@ export const UpdatePolicyBody = z
   .strict();
 export type UpdatePolicyBody = z.input<typeof UpdatePolicyBody>;
 
+export const PolicySource = z.object({
+  level: z.enum(['org', 'group', 'agent']),
+  policyId: Id,
+  version: z.number().int(),
+});
+export const EnforcementCoverage = z.enum([
+  'admission',
+  'runner',
+  'runtime-hook',
+  'cli-sandbox',
+  'not-enforced',
+]);
+export const EffectiveRule = z.object({
+  value: z.unknown(),
+  setBy: PolicySource.nullable(),
+  contributors: z.array(PolicySource),
+  coverage: EnforcementCoverage,
+  coverageDetails: z.array(z.object({ mechanism: EnforcementCoverage, scope: z.string() })),
+});
+export type EffectiveRule = z.infer<typeof EffectiveRule>;
 export const EffectivePolicyDto = z.object({
+  rules: z.partialRecord(PolicyRules.keyof(), EffectiveRule),
   workDirSets: z.array(z.array(z.string())),
   maxMode: Mode,
   allowedTools: z.array(z.string()).optional(),

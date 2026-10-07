@@ -25,6 +25,15 @@ interface Problem {
 }
 
 export function registerPlatform(app: FastifyInstance, options: PlatformOptions = {}): void {
+  const jsonParser = app.getDefaultJsonParser('error', 'error');
+  app.removeContentTypeParser('application/json');
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    if (body === '' && req.method === 'POST' && !req.routeOptions.schema?.body) {
+      done(null, undefined);
+      return;
+    }
+    void jsonParser(req, String(body), done);
+  });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 

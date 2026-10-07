@@ -72,6 +72,8 @@ export const RoleBindingDto = z.object({
   createdAt: IsoDate,
 });
 export type RoleBindingDto = z.infer<typeof RoleBindingDto>;
+export const RoleBindingQuery = z.object({ agentGroupId: Id.optional(), agentId: Id.optional() });
+export type RoleBindingQuery = z.infer<typeof RoleBindingQuery>;
 export const RoleBindingList = listOf(RoleBindingDto);
 
 export const CreateRoleBindingBody = z

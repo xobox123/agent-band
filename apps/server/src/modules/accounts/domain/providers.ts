@@ -12,7 +12,7 @@ export interface ProviderCapabilities {
 }
 
 export interface ProviderDescriptor {
-  id: string;
+  id: import('@agent-band/contracts').ProviderId;
   displayName: string;
   harness: Harness;
   accountTypes: AccountType[];
@@ -24,7 +24,7 @@ export interface ProviderDescriptor {
 }
 
 export interface ProviderInfo {
-  id: string;
+  id: import('@agent-band/contracts').ProviderId;
   displayName: string;
   harness: Harness;
   accountTypes: AccountType[];

@@ -17,6 +17,7 @@ import {
   UpdatePolicyBody,
 } from '@agent-band/contracts';
 import { z } from 'zod';
+import { describePolicy } from '../../modules/policy/index.ts';
 import type { Composition } from '../../composition.ts';
 
 export function policyRoutes(c: Composition): FastifyPluginCallbackZod {
@@ -85,8 +86,11 @@ export function policyRoutes(c: Composition): FastifyPluginCallbackZod {
       },
       async (req) => {
         const actor = await c.resolveActor(req);
-        await c.agents.getAgent(c.database.db, actor, req.params.id);
-        return c.policies.effectiveFor(actor.orgId, req.params.id);
+        const agent = await c.agents.getAgent(c.database.db, actor, req.params.id);
+        const account = await c.accounts.getAccount(c.database.db, actor, agent.accountId);
+        const provider = c.listProviders().find((p) => p.id === account.provider);
+        if (!provider) throw new Error('Account provider is not registered');
+        return describePolicy(await c.policies.effectiveFor(actor.orgId, req.params.id), provider);
       },
     );
 
@@ -207,7 +211,19 @@ export function policyRoutes(c: Composition): FastifyPluginCallbackZod {
         const actor = await c.resolveActor(req);
         const cursor = await c.cursor();
         await c.agents.getAgent(c.database.db, actor, req.params.id);
-        return { items: await c.skills.effectiveFor(actor.orgId, req.params.id), cursor };
+        const [skills, policy] = await Promise.all([
+          c.skills.effectiveFor(actor.orgId, req.params.id),
+          c.policies.effectiveFor(actor.orgId, req.params.id),
+        ]);
+        const allowed = (id: string) =>
+          policy.allowedSkillIds === undefined || policy.allowedSkillIds.includes(id);
+        return {
+          items: skills.filter((s) => allowed(s.skillId)),
+          excluded: skills
+            .filter((s) => !allowed(s.skillId))
+            .map((s) => ({ ...s, reason: 'allowedSkillIds' as const })),
+          cursor,
+        };
       },
     );
     done();

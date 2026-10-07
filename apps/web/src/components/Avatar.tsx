@@ -21,13 +21,16 @@ export function colorOf(name: string): string {
 
 interface Props {
   name: string;
-  avatar?: AvatarSpec | string | null;
+  avatar?: AvatarSpec | import('@agent-band/contracts').AgentAvatar | string | null;
   size?: number;
 }
 
 export function Avatar({ name, avatar: avatarProp, size = 22 }: Props) {
   const [broken, setBroken] = useState(false);
-  const avatar = typeof avatarProp === 'string' ? parseAvatar(avatarProp) : avatarProp;
+  const avatar =
+    typeof avatarProp === 'string' || (avatarProp && 'kind' in avatarProp)
+      ? parseAvatar(avatarProp)
+      : avatarProp;
   const url = avatar?.url && /^https?:\/\//.test(avatar.url) && !broken ? avatar.url : null;
   const color = avatar?.color && COLORS.includes(avatar.color) ? avatar.color : colorOf(name);
   const initials = avatar?.initials ?? initialsOf(name);

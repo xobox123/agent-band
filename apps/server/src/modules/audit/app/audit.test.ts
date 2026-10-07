@@ -273,3 +273,16 @@ describe('exportAudit', () => {
     await expect(collect(audit.exportAudit(db, admin))).rejects.toMatchObject({ status: 403 });
   });
 });
+
+it('applies involving to export as actor OR target within the organization', async () => {
+  const { db, boot, audit, append } = await setup();
+  const principal = randomUUID();
+  await append(1, { actorId: principal });
+  await append(2, { targetId: principal });
+  await append(3);
+  const lines: string[] = [];
+  for await (const line of audit.exportAudit(db, boot.localUser, { involving: principal })) lines.push(line);
+  expect(lines).toHaveLength(2);
+  expect(lines.map((line) => (JSON.parse(line) as { data: { n: number } }).data.n)).toEqual([1, 2]);
+  expect((await audit.verifyAudit(db, boot.localUser)).ok).toBe(true);
+});

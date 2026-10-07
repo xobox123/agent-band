@@ -123,12 +123,21 @@ export function DashboardScreen() {
                 <h2 className="section-title section-pad">Accounts</h2>
                 <div className="cards" aria-label="Accounts">
                   {d.accounts.map(
-                    ({ account, windows, tokensToday, cachedTokensToday, runningRuns, blockedUntil }) => {
+                    ({
+                      account,
+                      windows,
+                      tokensToday,
+                      cachedTokensToday,
+                      runningRuns,
+                      blockedUntil,
+                      availabilityReason,
+                    }) => {
                       const budget = account.limits.dailyTokenBudget;
                       return (
                         <article key={account.id} className="panel" aria-label={`Account ${account.name}`}>
                           <div className="panel-row">
                             <strong>{account.name}</strong>
+                            <span className="dim">{availabilityReason}</span>
                             <span className="chip">{`${account.provider} / ${account.type}`}</span>
                           </div>
                           {(['5h', 'weekly'] as const).map((w) => {

@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { Id, IsoDate, Labels, listOf } from './common.ts';
 
+export const ProviderId = z.enum(['claude', 'openai', 'gemini', 'openai_compatible']);
+export type ProviderId = z.infer<typeof ProviderId>;
+export const PROVIDER_IDS = ProviderId.options;
+
 export const AccountType = z.enum(['cli', 'api']);
 export type AccountType = z.infer<typeof AccountType>;
 
@@ -13,7 +17,7 @@ export const ProviderCapabilities = z.object({
 });
 
 export const ProviderDto = z.object({
-  id: z.string(),
+  id: ProviderId,
   displayName: z.string(),
   harness: z.enum(['claude-cli', 'codex-cli', 'gemini-cli']),
   accountTypes: z.array(AccountType),
@@ -38,7 +42,7 @@ export const AccountDto = z.object({
   id: Id,
   orgId: Id,
   name: z.string(),
-  provider: z.string(),
+  provider: ProviderId,
   type: AccountType,
   providerConfig: z.record(z.string(), z.unknown()),
   configDir: z.string().nullable(),
@@ -63,7 +67,7 @@ const secret = z.string().min(1).max(8192);
 export const CreateAccountBody = z
   .object({
     name: z.string().trim().min(1).max(120),
-    provider: z.string().min(1).max(64),
+    provider: ProviderId,
     type: AccountType,
     providerConfig: z.record(z.string(), z.unknown()).default({}),
     configDir: configDir.optional(),
@@ -88,7 +92,7 @@ export const UpdateAccountBody = z
 export type UpdateAccountBody = z.input<typeof UpdateAccountBody>;
 
 export const AccountQuery = z.object({
-  provider: z.string().optional(),
+  provider: ProviderId.optional(),
   type: AccountType.optional(),
   label: z.string().optional(),
 });

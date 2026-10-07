@@ -19,6 +19,7 @@ const seq = z.coerce.number().int().nonnegative();
 
 const AuditFilterShape = {
   actorId: Id.optional(),
+  involving: Id.optional(),
   action: z.string().min(1).optional(),
   targetType: z.string().min(1).optional(),
   targetId: z.string().min(1).optional(),

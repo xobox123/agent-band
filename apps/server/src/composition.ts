@@ -135,8 +135,10 @@ export async function createComposition(opts: CompositionOptions) {
     assign: (actor: ActorContext, input: Parameters<typeof assignSkill>[3]) =>
       assignSkill(db, deps, actor, input),
     unassign: (actor: ActorContext, id: string) => unassignSkill(db, deps, actor, id),
-    listAssignments: (actor: ActorContext, filter?: { skillId?: string }) =>
-      listSkillAssignments(db, deps, actor, filter),
+    listAssignments: (
+      actor: ActorContext,
+      filter?: { skillId?: string; agentGroupId?: string; agentId?: string },
+    ) => listSkillAssignments(db, deps, actor, filter),
     effectiveFor: (orgId: string, agentId: string) =>
       getEffectiveSkills(db, agentId, { orgId, membership: agentMembership }),
   };

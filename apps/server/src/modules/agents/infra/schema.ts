@@ -1,4 +1,14 @@
-import { boolean, index, pgTable, primaryKey, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  jsonb,
+  index,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 export const agents = pgTable(
   'agents',
@@ -7,7 +17,7 @@ export const agents = pgTable(
     orgId: uuid('org_id').notNull(),
     slug: text('slug').notNull(),
     name: text('name').notNull(),
-    avatar: text('avatar'),
+    avatar: jsonb('avatar').$type<import('@agent-band/contracts').AgentAvatar>(),
     accountId: uuid('account_id').notNull(),
     model: text('model'),
     role: text('role').notNull(),

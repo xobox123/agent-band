@@ -15,7 +15,7 @@ import type {
   AssignSkillBody,
   DashboardDto,
   EffectivePolicyDto,
-  EffectiveSkillDto,
+  EffectiveSkillList,
   ImportSkillBody,
   NewSkillVersionBody,
   OrganizationDto,
@@ -184,7 +184,7 @@ export function createApi(fetchImpl?: typeof fetch) {
       update: (id: string, body: UpdateAgentBody) => send<AgentDto>('PATCH', `/agents/${id}`, body),
       remove: (id: string) => send<undefined>('DELETE', `/agents/${id}`),
       effectivePolicy: (id: string) => get<EffectivePolicyDto>(`/agents/${id}/effective-policy`),
-      effectiveSkills: (id: string) => get<Page<EffectiveSkillDto>>(`/agents/${id}/effective-skills`),
+      effectiveSkills: (id: string) => get<EffectiveSkillList>(`/agents/${id}/effective-skills`),
     },
 
     groups: {

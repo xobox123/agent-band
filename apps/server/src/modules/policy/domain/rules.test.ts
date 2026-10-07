@@ -64,6 +64,7 @@ describe('mergePolicies', () => {
       maxMode: 'full-auto',
       deniedTools: [],
       sources: [],
+      provenance: {},
     });
   });
 

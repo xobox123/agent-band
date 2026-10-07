@@ -264,6 +264,50 @@ export function createRuns(deps: ModuleDeps) {
         return row?.n ?? 0;
       });
     },
+    async recentFailures(db: Db, actor: ActorContext): Promise<Run[]> {
+      await deps.authorizer.authorize(db, actor, 'read', {});
+      return db
+        .select()
+        .from(runs)
+        .where(and(eq(runs.orgId, actor.orgId), eq(runs.status, 'failed')))
+        .orderBy(desc(runs.finishedAt), desc(runs.id))
+        .limit(10);
+    },
+    async hourlyTokens(
+      db: Db,
+      actor: ActorContext,
+      now = new Date(),
+    ): Promise<import('@agent-band/contracts').DashboardDto['tokenBuckets']> {
+      await deps.authorizer.authorize(db, actor, 'read', {});
+      const hour = 3600000;
+      const from = new Date(now.getTime() - 24 * hour);
+      const rows = await db
+        .select({
+          bucket:
+            sql<number>`floor(extract(epoch from (${runEvents.ts} - ${from.toISOString()}::timestamptz)) / 3600)`.mapWith(
+              Number,
+            ),
+          tokens:
+            sql<number>`sum(coalesce((${runEvents.payload}->>'inputTokens')::double precision, 0) + coalesce((${runEvents.payload}->>'outputTokens')::double precision, 0))`.mapWith(
+              Number,
+            ),
+        })
+        .from(runEvents)
+        .where(
+          and(
+            eq(runEvents.orgId, actor.orgId),
+            eq(runEvents.kind, 'usage'),
+            sql`${runEvents.ts} >= ${from.toISOString()}::timestamptz`,
+            sql`${runEvents.ts} < ${now.toISOString()}::timestamptz`,
+          ),
+        )
+        .groupBy(sql`1`);
+      return Array.from({ length: 24 }, (_, i) => ({
+        start: new Date(from.getTime() + i * hour).toISOString(),
+        end: new Date(from.getTime() + (i + 1) * hour).toISOString(),
+        tokens: rows.find((r) => r.bucket === i)?.tokens ?? 0,
+      }));
+    },
     async usageOnDay(
       db: DbOrTx,
       actor: ActorContext,

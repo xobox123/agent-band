@@ -9,8 +9,6 @@ import { Resource } from '../../components/Resource.tsx';
 import { StatusDot } from '../../components/StatusDot.tsx';
 import { useResource } from '../../hooks/useResource.ts';
 import { copyText, formatTime, shortId } from '../../lib/format.ts';
-import { policyRows } from '../../lib/policy.ts';
-import type { SourceRules } from '../../lib/policy.ts';
 
 interface Props {
   agentId: string;
@@ -79,19 +77,7 @@ function Loaded({
   const policy = useResource(
     async () => {
       const effective = await api.agents.effectivePolicy(agent.id);
-      const sources: SourceRules[] = await Promise.all(
-        effective.sources.map(async (s) => {
-          const detail = await api.policies.get(s.policyId);
-          return {
-            level: s.level,
-            policyId: s.policyId,
-            policyName: detail.name,
-            version: s.version,
-            rules: detail.versions.find((v) => v.version === s.version)?.rules ?? {},
-          };
-        }),
-      );
-      return { effective, sources };
+      return effective;
     },
     [agent.id, agent.updatedAt, agent.groupIds.join(',')],
     ['policy.', 'agent', 'org.'],
@@ -186,30 +172,28 @@ function Loaded({
       )}
       <h3 className="section-title">Effective policy</h3>
       <Resource state={policy} errorMessage="Could not calculate effective configuration. Retry.">
-        {({ effective, sources }) => (
+        {(effective) => (
           <table className="table-plain" aria-label="Effective policy">
             <thead>
               <tr>
                 <th>Rule</th>
                 <th>Effective value</th>
                 <th>Set by</th>
+                <th>Coverage</th>
               </tr>
             </thead>
             <tbody>
-              {policyRows(effective, sources).map((row) => (
-                <tr key={row.rule}>
-                  <td className="mono">{row.rule}</td>
-                  <td>{row.value}</td>
+              {Object.entries(effective.rules).map(([name, rule]) => (
+                <tr key={name}>
+                  <td className="mono">{name}</td>
+                  <td>{JSON.stringify(rule.value)}</td>
                   <td>
-                    {row.setBy.length === 0 ? (
-                      <span className="dim">Not set at any level</span>
-                    ) : (
-                      <ul className="plain-list">
-                        {row.setBy.map((s) => (
-                          <li key={s}>{s}</li>
-                        ))}
-                      </ul>
-                    )}
+                    {rule.setBy
+                      ? `${rule.setBy.level}: ${rule.setBy.policyId} v${String(rule.setBy.version)}`
+                      : 'Default'}
+                  </td>
+                  <td title={rule.coverageDetails.map((d) => `${d.mechanism}: ${d.scope}`).join('\n')}>
+                    {rule.coverage}
                   </td>
                 </tr>
               ))}
@@ -229,6 +213,8 @@ function Loaded({
                   <th>Skill</th>
                   <th>Version</th>
                   <th>Hash</th>
+                  <th>Origin</th>
+                  <th>Pin</th>
                 </tr>
               </thead>
               <tbody>
@@ -236,6 +222,8 @@ function Loaded({
                   <tr key={s.skillId}>
                     <td>{s.name}</td>
                     <td>{`v${String(s.version)}`}</td>
+                    <td>{JSON.stringify(s.origin)}</td>
+                    <td>{s.pinnedVersion === null ? 'Latest' : s.pinnedVersion}</td>
                     <td className="mono" title={s.contentHash}>
                       {s.contentHash.slice(0, 12)}
                     </td>

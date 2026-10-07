@@ -17,6 +17,7 @@ function setup(extraRoutes: Record<string, unknown> = {}) {
     'GET /policies': list([]),
     'GET /runs': list([]),
     'GET /agents/ag-ada/effective-policy': {
+      rules: {},
       workDirSets: [],
       maxMode: 'edit',
       deniedTools: [],

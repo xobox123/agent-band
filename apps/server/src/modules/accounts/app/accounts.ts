@@ -16,23 +16,8 @@ import { validateProviderConfig, type AccountType } from '../domain/providers.ts
 import { accounts } from '../infra/schema.ts';
 import { decryptSecret, encryptSecret, type SecretKeySource } from '../infra/secrets.ts';
 
-export interface AccountDto {
-  id: string;
-  orgId: string;
-  name: string;
-  provider: string;
-  type: AccountType;
-  providerConfig: Record<string, unknown>;
-  configDir: string | null;
-  labels: string[];
-  limits: { dailyTokenBudget?: number; maxConcurrentRuns: number };
-  providerIdentity: string | null;
-  hasSecret: boolean;
-  secretUpdatedAt: string | null;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import { ProviderId, type AccountDto } from '@agent-band/contracts';
+export type { AccountDto } from '@agent-band/contracts';
 
 export interface AccountForRun {
   id: string;
@@ -59,7 +44,7 @@ function toDto(r: Row): AccountDto {
     id: r.id,
     orgId: r.orgId,
     name: r.name,
-    provider: r.provider,
+    provider: ProviderId.parse(r.provider),
     type: r.type as AccountType,
     providerConfig: r.providerConfig as Record<string, unknown>,
     configDir: r.configDir,
@@ -280,7 +265,7 @@ export function createAccountUseCases(deps: AccountsDeps) {
     return {
       id: r.id,
       orgId: r.orgId,
-      provider: r.provider,
+      provider: ProviderId.parse(r.provider),
       type: r.type as AccountType,
       providerConfig: r.providerConfig as Record<string, unknown>,
       configDir: r.configDir,

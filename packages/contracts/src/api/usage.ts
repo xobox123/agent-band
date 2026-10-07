@@ -13,6 +13,7 @@ export type LimitWindowDto = z.infer<typeof LimitWindowDto>;
 
 export const DashboardAccount = z.object({
   account: AccountDto,
+  availabilityReason: z.enum(['concurrency_full', 'budget_exhausted', 'blocked', 'ok']),
   windows: z.array(LimitWindowDto),
   tokensToday: z.number(),
   /** Cache reads, reported separately; not counted in budgets. */
@@ -37,6 +38,10 @@ export const DashboardDto = z.object({
   accounts: z.array(DashboardAccount),
   agents: z.array(DashboardAgent),
   runningRuns: z.array(RunDto),
+  recentFailures: z.array(RunDto).max(10),
+  tokenBuckets: z
+    .array(z.object({ start: IsoDate, end: IsoDate, tokens: z.number().nonnegative() }))
+    .length(24),
   queuedCount: z.number().int(),
   tokensToday: z.number(),
   cachedTokensToday: z.number(),

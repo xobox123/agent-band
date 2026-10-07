@@ -28,6 +28,15 @@ export interface EffectivePolicy {
   maxSubtasks?: number;
   maxRounds?: number;
   treeTokenBudget?: number;
+  provenance?: Partial<
+    Record<
+      keyof PolicyRules,
+      {
+        setBy: { level: PolicyLevel; policyId: string; version: number } | null;
+        contributors: { level: PolicyLevel; policyId: string; version: number }[];
+      }
+    >
+  >;
   sources: { level: PolicyLevel; policyId: string; version: number }[];
 }
 
@@ -53,7 +62,7 @@ function mergeDimension(
   return merged === undefined ? {} : { [key]: merged };
 }
 
-export function mergePolicies(
+function mergePolicyValues(
   levels: { level: PolicyLevel; policyId: string; version: number; rules: PolicyRules }[],
 ): EffectivePolicy {
   const sources: EffectivePolicy['sources'] = [];
@@ -121,4 +130,28 @@ export function mergePolicies(
     ...(treeTokenBudget !== undefined && { treeTokenBudget }),
     sources,
   };
+}
+
+export function mergePolicies(
+  levels: { level: PolicyLevel; policyId: string; version: number; rules: PolicyRules }[],
+): EffectivePolicy {
+  const provenance: NonNullable<EffectivePolicy['provenance']> = {};
+  let previous = mergePolicyValues([]);
+  for (let i = 0; i < levels.length; i++) {
+    const source = levels[i];
+    if (!source) continue;
+    const next = mergePolicyValues(levels.slice(0, i + 1));
+    const { level, policyId, version } = source;
+    for (const key of Object.keys(source.rules) as (keyof PolicyRules)[]) {
+      const field = key === 'workDirs' ? 'workDirSets' : key;
+      const current = provenance[key];
+      const changed = JSON.stringify(previous[field]) !== JSON.stringify(next[field]);
+      provenance[key] = {
+        setBy: changed || !current ? { level, policyId, version } : current.setBy,
+        contributors: [...(current?.contributors ?? []), { level, policyId, version }],
+      };
+    }
+    previous = next;
+  }
+  return { ...previous, provenance };
 }
