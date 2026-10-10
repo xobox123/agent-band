@@ -52,6 +52,8 @@ export function createProjects(deps: ProjectsDeps) {
       if (!parsed.success) throw invalid(parsed.error.issues);
       const v = parsed.data;
       await deps.authorizer.authorize(db, actor, 'agent.manage', {});
+      if (v.autoMergeOnApprove || v.reviewerTarget)
+        await deps.authorizer.authorize(db, actor, 'review.override', {});
       const repo = await inspectRepo(v.repoPath);
       if (!repo.valid) throw invalid([{ path: 'repoPath', message: `${v.repoPath}: ${repo.reason}` }]);
       const settings = await deps.orgSettings.get(db, actor.orgId);
@@ -106,6 +108,15 @@ export function createProjects(deps: ProjectsDeps) {
       const parsed = UpdateProject.safeParse(input);
       if (!parsed.success) throw invalid(parsed.error.issues);
       await deps.authorizer.authorize(db, actor, 'agent.manage', {});
+      const current = await row(db, actor.orgId, id);
+      if (!current) throw notFound('project');
+      const d = parsed.data;
+      if (
+        (d.autoMergeOnApprove !== undefined && d.autoMergeOnApprove !== current.autoMergeOnApprove) ||
+        (d.reviewerTarget !== undefined &&
+          JSON.stringify(d.reviewerTarget) !== JSON.stringify(current.reviewerTarget))
+      )
+        await deps.authorizer.authorize(db, actor, 'review.override', {});
       return db.transaction(async (tx) => {
         const [project] = await tx
           .update(projects)

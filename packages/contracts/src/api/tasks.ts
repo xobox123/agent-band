@@ -211,7 +211,6 @@ export const RequestReviewBody = z
   .object({
     /** Defaults to the target of the reviewed task. */
     target: TaskTarget.optional(),
-    prompt: z.string().trim().min(1).max(10_000).optional(),
   })
   .strict();
 

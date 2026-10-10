@@ -26,6 +26,13 @@ export interface ReviewDeps extends ModuleDeps {
   runs: Pick<ProjectRuns, 'cleanup'>;
 }
 
+function sameTarget(a: TaskTarget | null | undefined, b: TaskTarget | null | undefined): boolean {
+  if (!a || !b) return false;
+  if ('agentId' in a && 'agentId' in b) return a.agentId === b.agentId;
+  if ('label' in a && 'label' in b) return a.label === b.label;
+  return false;
+}
+
 export interface TaskDiff {
   diff: string;
   truncated: boolean;
@@ -109,6 +116,7 @@ export function createReview(deps: ReviewDeps) {
             blocker.code,
             gate.overridable ? `${blocker.message}; an owner can override with a reason` : blocker.message,
           );
+        await deps.authorizer.authorize(db, actor, 'review.override', {});
         await db.transaction((tx) =>
           deps.audit.append(tx, {
             orgId: actor.orgId,
@@ -186,23 +194,20 @@ export function createReview(deps: ReviewDeps) {
     task: Task,
     project: Project,
     target: TaskTarget,
-    customPrompt: string | undefined,
   ): Promise<Task> {
     const review = task.review;
     if (!review) throw conflict('no_review', `${task.key} has no changes to review`);
     const live = await revParse(project.repoPath, task.branch ?? '').catch(() => null);
     if (live !== review.headSha)
       throw conflict('branch_moved', `${task.key} has new commits since its checks ran`);
-    const prompt =
-      customPrompt ??
-      reviewerPrompt({
-        key: task.key,
-        title: task.title,
-        branch: task.branch ?? '',
-        base: task.baseBranch ?? project.defaultBranch,
-        sha: review.headSha,
-        prompt: task.prompt,
-      });
+    const prompt = reviewerPrompt({
+      key: task.key,
+      title: task.title,
+      branch: task.branch ?? '',
+      base: task.baseBranch ?? project.defaultBranch,
+      sha: review.headSha,
+      prompt: task.prompt,
+    });
     return db.transaction(async (tx) => {
       const reviewer = await deps.tasks.createReviewTask(tx, actor, task, { target, prompt });
       await deps.tasks.setReview(
@@ -277,14 +282,14 @@ export function createReview(deps: ReviewDeps) {
       db: Db,
       actor: ActorContext,
       id: string,
-      input: { target?: TaskTarget | undefined; prompt?: string | undefined },
+      input: { target?: TaskTarget | undefined },
     ): Promise<Task> {
       const { task, project, review } = await load(db, actor, id);
       const target = input.target ?? task.target;
       await deps.authorizer.authorize(db, actor, 'task.write', taskResource(target));
       if (!openReviewStatuses.includes(review.status) || review.status === 'rejected')
         throw conflict('review_not_open', `${task.key} is not waiting for a decision`);
-      return spawnReviewer(db, actor, task, project, target, input.prompt);
+      return spawnReviewer(db, actor, task, project, target);
     },
 
     /** Worker hook for a finished project task: starts the project's reviewer when its checks passed. */
@@ -293,7 +298,7 @@ export function createReview(deps: ReviewDeps) {
       if (!project.reviewerTarget || task.status !== 'done' || review.status !== 'pending') return undefined;
       if (review.reviewerTaskId || review.checksSha !== review.headSha) return undefined;
       if (review.checks.some((c) => c.exitCode !== 0)) return undefined;
-      return spawnReviewer(db, actor, task, project, project.reviewerTarget, undefined);
+      return spawnReviewer(db, actor, task, project, project.reviewerTarget);
     },
 
     /**
@@ -325,7 +330,9 @@ export function createReview(deps: ReviewDeps) {
       );
       if (parsed.verdict === 'APPROVE') {
         // A refused or failed merge stays visible on the review for the human.
-        if (project.autoMergeOnApprove) await merge(db, actor, task.id, undefined).catch(() => undefined);
+        // Only the project's own reviewer may trigger it, not one picked through a manual request.
+        if (project.autoMergeOnApprove && sameTarget(reviewer.target, project.reviewerTarget))
+          await merge(db, actor, task.id, undefined).catch(() => undefined);
         return;
       }
       const loops = review.reviewLoops ?? 0;

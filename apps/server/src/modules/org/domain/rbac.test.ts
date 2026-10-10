@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { type Action, type Binding, type Role, type Scope, decide } from './rbac.ts';
 
 const roles: Role[] = ['viewer', 'operator', 'admin', 'owner'];
-const actions: Action[] = ['read', 'task.write', 'agent.manage', 'org.manage', 'audit.export'];
+const actions: Action[] = [
+  'read',
+  'task.write',
+  'agent.manage',
+  'org.manage',
+  'audit.export',
+  'review.override',
+];
 
 const minRole: Record<Action, Role> = {
   read: 'viewer',
@@ -10,6 +17,7 @@ const minRole: Record<Action, Role> = {
   'agent.manage': 'admin',
   'org.manage': 'owner',
   'audit.export': 'owner',
+  'review.override': 'owner',
 };
 const rank = (r: Role) => roles.indexOf(r);
 
@@ -35,7 +43,8 @@ describe('decide: role x action x scope x resource', () => {
     for (const action of actions) {
       for (const kind of Object.keys(scopes) as ScopeKind[]) {
         for (const orgLevel of [false, true]) {
-          const needsOrgScope = action === 'org.manage' || action === 'audit.export';
+          const needsOrgScope =
+            action === 'org.manage' || action === 'audit.export' || action === 'review.override';
           const expected =
             rank(role) >= rank(minRole[action]) &&
             covers(kind, orgLevel) &&

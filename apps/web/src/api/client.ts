@@ -243,7 +243,7 @@ export function createApi(fetchImpl?: typeof fetch) {
           : send<TaskDto>('POST', `/tasks/${id}/review/approve`),
       rejectReview: (id: string, feedback: string) =>
         send<TaskDto>('POST', `/tasks/${id}/review/reject`, { feedback }),
-      requestReview: (id: string, body: { prompt?: string } = {}) =>
+      requestReview: (id: string, body: Record<string, never> = {}) =>
         send<TaskDto>('POST', `/tasks/${id}/review/request`, body),
     },
 
