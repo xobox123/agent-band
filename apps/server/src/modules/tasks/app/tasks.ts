@@ -150,6 +150,7 @@ export function createTasks(deps: TasksDeps) {
     actor: ActorContext,
     input: CreateTaskInput,
     child?: ChildPlacement,
+    action?: string,
   ): Promise<Task> {
     const parsed = CreateTask.safeParse(input);
     if (!parsed.success) throw invalid(parsed.error.issues);
@@ -181,6 +182,7 @@ export function createTasks(deps: TasksDeps) {
       .values({
         ...rest,
         workDir,
+        workDirExplicit: givenDir !== undefined,
         ...(child ?? {}),
         id,
         ...(rest.kind === 'goal' ? { rootTaskId: id } : {}),
@@ -200,11 +202,12 @@ export function createTasks(deps: TasksDeps) {
         goalPrompt: task.prompt,
         approval,
       });
-    return changed(tx, actor, task, child ? 'task.create_subtask' : 'task.create');
+    return changed(tx, actor, task, action ?? (child ? 'task.create_subtask' : 'task.create'));
   }
 
   const openStatuses = ['draft', 'scheduled', 'queued', 'claimed', 'running', 'rate_limited'] as const;
-  const backlogSources: Task['status'][] = ['failed', 'denied', 'cancelled', 'rate_limited'];
+  const rerunSources: Task['status'][] = ['done', 'failed', 'denied', 'cancelled', 'rate_limited'];
+  const backlogSources = rerunSources;
   const isOpen = (status: Task['status']): boolean => (openStatuses as readonly string[]).includes(status);
 
   async function treeOf(db: DbOrTx, orgId: string, rootTaskId: string): Promise<Task[]> {
@@ -384,7 +387,17 @@ export function createTasks(deps: TasksDeps) {
           if (base !== undefined && dir !== base && !dir.startsWith(`${base}/`))
             throw invalid([{ path: 'workDir', message: `must be inside the goal workDir ${root?.workDir}` }]);
         }
-        return update(tx, actor, id, { ...patch, ...(runAt !== undefined ? { runAt } : {}) }, 'task.update');
+        return update(
+          tx,
+          actor,
+          id,
+          {
+            ...patch,
+            ...(patch.workDir !== undefined ? { workDirExplicit: true } : {}),
+            ...(runAt !== undefined ? { runAt } : {}),
+          },
+          'task.update',
+        );
       });
     },
     async deleteDraft(db: Db, actor: ActorContext, id: string): Promise<void> {
@@ -668,7 +681,7 @@ export function createTasks(deps: TasksDeps) {
         return cancelled;
       });
     },
-    /** Moves failed, denied, cancelled or rate-limited tasks back to the backlog; all or none. */
+    /** Moves done, failed, denied, cancelled or rate-limited tasks back to the backlog; all or none. */
     async moveToBacklog(db: Db, actor: ActorContext, ids: string[]): Promise<Task[]> {
       const unique = [...new Set(ids)];
       return db.transaction(async (tx) => {
@@ -708,6 +721,78 @@ export function createTasks(deps: TasksDeps) {
             ),
           );
         return unique.flatMap((id) => moved.get(id) ?? []);
+      });
+    },
+    /** Re-queues finished tasks as new runs of the same task (run history is kept); all or none. */
+    async rerunTasks(
+      db: Db,
+      actor: ActorContext,
+      ids: string[],
+      planFor?: (t: Task) => StartPlan | undefined,
+    ): Promise<Task[]> {
+      const unique = [...new Set(ids)];
+      return db.transaction(async (tx) => {
+        const rows = await tx
+          .select()
+          .from(tasks)
+          .where(and(eq(tasks.orgId, actor.orgId), inArray(tasks.id, unique)))
+          .orderBy(asc(tasks.id))
+          .for('update');
+        if (rows.length !== unique.length) throw notFound('task');
+        const now = deps.now?.() ?? new Date();
+        for (const t of rows) {
+          if (!rerunSources.includes(t.status))
+            throw conflict('task_not_restorable', `${t.key} is ${t.status}, it cannot run again`);
+          if (t.kind === 'goal' || t.rootTaskId)
+            throw conflict('task_in_goal', `${t.key} belongs to a goal and cannot run again`);
+          await deps.authorizer.authorize(tx, actor, 'task.write', resource(t.target));
+        }
+        const rerun = new Map<string, Task>();
+        for (const t of rows)
+          rerun.set(
+            t.id,
+            await update(
+              tx,
+              actor,
+              t.id,
+              {
+                ...startValues({ ...t, runAt: null }, now, planFor?.(t)),
+                error: null,
+                eligibility: null,
+                result: null,
+                resumeAt: null,
+                workerId: null,
+                attempt: 1,
+              },
+              'task.rerun',
+            ),
+          );
+        return unique.flatMap((id) => rerun.get(id) ?? []);
+      });
+    },
+    /** Copies a task into a new backlog draft (new auto folder unless the original used an explicit one). */
+    async duplicateTask(db: Db, actor: ActorContext, id: string): Promise<Task> {
+      return db.transaction(async (tx) => {
+        const t = await get(tx, actor, id);
+        if (t.kind === 'goal' || t.rootTaskId)
+          throw conflict('task_in_goal', `${t.key} belongs to a goal and cannot be duplicated`);
+        await deps.authorizer.authorize(tx, actor, 'task.write', resource(t.target));
+        return createIn(
+          tx,
+          actor,
+          {
+            title: `${t.title.slice(0, 193)} (copy)`,
+            prompt: t.prompt,
+            target: t.target,
+            priority: t.priority,
+            ...(t.mode ? { mode: t.mode } : {}),
+            ...(t.workDirExplicit ? { workDir: t.workDir } : {}),
+            maxAttempts: t.maxAttempts,
+            draft: true,
+          },
+          undefined,
+          'task.duplicate',
+        );
       });
     },
     async getTask(db: Db, actor: ActorContext, id: string): Promise<Task> {

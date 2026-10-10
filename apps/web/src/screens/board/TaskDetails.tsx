@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import { useDataSource } from '../../data/context.tsx';
+import type { Run } from '../../data/types.ts';
 import { DetailsPanel } from '../../components/DetailsPanel.tsx';
 import { LimitBar } from '../../components/LimitBar.tsx';
 import { StatusDot } from '../../components/StatusDot.tsx';
@@ -53,6 +56,25 @@ export function TaskDetails({
   plan,
 }: Props) {
   const { task, run, account } = view;
+  const source = useDataSource();
+  const [history, setHistory] = useState<Run[]>([]);
+  const [historyError, setHistoryError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setHistory([]);
+    setHistoryError(false);
+    source.taskRuns(task.id).then(
+      (items) => {
+        if (active) setHistory(items);
+      },
+      () => {
+        if (active) setHistoryError(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [source, task.id, task.updatedAt]);
   const copy = () => {
     void navigator.clipboard.writeText(task.id).catch(() => undefined);
   };
@@ -126,6 +148,28 @@ export function TaskDetails({
                 Delete
               </button>
             </>
+          ) : null}
+          {restorable(task) ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                backlog.rerun([task.id]);
+              }}
+            >
+              Run again
+            </button>
+          ) : null}
+          {task.kind !== 'goal' && task.parentTaskId === null ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                backlog.duplicate(task.id);
+              }}
+            >
+              Duplicate
+            </button>
           ) : null}
           {restorable(task) ? (
             <button
@@ -232,6 +276,26 @@ export function TaskDetails({
           <p>{task.error}</p>
         </section>
       ) : null}
+      <section>
+        <h3 className="section-title">Runs</h3>
+        {historyError ? <p role="alert">Could not load run history.</p> : null}
+        <ul>
+          {history.map((item) => (
+            <li key={item.id}>
+              <button
+                type="button"
+                className="btn btn-link"
+                onClick={() => {
+                  onOpenLogs({ ...view, run: item });
+                }}
+              >
+                {item.id}
+              </button>{' '}
+              {item.status} {new Date(item.startedAt).toLocaleString()}
+            </li>
+          ))}
+        </ul>
+      </section>
       <section>
         <h3 className="section-title">Prompt</h3>
         <pre className="prompt">{task.prompt}</pre>

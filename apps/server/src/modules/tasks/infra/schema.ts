@@ -37,6 +37,7 @@ export const tasks = pgTable(
     title: text('title').notNull(),
     prompt: text('prompt').notNull(),
     workDir: text('work_dir').notNull(),
+    workDirExplicit: boolean('work_dir_explicit').notNull().default(true),
     target: jsonb('target').$type<TaskTarget>().notNull(),
     priority: integer('priority').notNull().default(2),
     rank: doublePrecision('rank').notNull().default(0),

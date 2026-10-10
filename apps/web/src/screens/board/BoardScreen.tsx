@@ -51,6 +51,7 @@ export function BoardScreen() {
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [restoreChecked, setRestoreChecked] = useState<Set<string>>(new Set());
+  const [rerunIds, setRerunIds] = useState<string[] | null>(null);
   const [startIds, setStartIds] = useState<string[] | null>(null);
   const [approveId, setApproveId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
@@ -143,6 +144,10 @@ export function BoardScreen() {
 
   const backlog: BacklogApi = useMemo(
     () => ({
+      rerun: setRerunIds,
+      duplicate: (id) => {
+        void mutate(id, () => source.duplicateTask(id));
+      },
       selected: checked,
       toggle: (id) => {
         setChecked((prev) => {
@@ -190,14 +195,16 @@ export function BoardScreen() {
           });
       },
     }),
-    [checked, restoreChecked, source, reload],
+    [checked, restoreChecked, source, reload, mutate],
   );
   // Selection only makes sense for tasks that are still in the backlog.
   useEffect(() => {
     if (!snapshot) return;
     setRestoreChecked((prev) => {
       const live = new Set(
-        snapshot.tasks.filter((t) => t.status === 'failed' || t.status === 'denied').map((t) => t.id),
+        snapshot.tasks
+          .filter((t) => t.status === 'done' || t.status === 'failed' || t.status === 'denied')
+          .map((t) => t.id),
       );
       const next = new Set([...prev].filter((id) => live.has(id)));
       return next.size === prev.size ? prev : next;
@@ -417,6 +424,18 @@ export function BoardScreen() {
             Move selected to backlog
           </button>
         ) : null}
+        {restoreChecked.size > 0 &&
+        views.some((v) => restoreChecked.has(v.task.id) && v.task.status === 'done') ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setRerunIds([...restoreChecked]);
+            }}
+          >
+            Run selected again
+          </button>
+        ) : null}
         <FilterInput
           label="Search tasks"
           placeholder="Search key or title (/)"
@@ -564,6 +583,22 @@ export function BoardScreen() {
           onSubmit={async (task) => {
             await source.addPlanTask(addToGoal, task);
             setAddToGoal(null);
+            reload();
+          }}
+        />
+      ) : null}
+      {rerunIds ? (
+        <StartDialog
+          title="Run again"
+          subject={`${String(rerunIds.length)} tasks`}
+          confirmLabel="Run again"
+          onCancel={() => {
+            setRerunIds(null);
+          }}
+          onConfirm={async (when) => {
+            await source.rerunTasks(rerunIds, when);
+            setRerunIds(null);
+            setRestoreChecked(new Set());
             reload();
           }}
         />

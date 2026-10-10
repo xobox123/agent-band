@@ -103,6 +103,8 @@ export const TaskDto = z.object({
     finishedAt: true,
   }).nullable(),
   eligibilityReason: z.string().nullable(),
+  /** Number of runs the task has had; grows with each "run again". */
+  runCount: z.number().int().min(0),
   createdBy: Id,
   createdAt: IsoDate,
   updatedAt: IsoDate,
@@ -179,6 +181,42 @@ export const StartTasksBody = z
 export type StartTasksBody = z.input<typeof StartTasksBody>;
 export const ToBacklogBody = z.object({ ids: z.array(Id).min(1).max(200) }).strict();
 export type ToBacklogBody = z.infer<typeof ToBacklogBody>;
+/** Run a finished task again: `when` picks the start (now, at a time, at the limit reset). */
+const RerunSchedule = z
+  .object({
+    when: z.union([StartWhen, z.enum(['now', 'at', 'limit_reset'])]).default('now'),
+    runAt: z.iso.datetime({ offset: true }).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.when === 'at' && !value.runAt)
+      ctx.addIssue({ code: 'custom', path: ['runAt'], message: 'runAt is required when when is at' });
+  })
+  .transform((value) => ({
+    when:
+      typeof value.when === 'string'
+        ? value.when === 'at'
+          ? { mode: 'at' as const, at: value.runAt ?? '' }
+          : { mode: value.when }
+        : value.when,
+  }));
+export const RerunTaskBody = RerunSchedule;
+export const RerunTasksBody = z
+  .object({
+    ids: z.array(Id).min(1).max(200),
+    when: z.union([StartWhen, z.enum(['now', 'at', 'limit_reset'])]).default('now'),
+    runAt: z.iso.datetime({ offset: true }).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.when === 'at' && !value.runAt)
+      ctx.addIssue({ code: 'custom', path: ['runAt'], message: 'runAt is required when when is at' });
+  })
+  .transform((value) => ({
+    ids: value.ids,
+    ...RerunSchedule.parse({ when: value.when, runAt: value.runAt }),
+  }));
+export type RerunTasksBody = z.input<typeof RerunTasksBody>;
 export const ApprovePlanBody = StartTaskBody;
 export const RejectPlanBody = z.object({ feedback: z.string().trim().min(1).max(4000) }).strict();
 export const AddPlanTaskBody = z

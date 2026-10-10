@@ -44,7 +44,7 @@ export function columnOf(status: Task['status']): ColumnId {
 export const CANCELLABLE: Task['status'][] = ['scheduled', 'queued', 'claimed', 'running', 'rate_limited'];
 
 /** Finished tasks that can be moved back to the backlog. */
-export const RESTORABLE: Task['status'][] = ['failed', 'denied', 'cancelled', 'rate_limited'];
+export const RESTORABLE: Task['status'][] = ['done', 'failed', 'denied', 'cancelled', 'rate_limited'];
 
 export const restorable = (t: Task): boolean =>
   RESTORABLE.includes(t.status) && t.kind !== 'goal' && t.parentTaskId === null;
@@ -75,6 +75,8 @@ export interface BacklogApi {
   restoreSelected: Set<string>;
   toggleRestore: (taskId: string) => void;
   toBacklog: (taskIds: string[]) => void;
+  rerun: (ids: string[]) => void;
+  duplicate: (id: string) => void;
 }
 
 export function buildLookup(snapshot: BoardSnapshot): Lookup {

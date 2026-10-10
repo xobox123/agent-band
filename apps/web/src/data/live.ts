@@ -1,7 +1,7 @@
 import type { Api } from '../api/client.ts';
 import type { EventsClient } from '../api/events.ts';
 import type { CreateTaskBody } from '@agent-band/contracts';
-import { toAccount, toAgent, toGroup, toTargetDto, toTask } from './adapt.ts';
+import { toAccount, toAgent, toGroup, toRun, toTargetDto, toTask } from './adapt.ts';
 import type { NewTask } from './types.ts';
 import type { BoardDataSource } from './source.ts';
 import type { BoardEvent, Run } from './types.ts';
@@ -99,6 +99,22 @@ export function createLiveDataSource(api: Api, events: EventsClient, throttleMs 
     },
     async startTasks(ids, when) {
       await api.tasks.start(ids, when);
+    },
+    async rerunTasks(ids, when) {
+      await api.tasks.rerunMany(ids, when);
+    },
+    async taskRuns(id) {
+      const items: Run[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await api.runs.list({ taskId: id, pageCursor: cursor, limit: 200 });
+        items.push(...page.items.map(toRun));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return items;
+    },
+    async duplicateTask(id) {
+      await api.tasks.duplicate(id);
     },
     async toBacklog(ids) {
       await api.tasks.toBacklog(ids);
