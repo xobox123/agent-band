@@ -59,6 +59,8 @@ export const RunSpec = z.object({
   geminiSettingsPath: z.string().optional(),
   /** Antigravity PreToolUse hook command; the adapter registers it in the workspace .agents/hooks.json for the run. */
   antigravityHookCommand: z.string().optional(),
+  /** File outside the workspace that holds the sha256 of that hooks.json, checked by the hook before each decision. */
+  antigravityHookState: z.string().optional(),
   /** Run time limit; Antigravity gets it as --print-timeout, the worker enforces it for every provider. */
   maxRunMinutes: z.number().positive().optional(),
   /** Claude session to resume on a leader continuation turn. */

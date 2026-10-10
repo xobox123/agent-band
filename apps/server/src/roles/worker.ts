@@ -455,7 +455,7 @@ export function createWorker(deps: WorkerDeps): Worker {
           ...(isGoal ? { mcpUrl: mcpUrl(deps.apiPort, run.id) } : {}),
         });
       }
-      const antigravityHookCommand = usesAgyHook(c.account)
+      const agyConfig = usesAgyHook(c.account)
         ? await writeAgyRunConfig({ dir, runId: run.id, port: deps.apiPort })
         : undefined;
       if (isGoal && !geminiSettingsPath) {
@@ -485,7 +485,9 @@ export function createWorker(deps: WorkerDeps): Worker {
         ...(isGoal && !mcpServerUrl && !geminiSettingsPath ? { mcpConfigPath } : {}),
         ...(mcpServerUrl ? { mcpServerUrl } : {}),
         ...(geminiSettingsPath ? { geminiSettingsPath } : {}),
-        ...(antigravityHookCommand ? { antigravityHookCommand } : {}),
+        ...(agyConfig
+          ? { antigravityHookCommand: agyConfig.command, antigravityHookState: agyConfig.stateFile }
+          : {}),
         ...(c.policy.maxRunMinutes !== undefined ? { maxRunMinutes: c.policy.maxRunMinutes } : {}),
         ...(resumeSessionId ? { resumeSessionId } : {}),
         ...(c.policy.allowedTools ? { allowedTools: c.policy.allowedTools } : {}),

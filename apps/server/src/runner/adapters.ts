@@ -1,4 +1,3 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
@@ -10,9 +9,10 @@ import {
   type RunHandle,
   RunSpec,
 } from '@agent-band/contracts';
+import { registerAgyHook } from './agy-hook.ts';
 import { cliCommand, missingCliMessage, withCliPath } from './cli-locator.ts';
 import { geminiAllowedTools } from './gemini-tools.ts';
-import { object, parseAgyLine, parseClaudeLine, parseCodexLine, parseGeminiLine } from './parsers.ts';
+import { parseAgyLine, parseClaudeLine, parseCodexLine, parseGeminiLine } from './parsers.ts';
 import { eventQueue, spawnJsonLines } from './process.ts';
 import { readCodexRateLimits } from './rollout.ts';
 
@@ -201,42 +201,21 @@ export function agyEnv(s: RunSpec): Record<string, string | undefined> {
   };
 }
 
-const AGY_HOOK_NAME = 'agent-band-policy';
-
-/**
- * Registers the policy hook in the workspace .agents/hooks.json (agy loads it headless, without a
- * trust prompt) and returns the function that puts the previous file state back. The user's global
- * hooks and settings are never touched.
- */
-export function registerAgyHook(workDir: string, hookCommand: string): () => void {
-  const dir = join(workDir, '.agents');
-  const file = join(dir, 'hooks.json');
-  const dirExisted = existsSync(dir);
-  const previous = existsSync(file) ? readFileSync(file, 'utf8') : undefined;
-  let hooks: Record<string, unknown> = {};
-  try {
-    if (previous !== undefined) hooks = object(JSON.parse(previous));
-  } catch {
-    // an unreadable file is replaced for the run and restored afterwards
-  }
-  hooks[AGY_HOOK_NAME] = {
-    PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: hookCommand, timeout: 10 }] }],
-  };
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(file, JSON.stringify(hooks, null, 2));
-  return () => {
-    if (previous !== undefined) writeFileSync(file, previous);
-    else rmSync(file, { force: true });
-    if (!dirExisted) rmSync(dir, { recursive: true, force: true });
-  };
-}
-
 export class AntigravityAdapter implements ProviderAdapter {
   readonly provider = 'antigravity';
   start(s: RunSpec): RunHandle {
-    const restore = s.antigravityHookCommand
-      ? registerAgyHook(s.workDir, s.antigravityHookCommand)
-      : undefined;
+    let restore: (() => void) | undefined;
+    try {
+      if (s.antigravityHookCommand && s.antigravityHookState) {
+        restore = registerAgyHook(s.workDir, s.antigravityHookCommand, s.antigravityHookState);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const queue = eventQueue();
+      queue.push({ kind: 'error', message });
+      queue.end();
+      return { events: queue.events, done: Promise.resolve({ exitCode: 1, error: message }), cancel() {} };
+    }
     return spawnJsonLines(
       {
         cmd: cliCommand('agy'),

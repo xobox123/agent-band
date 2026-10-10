@@ -1,9 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { NormalizedEvent, type RunSpec } from '@agent-band/contracts';
-import { agyArgs, agyEnv, registerAgyHook } from './adapters.ts';
+import { agyArgs, agyEnv, AntigravityAdapter } from './adapters.ts';
+import { registerAgyHook } from './agy-hook.ts';
+import { CliLocator, getCliLocator, setCliLocator } from './cli-locator.ts';
 import { fakeBins } from './fake-cli.testkit.ts';
 import { parseAgyModels } from './models.ts';
 import { parseAgyLine } from './parsers.ts';
@@ -191,39 +195,175 @@ describe('agyEnv', () => {
 describe('registerAgyHook', () => {
   const work = () => mkdtempSync(join(tmpdir(), 'agy-work-'));
 
-  it('writes the PreToolUse hook and removes the whole .agents dir afterwards', () => {
+  const state = () => join(mkdtempSync(join(tmpdir(), 'agy-state-')), 'hooks.sha256');
+  const hooksOf = (dir: string) => join(dir, '.agents', 'hooks.json');
+  const repo = () => {
     const dir = work();
-    const restore = registerAgyHook(dir, 'node "/r/hook.mjs"');
-    expect(JSON.parse(readFileSync(join(dir, '.agents', 'hooks.json'), 'utf8'))).toEqual({
+    git(dir, 'init', '-q');
+    git(dir, 'config', 'user.email', 'a@b.c');
+    git(dir, 'config', 'user.name', 'a');
+    writeFileSync(join(dir, 'a.txt'), 'a');
+    git(dir, 'add', '.');
+    git(dir, 'commit', '-qm', 'init');
+    return dir;
+  };
+  function git(dir: string, ...args: string[]): string {
+    return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' });
+  }
+
+  it('writes a read-only PreToolUse hook with its hash and removes the whole .agents dir afterwards', () => {
+    const dir = work();
+    const stateFile = state();
+    const restore = registerAgyHook(dir, 'node "/r/hook.mjs"', stateFile);
+    const text = readFileSync(hooksOf(dir), 'utf8');
+    expect(JSON.parse(text)).toEqual({
       'agent-band-policy': {
         PreToolUse: [
-          { matcher: '*', hooks: [{ type: 'command', command: 'node "/r/hook.mjs"', timeout: 10 }] },
+          {
+            matcher: '*',
+            hooks: [
+              {
+                type: 'command',
+                command: `node "/r/hook.mjs" ${JSON.stringify(hooksOf(dir))} ${JSON.stringify(stateFile)}`,
+                timeout: 10,
+              },
+            ],
+          },
         ],
       },
     });
+    expect(statSync(hooksOf(dir)).mode & 0o222).toBe(0);
+    expect(readFileSync(stateFile, 'utf8')).toBe(createHash('sha256').update(text).digest('hex'));
     restore();
     expect(existsSync(join(dir, '.agents'))).toBe(false);
+    expect(existsSync(stateFile)).toBe(false);
   });
 
-  it("merges into and then restores the repo's own hooks.json byte for byte", () => {
+  it("merges into and then restores the workspace's own untracked hooks.json byte for byte", () => {
     const dir = work();
     mkdirSync(join(dir, '.agents'));
-    const own = '{"lint":{"PostToolUse":[]}}\n';
-    writeFileSync(join(dir, '.agents', 'hooks.json'), own);
-    const restore = registerAgyHook(dir, 'node x');
-    const merged = JSON.parse(readFileSync(join(dir, '.agents', 'hooks.json'), 'utf8')) as object;
-    expect(Object.keys(merged)).toEqual(['lint', 'agent-band-policy']);
+    const own = '{\n  "lint": {\n    "PostToolUse": []\n  }\n}\n';
+    writeFileSync(hooksOf(dir), own);
+    const restore = registerAgyHook(dir, 'node x', state());
+    expect(Object.keys(JSON.parse(readFileSync(hooksOf(dir), 'utf8')) as object)).toEqual([
+      'lint',
+      'agent-band-policy',
+    ]);
     restore();
-    expect(readFileSync(join(dir, '.agents', 'hooks.json'), 'utf8')).toBe(own);
+    expect(JSON.parse(readFileSync(hooksOf(dir), 'utf8'))).toEqual({ lint: { PostToolUse: [] } });
   });
 
   it('keeps a pre-existing .agents dir that had no hooks.json', () => {
     const dir = work();
     mkdirSync(join(dir, '.agents'));
     writeFileSync(join(dir, '.agents', 'rules.json'), '{}');
-    registerAgyHook(dir, 'node x')();
+    registerAgyHook(dir, 'node x', state())();
     expect(existsSync(join(dir, '.agents', 'rules.json'))).toBe(true);
-    expect(existsSync(join(dir, '.agents', 'hooks.json'))).toBe(false);
+    expect(existsSync(hooksOf(dir))).toBe(false);
+  });
+
+  it('keeps git status clean during the run, even after git add -A, and restores info/exclude', () => {
+    const dir = repo();
+    const exclude = join(dir, '.git', 'info', 'exclude');
+    const before = readFileSync(exclude, 'utf8');
+    const restore = registerAgyHook(dir, 'node x', state());
+    expect(git(dir, 'status', '--porcelain')).toBe('');
+    git(dir, 'add', '-A');
+    expect(git(dir, 'diff', '--cached', '--name-only')).toBe('');
+    restore();
+    expect(readFileSync(exclude, 'utf8')).toBe(before);
+    expect(git(dir, 'status', '--porcelain')).toBe('');
+  });
+
+  it('refuses to start when the repository tracks .agents/hooks.json', () => {
+    const dir = repo();
+    mkdirSync(join(dir, '.agents'));
+    writeFileSync(hooksOf(dir), '{}');
+    git(dir, 'add', '.');
+    git(dir, 'commit', '-qm', 'hooks');
+    expect(() => registerAgyHook(dir, 'node x', state())).toThrow(/tracks \.agents\/hooks\.json/);
+    expect(readFileSync(hooksOf(dir), 'utf8')).toBe('{}');
+  });
+
+  it('refuses a second run in the same workspace until the first one is restored', () => {
+    const dir = work();
+    const restore = registerAgyHook(dir, 'node x', state());
+    expect(() => registerAgyHook(dir, 'node y', state())).toThrow(/another Antigravity run/);
+    restore();
+    registerAgyHook(dir, 'node y', state())();
+  });
+
+  it('removes the stale entry of a crashed run (its script is gone) but refuses a live one', () => {
+    const dir = work();
+    const scripts = mkdtempSync(join(tmpdir(), 'agy-script-'));
+    mkdirSync(join(dir, '.agents'));
+    const entry = (script: string) => ({
+      'agent-band-policy': {
+        PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: `node "${script}" x y` }] }],
+      },
+      lint: {},
+    });
+    writeFileSync(hooksOf(dir), JSON.stringify(entry(join(scripts, 'gone.mjs'))));
+    const restore = registerAgyHook(dir, 'node x', state());
+    restore();
+    expect(JSON.parse(readFileSync(hooksOf(dir), 'utf8'))).toEqual({ lint: {} });
+    const live = join(scripts, 'live.mjs');
+    writeFileSync(live, '');
+    writeFileSync(hooksOf(dir), JSON.stringify(entry(live)));
+    expect(() => registerAgyHook(dir, 'node x', state())).toThrow(/another Antigravity run/);
+  });
+});
+
+describe('AntigravityAdapter hook lifecycle', () => {
+  const base = (workDir: string): RunSpec => ({
+    ...spec,
+    workDir,
+    antigravityHookCommand: 'node "/r/hook.mjs"',
+    antigravityHookState: join(mkdtempSync(join(tmpdir(), 'agy-state-')), 'hooks.sha256'),
+  });
+  const originalLocator = getCliLocator();
+  const originalPath = process.env.PATH;
+  const bin = async () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'agy-bin-')), 'agy');
+    writeFileSync(path, '#!/bin/sh\n[ "$1" = "--version" ] && echo 1.0.0 && exit 0\nsleep 30\n', {
+      mode: 0o755,
+    });
+    const locator = new CliLocator({ overrides: { agy: path }, shell: '/nonexistent', knownDirs: [] });
+    await locator.detectAll();
+    setCliLocator(locator);
+  };
+  afterEach(() => {
+    setCliLocator(originalLocator);
+    process.env.PATH = originalPath;
+  });
+
+  it('removes the hook file after a missing CLI', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agy-work-'));
+    setCliLocator(new CliLocator({ overrides: {}, shell: '/nonexistent', knownDirs: [] }));
+    process.env.PATH = dir; // nothing named agy there: the spawn fails, never reaching a real CLI
+    const handle = new AntigravityAdapter().start(base(dir));
+    await handle.done;
+    expect(existsSync(join(dir, '.agents'))).toBe(false);
+  });
+
+  it('keeps the hook in place while running and removes it after a cancel', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agy-work-'));
+    await bin();
+    const handle = new AntigravityAdapter().start(base(dir));
+    expect(existsSync(join(dir, '.agents', 'hooks.json'))).toBe(true);
+    handle.cancel();
+    await handle.done;
+    expect(existsSync(join(dir, '.agents'))).toBe(false);
+  });
+
+  it('fails the run instead of starting when the workspace is not free', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agy-work-'));
+    await bin();
+    const first = new AntigravityAdapter().start(base(dir));
+    const second = new AntigravityAdapter().start(base(dir));
+    expect((await second.done).error).toMatch(/another Antigravity run/);
+    first.cancel();
+    await first.done;
   });
 });
 

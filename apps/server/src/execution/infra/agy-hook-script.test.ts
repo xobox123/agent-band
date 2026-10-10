@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -36,18 +39,33 @@ const payload = (name: string, args: object) => ({
 });
 const READ = payload('view_file', { AbsolutePath: '/w/a.txt', StartLine: 1, EndLine: 5 });
 
-async function runHook(port: number, opts: { token?: string; stdin?: string } = {}) {
+async function runHook(
+  port: number,
+  opts: {
+    token?: string;
+    stdin?: string | ((hooksFile: string) => object);
+    tamper?: 'edit' | 'delete' | 'nostate';
+  } = {},
+) {
   const dir = await tmp();
-  const command = await writeAgyRunConfig({ dir, runId: RUN, port });
+  const { command, stateFile } = await writeAgyRunConfig({ dir, runId: RUN, port });
   const script = JSON.parse(command.replace(/^node /, '')) as string;
-  const child = spawn(process.execPath, [script], {
+  const hooksFile = join(await tmp(), '.agents', 'hooks.json');
+  mkdirSync(dirname(hooksFile));
+  writeFileSync(hooksFile, '{"agent-band-policy":{}}');
+  writeFileSync(stateFile, createHash('sha256').update(readFileSync(hooksFile)).digest('hex'));
+  if (opts.tamper === 'edit') writeFileSync(hooksFile, '{}');
+  if (opts.tamper === 'delete') rmSync(hooksFile);
+  if (opts.tamper === 'nostate') rmSync(stateFile);
+  const child = spawn(process.execPath, [script, hooksFile, stateFile], {
     env: { ...process.env, ...(opts.token === undefined ? {} : { AGENT_BAND_RUN_TOKEN: opts.token }) },
   });
   let out = '';
   child.stdout.on('data', (c: Buffer) => (out += c.toString()));
-  child.stdin.end(opts.stdin ?? JSON.stringify(READ));
+  const stdin = typeof opts.stdin === 'function' ? JSON.stringify(opts.stdin(hooksFile)) : opts.stdin;
+  child.stdin.end(stdin ?? JSON.stringify(READ));
   const code = await new Promise<number | null>((r) => child.on('close', r));
-  return { code, out, command };
+  return { code, out, command, hooksFile };
 }
 
 const answer = (out: string) => JSON.parse(out) as { decision: string; reason?: string };
@@ -137,6 +155,61 @@ describe('generated Antigravity PreToolUse hook', () => {
     expect(bodies[3]?.toolInput).toEqual({ url: 'https://example.com' });
     expect(bodies[5]?.toolInput).toEqual({ path: '/w/src' });
     expect(bodies[6]?.toolInput).toEqual({ path: '/w/packages' });
+  });
+
+  it('denies every call once the hook config was edited, deleted or lost its recorded hash', async () => {
+    let asked = 0;
+    const port = await serve((_req, res) => {
+      asked++;
+      res.end(JSON.stringify({ decision: 'allow' }));
+    });
+    for (const tamper of ['edit', 'delete', 'nostate'] as const) {
+      const r = await runHook(port, { token: 't', tamper });
+      expect(answer(r.out).decision).toBe('deny');
+      expect(answer(r.out).reason).toMatch(/hook config/);
+    }
+    expect(asked).toBe(0);
+  });
+
+  it('denies writes, edits and shell commands that touch the .agents directory', async () => {
+    let asked = 0;
+    const port = await serve((_req, res) => {
+      asked++;
+      res.end(JSON.stringify({ decision: 'allow' }));
+    });
+    const denied: ((hooksFile: string) => object)[] = [
+      (f) => payload('write_to_file', { TargetFile: f }),
+      (f) => payload('replace_file_content', { TargetFile: join(dirname(f), 'rules.json') }),
+      (f) => payload('write_to_file', { TargetFile: join(dirname(dirname(f)), 'src', '..', '.agents', 'x') }),
+      () => payload('run_command', { CommandLine: 'rm .agents/hooks.json' }),
+    ];
+    for (const build of denied) {
+      const r = await runHook(port, { token: 't', stdin: build });
+      expect(answer(r.out).reason).toContain('.agents');
+    }
+    expect(asked).toBe(0);
+    const ok = await runHook(port, {
+      token: 't',
+      stdin: (f) => payload('write_to_file', { TargetFile: join(dirname(dirname(f)), 'a.txt') }),
+    });
+    expect(answer(ok.out).decision).toBe('allow');
+  });
+
+  it('passes the glob pattern of find_by_name to the policy', async () => {
+    let body: { toolName?: string; toolInput?: unknown } = {};
+    const port = await serve((req, res) => {
+      let b = '';
+      req.on('data', (c: Buffer) => (b += c.toString()));
+      req.on('end', () => {
+        body = JSON.parse(b) as typeof body;
+        res.end(JSON.stringify({ decision: 'allow' }));
+      });
+    });
+    await runHook(port, {
+      token: 't',
+      stdin: JSON.stringify(payload('find_by_name', { SearchDirectory: '/w', Pattern: '/etc/*' })),
+    });
+    expect(body.toolInput).toEqual({ path: '/w', pattern: '/etc/*' });
   });
 
   it('denies without asking the server what it cannot judge: unknown tools, MCP, subagents, no path', async () => {

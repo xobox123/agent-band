@@ -1,4 +1,5 @@
 export { parseClaudeLine, parseCodexLine, parseGeminiLine, parseAgyLine, geminiResetsAt } from './parsers.ts';
+export { registerAgyHook } from './agy-hook.ts';
 export { AGY_CLAUDE_NAME_OF, AGY_UNCHECKABLE_TOOLS } from './agy-tools.ts';
 export { CLAUDE_NAME_OF, geminiAllowedTools, geminiToolNames } from './gemini-tools.ts';
 export { spawnJsonLines } from './process.ts';
@@ -6,7 +7,6 @@ export { readCodexRateLimits } from './rollout.ts';
 export {
   agyArgs,
   agyEnv,
-  registerAgyHook,
   claudeArgs,
   codexArgs,
   codexMcpOverrides,
