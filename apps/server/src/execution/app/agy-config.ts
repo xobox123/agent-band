@@ -10,10 +10,14 @@ export async function writeAgyRunConfig(opts: {
   dir: string;
   runId: string;
   port: number;
+  mode: 'read-only' | 'edit' | 'full-auto';
 }): Promise<{ command: string; stateFile: string }> {
   const dir = join(opts.dir, 'antigravity');
   await mkdir(dir, { recursive: true });
   const script = join(dir, 'authorize-tool.mjs');
-  await writeFile(script, agyHookScript({ port: opts.port, runId: opts.runId }));
+  await writeFile(
+    script,
+    agyHookScript({ port: opts.port, runId: opts.runId, requirePreApproved: opts.mode !== 'full-auto' }),
+  );
   return { command: `node ${JSON.stringify(script)}`, stateFile: join(dir, 'hooks.sha256') };
 }

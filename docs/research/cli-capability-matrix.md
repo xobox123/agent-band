@@ -258,6 +258,25 @@ A supported standalone non-interactive email/org command is **unverified**. Orga
 
 The baseline deprecates `--allowed-tools` in favor of the policy engine, and supports `plan`, `--policy` and `--admin-policy`. Exact introduction/removal release boundaries are **unverified**; source-confirmed availability at 0.62.0 should not be projected onto older installations. Sources: [CLI definitions](https://github.com/google-gemini/gemini-cli/blob/v0.62.0/packages/cli/src/config/config.ts), [0.62.0 release](https://github.com/google-gemini/gemini-cli/releases/tag/v0.62.0). Hook failure semantics also have the docs/source conflict described above.
 
+## Antigravity CLI (`agy`)
+
+Verified locally with `agy` 1.3.x (ADR 0004); not read from upstream docs.
+
+### Headless permissions (verified)
+
+- `--mode accept-edits` auto-approves file edits only. A shell command needs the `command` permission, which headless `--print` cannot prompt for, so agy auto-denies it. The run still exits `SUCCESS`, and the stream-json `result` carries `denied_actions: [{action: "command"}]` (stderr: `tool run_command failed: permission check failed ... user denied permission to run command` and `agy auto-denied permissions that headless mode cannot ask for: command`).
+- agy's own hint is an allow rule under `permissions.allow` in `settings.json` (for example `command(<target>)`). That file is the user's global agy settings (`~/.gemini`); agy has no flag or variable for a per-run settings path, so agent-band does not use allow rules (they would mean editing global config).
+- `--dangerously-skip-permissions` auto-approves every permission request.
+- The PreToolUse hook (workspace `.agents/hooks.json`) still runs under `--dangerously-skip-permissions`. Checked with a probe hook in a scratch workspace: with the flag, a `run_command` the hook allowed ran (`echo hello > out.txt` created the file), and one the hook denied did not (step `ERROR`: `tool call denied by pre-tool hook: <reason>`).
+
+### Decision
+
+An `edit` run with the policy hook registered uses `--dangerously-skip-permissions`, and the hook takes over the permission prompt. For `read-only` and `edit` runs it denies `Bash`, `WebFetch` and `WebSearch` unless the authorize-tool answer carries `preApproved: true` (the effective pre-approved rules and presets: shell-node, shell-git, shell-curl, web-read). Every other call is judged by the normal policy (denied/allowed tools, workDirs), and tools the hook cannot judge are denied. `full-auto` keeps the skip flag without the extra check; `read-only` stays on `--mode plan`; an edit run without the hook falls back to `--mode accept-edits`. Least privilege is preserved: nothing runs that the policy did not pre-approve.
+
+### Denied actions end a run as failed
+
+The parsers turn agy `result.denied_actions`, Claude `result.permission_denials` and Codex `declined` items into a `permission_denied` event. A run that reports denials and left the git working tree unchanged ends `failed` with `tools were denied: <list>` (there is no `awaiting_input` status yet), and project checks do not run. If the tree cannot be inspected (not a git work tree) the denial alone does not fail the run.
+
 ## Implications for agent-band
 
 1. Pin supported versions and OS sandbox backends; maintain sanitized event and identity fixtures. Test allow, deny, hook timeout, malformed response, service outage, uncovered tool and child-process cancellation cases.

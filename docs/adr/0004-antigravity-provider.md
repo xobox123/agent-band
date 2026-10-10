@@ -13,6 +13,9 @@ Google stopped serving Gemini CLI for Google AI Pro/Ultra and Code Assist for in
   - a run refuses to start when the repository tracks that file or when another run uses the same workspace; a leftover entry of a crashed run (its script is gone) is removed first;
   - the hook script lives in the run dir and checks the sha256 of the file (kept outside the workspace) before every decision, denies when it differs, and denies writes, edits and shell commands that touch `.agents`.
 
+- Headless `agy` cannot prompt, so under `--mode accept-edits` it auto-denies every shell command. Its allow rules live in the global `settings.json` (no per-run path), which runs must not touch. An `edit` run with the hook therefore passes `--dangerously-skip-permissions`; verified: the PreToolUse hook still enforces its deny under that flag. The hook then acts as the permission prompt: shell and web tools are allowed only when a pre-approved rule or preset covers them (`preApproved` in the authorize-tool answer), everything else follows the normal policy, and unjudgeable tools stay denied. Details in `docs/research/cli-capability-matrix.md`.
+- A run that reports denied tools (agy `denied_actions`, Claude `permission_denials`, Codex declined items) and changed no files ends `failed` with `tools were denied: <list>` instead of `done`, and its checks do not run.
+
 ## Consequences
 
 - A tampered or removed hook file denies every further tool call instead of silently disabling the policy.

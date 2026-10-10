@@ -172,9 +172,16 @@ export class GeminiAdapter implements ProviderAdapter {
 /** Variables that would switch an Antigravity run from the machine's Google login to an API key. */
 const AGY_AUTH_ENV = ['GEMINI_API_KEY', 'ANTIGRAVITY_API_KEY', 'GOOGLE_GEMINI_BASE_URL'];
 
+const agyHooked = (s: RunSpec): boolean => Boolean(s.antigravityHookCommand && s.antigravityHookState);
+
 /**
  * agy has no config-dir variable: its login sits in the OS keyring and its settings under ~/.gemini,
- * so every run uses the machine's one default account.
+ * so every run uses the machine's one default account. Headless agy cannot ask for permission and
+ * auto-denies shell commands (accept-edits); allow rules exist only in the global settings.json, which
+ * runs must not touch. An edit run
+ * with the policy hook therefore skips agy's own prompts and the hook decides instead: it still
+ * denies under --dangerously-skip-permissions and lets shell and web tools through only when pre-approved.
+ * Without the hook, edit stays on accept-edits.
  */
 export function agyArgs(s: RunSpec): string[] {
   const prompt = s.systemPrompt !== undefined ? `${s.systemPrompt}\n\n${s.prompt}` : s.prompt;
@@ -183,7 +190,7 @@ export function agyArgs(s: RunSpec): string[] {
     `--print=${prompt}`,
     '--output-format',
     'stream-json',
-    ...(s.mode === 'full-auto'
+    ...(s.mode === 'full-auto' || (s.mode === 'edit' && agyHooked(s))
       ? ['--dangerously-skip-permissions']
       : ['--mode', s.mode === 'read-only' ? 'plan' : 'accept-edits']),
   ];

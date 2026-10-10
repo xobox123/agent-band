@@ -60,7 +60,11 @@ export function parseClaudeLine(line: string): NormalizedEvent[] {
   }
   if (e.type === 'result') {
     const u = object(e.usage);
+    const denied = Array.isArray(e.permission_denials)
+      ? e.permission_denials.map((d) => object(d).tool_name).filter((n) => typeof n === 'string')
+      : [];
     return [
+      ...(denied.length > 0 ? [{ kind: 'permission_denied' as const, actions: denied }] : []),
       {
         kind: 'usage',
         inputTokens: number(u.input_tokens) + number(u.cache_creation_input_tokens),
@@ -82,7 +86,19 @@ export function parseCodexLine(line: string): NormalizedEvent[] {
     if (item.type === 'reasoning') return [];
     if (item.type === 'agent_message')
       return typeof item.text === 'string' ? [{ kind: 'text', text: item.text }] : [];
-    return typeof item.type === 'string' ? [{ kind: 'tool', name: item.type, input: item }] : [];
+    if (typeof item.type !== 'string') return [];
+    const declined = item.status === 'declined';
+    return [
+      { kind: 'tool', name: item.type, input: item },
+      ...(declined
+        ? [
+            {
+              kind: 'permission_denied' as const,
+              actions: [typeof item.command === 'string' ? `${item.type}: ${item.command}` : item.type],
+            },
+          ]
+        : []),
+    ];
   }
   if (e.type === 'turn.completed') {
     const u = object(e.usage);
@@ -279,14 +295,7 @@ export function parseAgyLine(line: string, now = Date.now()): NormalizedEvent[] 
     const denied = Array.isArray(r.denied_actions)
       ? r.denied_actions.map((d) => object(d).action).filter((a) => typeof a === 'string')
       : [];
-    return denied.length > 0
-      ? [
-          {
-            kind: 'stderr',
-            text: `agy auto-denied permissions that headless mode cannot ask for: ${denied.join(', ')}`,
-          },
-        ]
-      : [];
+    return denied.length > 0 ? [{ kind: 'permission_denied', actions: denied }] : [];
   }
   return [];
 }

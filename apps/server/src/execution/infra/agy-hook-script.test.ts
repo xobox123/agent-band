@@ -45,10 +45,16 @@ async function runHook(
     token?: string;
     stdin?: string | ((hooksFile: string) => object);
     tamper?: 'edit' | 'delete' | 'nostate';
+    mode?: 'read-only' | 'edit' | 'full-auto';
   } = {},
 ) {
   const dir = await tmp();
-  const { command, stateFile } = await writeAgyRunConfig({ dir, runId: RUN, port });
+  const { command, stateFile } = await writeAgyRunConfig({
+    dir,
+    runId: RUN,
+    port,
+    mode: opts.mode ?? 'full-auto',
+  });
   const script = JSON.parse(command.replace(/^node /, '')) as string;
   const hooksFile = join(await tmp(), '.agents', 'hooks.json');
   mkdirSync(dirname(hooksFile));
@@ -92,6 +98,33 @@ describe('generated Antigravity PreToolUse hook', () => {
       res.end(JSON.stringify({ nonsense: true }));
     });
     expect(answer((await runHook(ok, { token: 't' })).out).reason).toContain('invalid');
+  });
+
+  it('outside full-auto only lets shell and web tools through when a pre-approved rule covers them', async () => {
+    const port = await serve((req, res) => {
+      let body = '';
+      req.on('data', (c: Buffer) => (body += c.toString()));
+      req.on('end', () => {
+        const { toolName, toolInput } = JSON.parse(body) as {
+          toolName: string;
+          toolInput: { command?: string };
+        };
+        const approved = toolName === 'Bash' && toolInput.command === 'npm install --silent';
+        res.end(JSON.stringify({ decision: 'allow', reason: 'ok', ...(approved && { preApproved: true }) }));
+      });
+    });
+    const call = (name: string, args: object, mode: 'edit' | 'full-auto' = 'edit') =>
+      runHook(port, { token: 't', mode, stdin: JSON.stringify(payload(name, args)) }).then((r) =>
+        answer(r.out),
+      );
+    expect((await call('run_command', { CommandLine: 'npm install --silent' })).decision).toBe('allow');
+    const rejected = await call('run_command', { CommandLine: 'rm -rf x' });
+    expect(rejected.decision).toBe('deny');
+    expect(rejected.reason).toContain('not pre-approved');
+    expect((await call('read_url_content', { Url: 'https://example.com' })).decision).toBe('deny');
+    expect((await call('search_web', { query: 'x' })).decision).toBe('deny');
+    expect((await call('write_to_file', { TargetFile: '/w/b' })).decision).toBe('allow');
+    expect((await call('run_command', { CommandLine: 'rm -rf x' }, 'full-auto')).decision).toBe('allow');
   });
 
   it('turns a server deny into a deny decision with the reason', async () => {

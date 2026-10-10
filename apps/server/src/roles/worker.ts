@@ -42,6 +42,7 @@ import {
   mcpUrl,
   writeMcpConfig,
 } from '../execution/index.ts';
+import { treeFingerprint } from './tree-fingerprint.ts';
 import { FRESH_SNAPSHOT_MS } from '../modules/usage/index.ts';
 import { LEADER_PROMPT, PLAN_APPROVAL_PROMPT } from './leader-prompt.ts';
 
@@ -456,7 +457,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         });
       }
       const agyConfig = usesAgyHook(c.account)
-        ? await writeAgyRunConfig({ dir, runId: run.id, port: deps.apiPort })
+        ? await writeAgyRunConfig({ dir, runId: run.id, port: deps.apiPort, mode: c.mode })
         : undefined;
       if (isGoal && !geminiSettingsPath) {
         const goal = await deps.tasks.getGoalState(deps.db, orgId, task.id);
@@ -516,6 +517,8 @@ export function createWorker(deps: WorkerDeps): Worker {
           handle?.cancel();
         }, c.policy.maxRunMinutes * minuteMs);
       }
+      const treeBefore = await treeFingerprint(task.workDir);
+      const denied = new Set<string>();
       const attempt = async (s: RunSpec) => {
         let worked = false;
         handle = adapter.start(s);
@@ -527,6 +530,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         for await (const event of h.events) {
           if (event.kind === 'error') lastError = event.message;
           if (event.kind === 'text' || event.kind === 'tool') worked = true;
+          if (event.kind === 'permission_denied') for (const action of event.actions) denied.add(action);
           await append(run.id, event);
           if (event.kind === 'rate_limit') await recordLimits(c.account.id, event);
         }
@@ -545,6 +549,14 @@ export function createWorker(deps: WorkerDeps): Worker {
         result.error ??
         (result.exitCode !== 0 && !entry.userCancelled ? `exit code ${result.exitCode}` : undefined);
       if (result.exitCode === 0 && !result.error) failure = undefined;
+      if (!failure && denied.size > 0 && treeBefore !== undefined) {
+        // There is no awaiting_input status yet: a run that was denied tools and changed nothing fails,
+        // so its checks never run on an unchanged tree and the owner sees why.
+        if ((await treeFingerprint(task.workDir)) === treeBefore) {
+          failure = `tools were denied: ${[...denied].join(', ')}`;
+          lastError = failure;
+        }
+      }
       const succeeded = !failure && !timedOut && !forceStop && !entry.userCancelled;
       let review: TaskReview | undefined;
       if (succeeded && task.branch && task.kind !== 'goal' && deps.projectRuns) {
