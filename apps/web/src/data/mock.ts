@@ -482,7 +482,7 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
     tasks = tasks.map((x) => (x.id === next.id ? next : x));
   };
 
-  const BACKLOG_SOURCES: Task['status'][] = ['failed', 'denied', 'cancelled', 'rate_limited'];
+  const BACKLOG_SOURCES: Task['status'][] = ['done', 'failed', 'denied', 'cancelled', 'rate_limited'];
   const startOne = (t: Task, when: StartWhen, stamp: string) => {
     const at = when.mode === 'at' ? when.at : when.mode === 'limit_reset' ? iso(now() + 95 * MIN) : null;
     replace({
@@ -645,6 +645,48 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
       if (bad) throw new Error(`${bad.key} cannot be started.`);
       const stamp = iso(now());
       for (const t of found) startOne(t, when, stamp);
+      emit();
+    },
+    async rerunTasks(ids, when) {
+      await delay();
+      const found = [...new Set(ids)].map(findTask);
+      if (found.some((t) => !BACKLOG_SOURCES.includes(t.status) || t.kind === 'goal' || t.parentTaskId))
+        throw new Error('These tasks cannot run again.');
+      for (const t of found)
+        startOne({ ...t, error: null, resumeAt: null, attempt: 1, runId: null }, when, iso(now()));
+      emit();
+    },
+    async taskRuns(id) {
+      await delay();
+      return runs.filter((r) => r.taskId === id);
+    },
+    async duplicateTask(id) {
+      await delay();
+      const t = findTask(id);
+      if (t.kind === 'goal' || t.parentTaskId) throw new Error('Goal tasks cannot be duplicated.');
+      const copyId = `copy-${crypto.randomUUID()}`;
+      tasks.push({
+        ...t,
+        id: copyId,
+        key: copyId,
+        dependsOn: [],
+        scheduleId: null,
+        workDir:
+          t.workDir === `/Users/dev/agent-band/workspaces/${t.key}`
+            ? `/Users/dev/agent-band/workspaces/${copyId}`
+            : t.workDir,
+        title: `${t.title.slice(0, 193)} (copy)`,
+        status: 'draft',
+        runId: null,
+        runAt: null,
+        resumeAt: null,
+        error: null,
+        noEligibleReason: null,
+        attempt: 1,
+        startAfterReset: false,
+        createdAt: iso(now()),
+        updatedAt: iso(now()),
+      });
       emit();
     },
     async toBacklog(ids) {

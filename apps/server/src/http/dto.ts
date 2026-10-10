@@ -41,6 +41,7 @@ export function taskDto(t: Task): TaskDto {
     result: t.result,
     latestRun: null,
     eligibilityReason: t.eligibility?.reason ?? null,
+    runCount: 0,
     projectId: t.projectId,
     branch: t.branch,
     baseBranch: t.baseBranch,

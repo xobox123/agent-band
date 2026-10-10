@@ -234,6 +234,11 @@ export function createApi(fetchImpl?: typeof fetch) {
       cancel: (id: string) => send<TaskDto>('POST', `/tasks/${id}/cancel`),
       update: (id: string, body: UpdateTaskBody) => send<TaskDto>('PATCH', `/tasks/${id}`, body),
       remove: (id: string) => send<undefined>('DELETE', `/tasks/${id}`),
+      rerun: (id: string, when?: StartWhen) =>
+        send<TaskDto>('POST', `/tasks/${id}/rerun`, when ? { when } : {}),
+      rerunMany: (ids: string[], when: StartWhen) =>
+        send<Page<TaskDto>>('POST', '/tasks/rerun', { ids, when }),
+      duplicate: (id: string) => send<TaskDto>('POST', `/tasks/${id}/duplicate`),
       toBacklog: (ids: string[]) => send<Page<TaskDto>>('POST', '/tasks/to-backlog', { ids }),
       start: (ids: string[], when: StartWhen) => send<Page<TaskDto>>('POST', '/tasks/start', { ids, when }),
       diff: (id: string) => get<TaskDiffDto>(`/tasks/${id}/diff`),

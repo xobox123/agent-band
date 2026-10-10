@@ -9,6 +9,8 @@ import {
   GoalStateDto,
   IdParams,
   RejectPlanBody,
+  RerunTaskBody,
+  RerunTasksBody,
   RejectReviewBody,
   RequestReviewBody,
   StartTaskBody,
@@ -44,9 +46,14 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
       tasks.map((t) => t.id),
     );
     const latest = new Map(runs.map((r) => [r.taskId, r]));
+    const counts = await c.runs.countByTask(
+      db,
+      actor,
+      tasks.map((t) => t.id),
+    );
     return tasks.map((t) => {
       const run = latest.get(t.id);
-      return { ...taskDto(t), latestRun: run ? runDto(run) : null };
+      return { ...taskDto(t), latestRun: run ? runDto(run) : null, runCount: counts[t.id] ?? 0 };
     });
   }
   async function dto(actor: ActorContext, task: Task) {
@@ -265,7 +272,8 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
       {
         schema: {
           tags: ['tasks'],
-          summary: 'Move failed, denied, cancelled or rate-limited tasks back to the backlog (all or none)',
+          summary:
+            'Move done, failed, denied, cancelled or rate-limited tasks back to the backlog (all or none)',
           body: ToBacklogBody,
           response: { 200: TaskList },
         },
@@ -282,7 +290,7 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
       {
         schema: {
           tags: ['tasks'],
-          summary: 'Move a failed, denied, cancelled or rate-limited task back to the backlog',
+          summary: 'Move a done, failed, denied, cancelled or rate-limited task back to the backlog',
           params: IdParams,
           response: { 200: TaskDto },
         },
@@ -292,6 +300,63 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
         const [moved] = await c.tasks.moveToBacklog(db, actor, [req.params.id]);
         if (!moved) throw new Error('to-backlog returned no task');
         return dto(actor, moved);
+      },
+    );
+
+    app.post(
+      '/tasks/rerun',
+      {
+        schema: {
+          tags: ['tasks'],
+          summary: 'Run finished tasks again as new attempts (all or none)',
+          body: RerunTasksBody,
+          response: { 200: TaskList },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        const found = await Promise.all(req.body.ids.map((id) => c.tasks.getTask(db, actor, id)));
+        const plan = await planStart(c, actor, found, req.body.when);
+        const rerun = await c.tasks.rerunTasks(db, actor, req.body.ids, plan);
+        return { items: await dtos(actor, rerun), nextCursor: null, cursor: await c.cursor() };
+      },
+    );
+
+    app.post(
+      '/tasks/:id/rerun',
+      {
+        schema: {
+          tags: ['tasks'],
+          summary: 'Run a finished task again as a new run of the same task',
+          params: IdParams,
+          body: RerunTaskBody,
+          response: { 200: TaskDto },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        const task = await c.tasks.getTask(db, actor, req.params.id);
+        const plan = await planStart(c, actor, [task], req.body.when);
+        const [rerun] = await c.tasks.rerunTasks(db, actor, [req.params.id], plan);
+        if (!rerun) throw new Error('rerun returned no task');
+        return dto(actor, rerun);
+      },
+    );
+
+    app.post(
+      '/tasks/:id/duplicate',
+      {
+        schema: {
+          tags: ['tasks'],
+          summary: 'Copy a task into a new backlog draft',
+          params: IdParams,
+          response: { 201: TaskDto },
+        },
+      },
+      async (req, reply) => {
+        const actor = await c.resolveActor(req);
+        const copy = await c.tasks.duplicateTask(db, actor, req.params.id);
+        return reply.code(201).send(await dto(actor, copy));
       },
     );
 
