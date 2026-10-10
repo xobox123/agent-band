@@ -548,6 +548,7 @@ export function BoardScreen() {
         <NewTaskForm
           agents={snapshot?.agents ?? []}
           groups={snapshot?.groups ?? []}
+          projects={snapshot?.projects}
           onCancel={() => {
             setCreating(false);
           }}

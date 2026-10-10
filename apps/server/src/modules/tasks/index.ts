@@ -8,7 +8,14 @@ export {
 export type { Task, GoalState } from './infra/schema.ts';
 export { TaskTarget, resource as taskResource } from './domain/task.ts';
 export type { CreateTaskInput, TaskStatus, UpdateDraftInput } from './domain/task.ts';
-export { formatTaskKey } from './domain/key.ts';
+export { formatTaskKey, branchOf } from './domain/key.ts';
+export {
+  openReviewStatuses,
+  reviewStatuses,
+  type ReviewCheck,
+  type ReviewStatus,
+  type TaskReview,
+} from './domain/review.ts';
 export {
   MAX_DEPTH,
   RESULT_SUMMARY_MAX_BYTES,

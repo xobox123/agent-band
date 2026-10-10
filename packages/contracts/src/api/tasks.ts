@@ -55,6 +55,7 @@ export const GoalLimitsBody = z
   .strict();
 
 import { RunDto } from './runs.ts';
+import { ReviewDto } from './projects.ts';
 
 export const TaskDto = z.object({
   id: Id,
@@ -105,6 +106,14 @@ export const TaskDto = z.object({
   eligibilityReason: z.string().nullable(),
   /** Number of runs the task has had; grows with each "run again". */
   runCount: z.number().int().min(0),
+  /** Project whose repository the task works in; null for tasks outside a project. */
+  projectId: Id.nullable(),
+  /** Git branch of the task worktree (`ab/<key>`); null without a worktree. */
+  branch: z.string().nullable(),
+  /** Branch the task merges into: the project default branch, or the goal branch for subtasks. */
+  baseBranch: z.string().nullable(),
+  /** Set once an agent finished a project task; null before that. */
+  review: ReviewDto.nullable(),
   createdBy: Id,
   createdAt: IsoDate,
   updatedAt: IsoDate,
@@ -134,6 +143,8 @@ export const CreateTaskBody = z
     dependsOn: z.array(Id).max(50).optional(),
     /** Goals only: `required` makes the leader's plan wait for human approval. */
     approval: GoalApproval.optional(),
+    /** Run in a git worktree of this project (when `workDir` is omitted). */
+    projectId: Id.optional(),
   })
   .strict();
 export type CreateTaskBody = z.input<typeof CreateTaskBody>;
@@ -144,6 +155,7 @@ export const TaskQuery = PagingQuery.extend({
   agentId: Id.optional(),
   label: z.string().optional(),
   agentGroupId: Id.optional(),
+  projectId: Id.optional(),
   text: z.string().max(200).optional(),
 });
 export type TaskQuery = z.infer<typeof TaskQuery>;
@@ -232,6 +244,14 @@ export const AddPlanTaskBody = z
   })
   .strict();
 export type AddPlanTaskBody = z.input<typeof AddPlanTaskBody>;
+
+export const RequestReviewBody = z
+  .object({
+    /** Defaults to the target of the reviewed task. */
+    target: TaskTarget.optional(),
+    prompt: z.string().trim().min(1).max(10_000).optional(),
+  })
+  .strict();
 
 export const BoardColumns = z.object({
   draft: z.array(TaskDto),

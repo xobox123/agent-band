@@ -247,7 +247,8 @@ export function createDelegation(deps: DelegationDeps) {
   ): Promise<Task> {
     const root = tree.find((t) => t.id === ctx.rootTaskId);
     if (!root) throw notFound('goal task');
-    if (!isPathWithin(input.workDir, root.workDir))
+    // Subtasks of a project goal get their own worktrees instead of folders inside the goal's.
+    if (!root.projectId && !isPathWithin(input.workDir, root.workDir))
       throw forbidden(`workDir ${input.workDir} is outside the goal workDir ${root.workDir}`);
     const limit = effectiveLimit(goal.limits.maxSubtasks, ctx.policy.maxSubtasks);
     const existing = tree.filter((t) => t.id !== root.id).length;
@@ -262,6 +263,7 @@ export function createDelegation(deps: DelegationDeps) {
       depth: ctx.task.depth + 1,
       dependsOn,
       ...(goal.approval === 'required' && { proposed: true }),
+      ...(root.projectId && kind === 'task' && { projectId: root.projectId }),
     });
   }
 

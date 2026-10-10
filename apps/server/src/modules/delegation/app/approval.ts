@@ -134,7 +134,7 @@ export function createGoalApproval(deps: ApprovalDeps) {
       return db.transaction(async (tx) => {
         const { tree, root, goal } = await load(tx, actor, rootTaskId);
         const dir = input.workDir ?? root.workDir;
-        if (!isPathWithin(dir, root.workDir))
+        if (!root.projectId && !isPathWithin(dir, root.workDir))
           throw forbidden(`workDir ${dir} is outside the goal workDir ${root.workDir}`);
         await deps.authorizer.authorize(tx, actor, 'task.write', taskResource(input.target));
         const limit = goal.limits.maxSubtasks;
@@ -154,6 +154,7 @@ export function createGoalApproval(deps: ApprovalDeps) {
             depth: root.depth + 1,
             dependsOn,
             proposed: true,
+            ...(root.projectId && { projectId: root.projectId }),
           },
         );
       });

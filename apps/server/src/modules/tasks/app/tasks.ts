@@ -7,8 +7,9 @@ import type { Db } from '../../../platform/db.ts';
 import type { Tx } from '../../../platform/tx.ts';
 import { conflict, forbidden, invalid, notFound } from '../../../platform/errors.ts';
 import { publish } from '../../../platform/outbox.ts';
-import type { DbOrTx, ModuleDeps, OrgSettings } from '../../../ports/index.ts';
-import { formatTaskKey } from '../domain/key.ts';
+import type { DbOrTx, ModuleDeps, OrgSettings, ProjectLookup } from '../../../ports/index.ts';
+import { branchOf, formatTaskKey } from '../domain/key.ts';
+import type { TaskReview } from '../domain/review.ts';
 import {
   CreateTask,
   UpdateDraft,
@@ -17,6 +18,7 @@ import {
   resource,
   type CreateTaskInput,
   type TaskStatus,
+  type TaskTarget,
   type UpdateDraftInput,
 } from '../domain/task.ts';
 import {
@@ -39,6 +41,7 @@ export interface TaskFilter {
   agentId?: string;
   label?: string;
   agentGroupId?: string;
+  projectId?: string;
   text?: string;
   scheduleId?: string;
 }
@@ -51,15 +54,22 @@ export interface StartPlan {
 /** Tree placement of a subtask; only the delegation module supplies it, after its own checks. */
 export interface ChildPlacement {
   kind: Exclude<TaskKind, 'goal'>;
-  rootTaskId: string;
+  /** Absent for a reviewer of a plain task, which belongs to no goal tree. */
+  rootTaskId?: string;
   parentTaskId: string;
   depth: number;
   dependsOn: string[];
   /** A leader's proposal under plan approval: created as a draft until a human approves the plan. */
   proposed?: boolean;
+  /** Project of the goal; the subtask then gets its own worktree branching off the goal branch. */
+  projectId?: string;
 }
 
-export type TasksDeps = ModuleDeps & { orgSettings: OrgSettings; now?: () => Date };
+export type TasksDeps = ModuleDeps & {
+  orgSettings: OrgSettings;
+  projects?: ProjectLookup;
+  now?: () => Date;
+};
 export function createTasks(deps: TasksDeps) {
   const where = (actor: ActorContext, id: string) => and(eq(tasks.orgId, actor.orgId), eq(tasks.id, id));
   async function get(tx: Tx, actor: ActorContext, id: string) {
@@ -132,6 +142,7 @@ export function createTasks(deps: TasksDeps) {
           filter.label ? sql`${tasks.target}->>'label' = ${filter.label}` : undefined,
           filter.agentGroupId ? sql`${tasks.target}->>'agentGroupId' = ${filter.agentGroupId}` : undefined,
           filter.scheduleId ? eq(tasks.scheduleId, filter.scheduleId) : undefined,
+          filter.projectId ? eq(tasks.projectId, filter.projectId) : undefined,
           filter.text
             ? ilike(sql`${tasks.key} || ' ' || ${tasks.title}`, `%${filter.text.replace(/[\\%_]/g, '\\$&')}%`)
             : undefined,
@@ -154,7 +165,16 @@ export function createTasks(deps: TasksDeps) {
   ): Promise<Task> {
     const parsed = CreateTask.safeParse(input);
     if (!parsed.success) throw invalid(parsed.error.issues);
-    const { runAt, goalLimits, draft, approval, workDir: givenDir, workDirSlug, ...rest } = parsed.data;
+    const {
+      runAt,
+      goalLimits,
+      draft,
+      approval,
+      workDir: givenDir,
+      workDirSlug,
+      projectId: givenProject,
+      ...rest
+    } = parsed.data;
     if (goalLimits && rest.kind !== 'goal')
       throw invalid([{ path: 'goalLimits', message: 'only allowed for goals' }]);
     if (approval === 'required' && rest.kind !== 'goal')
@@ -173,10 +193,25 @@ export function createTasks(deps: TasksDeps) {
     const id = randomUUID();
     if (!child) await checkDependencies(tx, actor.orgId, id, rest.dependsOn);
     const key = formatTaskKey(settings.taskKeyPrefix, counter.seq);
-    if (!givenDir && child) throw invalid([{ path: 'workDir', message: 'required for subtasks' }]);
+    const projectId = child?.projectId ?? givenProject;
+    const project = projectId ? await deps.projects?.get(tx, actor.orgId, projectId) : undefined;
+    if (projectId && !project) throw invalid([{ path: 'projectId', message: 'project not found' }]);
+    // A project task without an explicit folder works in its own git worktree, created by the worker.
+    const worktreesRoot =
+      project && (child ? child.kind === 'task' : !givenDir) ? project.worktreesRoot : undefined;
+    const worktree = worktreesRoot !== undefined;
+    if (!givenDir && child && !worktree)
+      throw invalid([{ path: 'workDir', message: 'required for subtasks' }]);
     const workDir =
-      givenDir ?? join(settings.workspaceRoot, (workDirSlug ?? key).replace(/[^a-zA-Z0-9._-]+/g, '-'));
-    if (!givenDir) await mkdir(workDir, { recursive: true, mode: 0o700 });
+      worktreesRoot !== undefined
+        ? join(worktreesRoot, key)
+        : (givenDir ?? join(settings.workspaceRoot, (workDirSlug ?? key).replace(/[^a-zA-Z0-9._-]+/g, '-')));
+    if (!givenDir && !worktree) await mkdir(workDir, { recursive: true, mode: 0o700 });
+    let baseBranch = project?.defaultBranch;
+    if (worktree && child?.rootTaskId) {
+      const [root] = await tx.select().from(tasks).where(where(actor, child.rootTaskId));
+      baseBranch = root?.branch ?? baseBranch;
+    }
     const [task] = await tx
       .insert(tasks)
       .values({
@@ -184,6 +219,8 @@ export function createTasks(deps: TasksDeps) {
         workDir,
         workDirExplicit: givenDir !== undefined,
         ...(child ?? {}),
+        ...(project ? { projectId: project.id } : {}),
+        ...(worktree ? { branch: branchOf(key), baseBranch: baseBranch ?? null } : {}),
         id,
         ...(rest.kind === 'goal' ? { rootTaskId: id } : {}),
         ...(runAt ? { runAt, status: 'scheduled' as const } : {}),
@@ -498,6 +535,63 @@ export function createTasks(deps: TasksDeps) {
         .returning();
       if (!task) throw notFound('task');
       return changed(tx, actor, task, 'task.result');
+    },
+    /** Stores the review of a finished project task; callers authorize. */
+    setReview(tx: Tx, actor: ActorContext, id: string, review: TaskReview, action = 'task.review') {
+      return update(tx, actor, id, { review }, action);
+    },
+    /** Requeues a reviewed task in its worktree with the reviewer's feedback; counts as an attempt. */
+    async requeueForReview(
+      tx: Tx,
+      actor: ActorContext,
+      id: string,
+      change: { prompt: (current: string, attempt: number) => string; feedback: string },
+    ): Promise<Task> {
+      const task = await get(tx, actor, id);
+      await deps.authorizer.authorize(tx, actor, 'task.write', resource(task.target));
+      if (task.status !== 'done' || !task.review || !['pending', 'conflict'].includes(task.review.status))
+        throw conflict('review_not_open', 'Only a finished task awaiting review can be rejected');
+      if (task.attempt >= task.maxAttempts)
+        throw conflict('attempts_exhausted', `${task.key} used all ${task.maxAttempts} attempts`);
+      const attempt = task.attempt + 1;
+      return update(
+        tx,
+        actor,
+        id,
+        {
+          status: 'queued',
+          prompt: change.prompt(task.prompt, attempt),
+          attempt,
+          workerId: null,
+          error: null,
+          eligibility: null,
+          resumeAt: null,
+          runAt: null,
+          result: null,
+          review: { ...task.review, status: 'rejected', feedback: change.feedback },
+        },
+        'task.review_reject',
+      );
+    },
+    /** Creates a read-only reviewer task that works in the reviewed task's worktree. */
+    createReviewTask(
+      tx: Tx,
+      actor: ActorContext,
+      task: Task,
+      input: { target: TaskTarget; prompt: string },
+    ): Promise<Task> {
+      return createIn(
+        tx,
+        actor,
+        {
+          title: `Review: ${task.title}`.slice(0, 200),
+          prompt: input.prompt,
+          workDir: task.workDir,
+          target: input.target,
+          mode: 'read-only',
+        },
+        { kind: 'review', parentTaskId: task.id, depth: task.depth + 1, dependsOn: [] },
+      );
     },
     cancelOpenTreeTasks: cancelOpen,
     /** Cancels queued tasks whose dependencies ended without success; they could never be claimed. */

@@ -26,6 +26,7 @@ describe('router', () => {
       'Dashboard',
       'Agents',
       'Agent groups',
+      'Projects',
       'Tasks',
       'Runs',
       'Schedules',
@@ -37,7 +38,7 @@ describe('router', () => {
     ]) {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     }
-    expect(ALL_ITEMS).toHaveLength(13);
+    expect(ALL_ITEMS).toHaveLength(14);
   });
 
   it('renders the selected screen and follows hash changes', async () => {

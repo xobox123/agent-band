@@ -16,6 +16,7 @@ import {
 import { accountHasAgents, createAgentUseCases, createGroupUseCases } from '../modules/agents/index.ts';
 import { createAccountUseCases, fixedKeySource } from '../modules/accounts/index.ts';
 import { createRuns } from '../modules/runs/index.ts';
+import { createProjectRuns, createProjects, createReview } from '../modules/projects/index.ts';
 import { createTasks } from '../modules/tasks/index.ts';
 import { createUsage } from '../modules/usage/index.ts';
 import { FakeAdapter } from '../runner/index.ts';
@@ -49,7 +50,10 @@ export async function makeKit(existing?: Database) {
   });
   const groupUc = createGroupUseCases(deps);
   const orgSettings = new FakeOrgSettings();
-  const tasks = createTasks({ ...deps, orgSettings });
+  const projects = createProjects({ ...deps, orgSettings });
+  const tasks = createTasks({ ...deps, orgSettings, projects: projects.lookup });
+  const projectRuns = createProjectRuns({ projects });
+  const review = createReview({ ...deps, tasks, projects, runs: projectRuns });
   const runs = createRuns(deps);
   const usage = createUsage({
     ...deps,
@@ -69,6 +73,9 @@ export async function makeKit(existing?: Database) {
     agentUc,
     groupUc,
     tasks,
+    projects,
+    projectRuns,
+    review,
     runs,
     usage,
     events,
@@ -103,6 +110,7 @@ export async function makeKit(existing?: Database) {
         events,
         audit: deps.audit,
         tasks,
+        projectRuns,
         runs,
         usage,
         agents: agentUc,

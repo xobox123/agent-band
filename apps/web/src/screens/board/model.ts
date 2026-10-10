@@ -54,6 +54,40 @@ export const startable = (t: Task): boolean => t.status === 'draft' && !t.propos
 
 export const PRIORITIES: Priority[] = [0, 1, 2, 3];
 
+export interface ReviewBadge {
+  tone: 'ok' | 'warn' | 'crit' | 'accent';
+  text: string;
+  title?: string;
+}
+
+/** Badges for the review state of a project task: check results and where the change stands. */
+export function reviewBadges(task: Task): ReviewBadge[] {
+  const review = task.review;
+  if (!review) return [];
+  const failed = review.checks.filter((c) => c.exitCode !== 0);
+  const checks: ReviewBadge[] =
+    review.checks.length === 0
+      ? []
+      : failed.length > 0
+        ? [{ tone: 'crit', text: 'Checks failed', title: failed.map((c) => c.command).join(', ') }]
+        : [{ tone: 'ok', text: 'Checks passed' }];
+  switch (review.status) {
+    case 'merged':
+      return [{ tone: 'ok', text: 'Merged' }];
+    case 'approved':
+      return [{ tone: 'ok', text: 'Approved' }];
+    case 'conflict':
+      return [
+        ...checks,
+        { tone: 'crit', text: 'Conflict', title: (review.conflictFiles ?? []).join(', ') || undefined },
+      ];
+    case 'rejected':
+      return [{ tone: 'warn', text: 'Changes requested', title: review.feedback ?? undefined }];
+    case 'pending':
+      return [...checks, { tone: 'warn', text: 'Awaiting review' }];
+  }
+}
+
 export interface Lookup {
   runs: Map<string, Run>;
   agents: Map<string, Agent>;

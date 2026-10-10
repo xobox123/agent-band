@@ -89,8 +89,15 @@
     {
       "idx": 12,
       "version": "7",
-      "when": 1791377387857,
-      "tag": "0012_task_workdir_explicit",
+      "when": 1791363820696,
+      "tag": "0012_projects_worktrees",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791656232625,
+      "tag": "0013_task_workdir_explicit",
       "breakpoints": true
     }
   ]

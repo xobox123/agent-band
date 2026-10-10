@@ -500,6 +500,28 @@ describe('Accounts form connection methods', () => {
         adapterEnabled: true,
         capabilities: caps,
       },
+      {
+        id: 'gemini',
+        displayName: 'Gemini CLI',
+        harness: 'gemini-cli',
+        accountTypes: ['cli', 'api'],
+        runnableTypes: ['cli', 'api'],
+        accountFields: { type: 'object', properties: {} },
+        secretField: null,
+        adapterEnabled: true,
+        capabilities: { ...caps, limitWindows: [], costReporting: false, skills: false },
+      },
+      {
+        id: 'antigravity',
+        displayName: 'Antigravity CLI (Google AI plan)',
+        harness: 'antigravity-cli',
+        accountTypes: ['cli'],
+        runnableTypes: ['cli'],
+        accountFields: { type: 'object', properties: {} },
+        secretField: null,
+        adapterEnabled: true,
+        capabilities: { ...caps, costReporting: false, skills: false },
+      },
     ],
   };
   const created = accountDto({
@@ -624,6 +646,87 @@ describe('Accounts form connection methods', () => {
       'https://claude.ai/oauth/authorize?x=1',
     );
     expect(screen.getByText('CLAUDE_CONFIG_DIR=/x claude auth login')).toBeInTheDocument();
+  });
+
+  it('offers Gemini with Google login instructions, a managed home and no 5h or weekly fields', async () => {
+    const geminiAccount = accountDto({
+      id: ID(11),
+      name: 'Savigo',
+      provider: 'gemini',
+      configDir: '/home/x/.agent-band/accounts/gemini-savigo',
+    });
+    const { calls, dialog } = await openForm({
+      'GET /accounts': list([geminiAccount]),
+      'POST /accounts': geminiAccount,
+      [`POST /accounts/${ID(11)}/login`]: {
+        started: false,
+        command: 'GEMINI_CLI_HOME=/home/x/.agent-band/accounts/gemini-savigo gemini',
+      },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Provider'), { target: { value: 'gemini' } });
+    expect(within(dialog).getByRole('radio', { name: /API key/ })).toBeEnabled();
+    expect(
+      within(dialog).getByText(/Uses the login already on this machine \(~\/\.gemini\)/),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText(/^Stop new work at/)).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Add another account/ }));
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Savigo' } });
+    expect(within(dialog).getByText(/Sign in with Google/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/GEMINI_CLI_HOME=~\/\.gemini-savigo gemini/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
+    await waitFor(() => {
+      expect(lastBody(calls, 'POST', '/accounts')).toMatchObject({
+        provider: 'gemini',
+        type: 'cli',
+        managedConfigDir: true,
+      });
+    });
+    expect(
+      await screen.findByText('GEMINI_CLI_HOME=/home/x/.agent-band/accounts/gemini-savigo gemini'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/choose "Sign in with Google", then type \/quit/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Refresh limits' })).not.toBeInTheDocument();
+  });
+
+  it('offers Antigravity with only the machine login, the limit fields and the agy command', async () => {
+    const agyAccount = accountDto({ id: ID(12), name: 'Pro', provider: 'antigravity' });
+    const { calls, dialog } = await openForm({
+      'GET /accounts': list([agyAccount]),
+      'POST /accounts': agyAccount,
+      [`POST /accounts/${ID(12)}/login`]: { started: false, command: 'agy' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Provider'), { target: { value: 'antigravity' } });
+    expect(within(dialog).getByText(/Uses the Google login of the agy CLI/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole('radio', { name: /Add another account/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('radio', { name: /API key/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/^Stop new work at \(5h/)).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Pro' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
+    await waitFor(() => {
+      expect(lastBody(calls, 'POST', '/accounts')).toMatchObject({ provider: 'antigravity', type: 'cli' });
+    });
+  });
+
+  it('requires and sends a Gemini API key only in the create body', async () => {
+    const { calls, dialog } = await openForm({
+      'POST /accounts': accountDto({ id: ID(11), provider: 'gemini' }),
+    });
+    fireEvent.change(within(dialog).getByLabelText('Provider'), { target: { value: 'gemini' } });
+    fireEvent.click(within(dialog).getByRole('radio', { name: /API key/ }));
+    fireEvent.change(within(dialog).getByLabelText(/^Name/), { target: { value: 'Keyed' } });
+    fireEvent.submit(dialog.querySelector('form') as HTMLFormElement);
+    expect(within(dialog).getByText('Enter the API key.')).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText(/^API key/, { selector: 'input[type=password]' }), {
+      target: { value: 'g-key' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
+    await waitFor(() => {
+      expect(lastBody(calls, 'POST', '/accounts')).toMatchObject({
+        provider: 'gemini',
+        type: 'api',
+        secret: 'g-key',
+      });
+    });
   });
 
   it('tests an API key before saving and sends it only in the create body', async () => {

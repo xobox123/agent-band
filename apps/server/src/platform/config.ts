@@ -13,6 +13,7 @@ const EnvSchema = z.object({
   AGENT_BAND_CLAUDE_BIN: z.string().min(1).optional(),
   AGENT_BAND_CODEX_BIN: z.string().min(1).optional(),
   AGENT_BAND_GEMINI_BIN: z.string().min(1).optional(),
+  AGENT_BAND_AGY_BIN: z.string().min(1).optional(),
   DATABASE_URL: z.string().min(1).optional(),
   PGLITE_DIR: z.string().min(1).optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
@@ -27,7 +28,7 @@ export interface Config {
   workspaceRoot?: string;
   schedulerIntervalMs: number;
   /** Explicit CLI binaries; when unset they are discovered. */
-  cliBins: { claude?: string; codex?: string; gemini?: string };
+  cliBins: { claude?: string; codex?: string; gemini?: string; agy?: string };
   databaseUrl?: string;
   pgliteDir?: string;
   logLevel: string;
@@ -54,6 +55,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       ...(e.AGENT_BAND_CLAUDE_BIN && { claude: e.AGENT_BAND_CLAUDE_BIN }),
       ...(e.AGENT_BAND_CODEX_BIN && { codex: e.AGENT_BAND_CODEX_BIN }),
       ...(e.AGENT_BAND_GEMINI_BIN && { gemini: e.AGENT_BAND_GEMINI_BIN }),
+      ...(e.AGENT_BAND_AGY_BIN && { agy: e.AGENT_BAND_AGY_BIN }),
     },
     databaseUrl: e.DATABASE_URL,
     pgliteDir: e.PGLITE_DIR,

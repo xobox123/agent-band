@@ -20,7 +20,7 @@ it.each(['/', '/.', '//', '/./nested//./child/../..', '//././/'])(
       const journal = JSON.parse(await readFile(new URL('meta/_journal.json', migrations), 'utf8')) as {
         entries: { idx: number; tag: string }[];
       };
-      for (const entry of journal.entries.filter((entry) => entry.idx < 12)) {
+      for (const entry of journal.entries.filter((entry) => entry.idx < 13)) {
         await lite.exec(await readFile(new URL(`${entry.tag}.sql`, migrations), 'utf8'));
       }
       await lite.query(
@@ -74,7 +74,7 @@ it.each(['/', '/.', '//', '/./nested//./child/../..', '//././/'])(
         );
       }
       await lite.query('INSERT INTO task_key_seq (org_id, seq) VALUES ($1, $2)', [actor.orgId, cases.length]);
-      await lite.exec(await readFile(new URL('0012_task_workdir_explicit.sql', migrations), 'utf8'));
+      await lite.exec(await readFile(new URL('0013_task_workdir_explicit.sql', migrations), 'utf8'));
       const api = createTasks({ ...fakeDeps(), orgSettings: new FakeOrgSettings({ workspaceRoot: root }) });
       const db = drizzle(lite);
       for (const [index, c] of cases.entries()) {
