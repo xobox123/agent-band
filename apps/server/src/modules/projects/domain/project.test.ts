@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { feedbackPrompt, parseNumstat, slugOf, summarizeStat, tailBytes } from './project.ts';
+import { feedbackPrompt, parseNumstat, reviewerPrompt, slugOf, summarizeStat, tailBytes } from './project.ts';
 
 it('derives slugs', () => {
   expect(slugOf('Agent Band!')).toBe('agent-band');
@@ -25,4 +25,27 @@ it('keeps the tail of long output without splitting characters', () => {
 it('appends feedback to the prompt', () => {
   expect(feedbackPrompt('Do it', 'Add tests', 2)).toContain('Do it\n\nReviewer feedback (attempt 2)');
   expect(feedbackPrompt('Do it', 'Add tests', 2)).toContain('Add tests');
+});
+
+const reviewed = {
+  key: 'AB-1',
+  title: 'Add x',
+  prompt: 'Do x.\nAcceptance: y',
+  branch: 'b',
+  baseBranch: 'main',
+};
+
+it('puts the original task into the reviewer prompt', () => {
+  const p = reviewerPrompt(reviewed, null);
+  expect(p).toContain('Reviewed task: AB-1');
+  expect(p).toContain('Original task title: Add x');
+  expect(p).toContain('Acceptance: y');
+  expect(p).not.toContain('Latest reviewer feedback');
+});
+
+it('keeps custom reviewer instructions and adds the latest feedback', () => {
+  const p = reviewerPrompt(reviewed, 'fix z', 'Check security only.');
+  expect(p.startsWith('Check security only.')).toBe(true);
+  expect(p).toContain('Do x.');
+  expect(p).toContain('fix z');
 });

@@ -268,6 +268,9 @@ describe('projects', () => {
       workDir: t.workDir,
       projectId: null,
     });
+    expect(reviewer.prompt).toContain(`Reviewed task: ${t.key}`);
+    expect(reviewer.prompt).toContain(`Original task title: ${t.title}`);
+    expect(reviewer.prompt).toContain(t.prompt);
     await waitFor(async () => (await reload(reviewer.id)).status === 'done', 15_000);
     const diff = await kit.review.diff(kit.db, kit.actor, t.id);
     expect(diff.reviewer).toEqual({
