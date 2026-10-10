@@ -7,6 +7,9 @@ import { ago, isStale, planLabel, resetsIn } from '../lib/account.ts';
 import { copyText, formatCost, formatTime } from '../lib/format.ts';
 import { LimitBar } from './LimitBar.tsx';
 
+/** Google quota is per model and per day and has no free headless reading, so no bars are drawn. */
+const GEMINI_QUOTA_NOTE = 'Google quota: see /stats in Gemini';
+
 /** Logged-in dot, email, organization, plan, auth method and the time of the last check. */
 export function AccountIdentity({ account }: { account: AccountDto }) {
   const now = useNow();
@@ -98,6 +101,7 @@ function WindowBar({ account, windows, window: w, stale, now, compact }: WindowB
 export function AccountLimits({ account, windows, updatedAt }: LimitsProps) {
   const now = useNow();
   const stale = isStale(updatedAt, now);
+  if (account.provider === 'gemini') return <p className="dim">{GEMINI_QUOTA_NOTE}</p>;
   return (
     <>
       <div className="limit-rows">
@@ -127,6 +131,13 @@ export function AccountLimitsCompact({
     return (
       <span title={budget === undefined ? 'No daily cost budget' : `Daily cost budget $${String(budget)}`}>
         {budget === undefined ? formatCost(spent) : `${formatCost(spent)} / ${formatCost(budget)}`}
+      </span>
+    );
+  }
+  if (account.provider === 'gemini') {
+    return (
+      <span className="dim" title={GEMINI_QUOTA_NOTE}>
+        see /stats in Gemini
       </span>
     );
   }
@@ -220,7 +231,7 @@ export function AccountActions({ account, onChanged, showLimits = true, autoLogi
         >
           Check now
         </button>
-        {showLimits && account.type === 'cli' ? (
+        {showLimits && account.type === 'cli' && account.provider !== 'gemini' ? (
           <button
             type="button"
             className="btn"
@@ -281,7 +292,13 @@ export function AccountActions({ account, onChanged, showLimits = true, autoLogi
             </>
           ) : null}
           <span className="dim">
-            {login.failed ? 'Could not start the login. Run this in a terminal:' : 'Or in a terminal:'}
+            {account.provider === 'gemini'
+              ? 'Gemini signs in inside its own terminal UI. Run this in a terminal, choose "Sign in with Google", then type /quit and click Check now:'
+              : account.provider === 'antigravity'
+                ? 'Antigravity signs in inside its own terminal UI. Run this in a terminal, sign in with your Google account, then type /quit and click Check now:'
+                : login.failed
+                  ? 'Could not start the login. Run this in a terminal:'
+                  : 'Or in a terminal:'}
           </span>
           <code className="mono-wrap">{login.command}</code>
           <button

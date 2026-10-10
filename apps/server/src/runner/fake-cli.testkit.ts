@@ -1,6 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { CliBins } from './probe.ts';
 
 export const USAGE_TEXT = `You are currently using your subscription to power your Claude Code usage
@@ -91,12 +92,45 @@ if (args[0] === 'app-server') {
 process.exit(2);
 `;
 
+/** Only answers --version; Gemini has no login or status command. */
+const GEMINI = `
+if (process.argv[2] === '--version') {
+  if (process.env.FAKE_MODE === 'hang') return setTimeout(() => {}, 60000);
+  return console.log('0.63.0');
+}
+process.exit(2);
+`;
+
+/**
+ * Answers `-p /usage --output-format json` and `models` with output captured from a real agy 1.3.1;
+ * FAKE_MODE=loggedout makes /usage fail like a model-less error envelope.
+ */
+const AGY = `
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+if (args[0] === '--version') return console.log('1.3.1');
+if (args[0] === 'models') return process.stdout.write(fs.readFileSync(process.env.FAKE_AGY_MODELS, 'utf8'));
+if (args[0] === '-p' && args[1] === '/usage') {
+  if (process.env.FAKE_MODE === 'hang') return setTimeout(() => {}, 60000);
+  if (process.env.FAKE_MODE === 'loggedout')
+    return console.log(JSON.stringify({ conversation_id: '', status: 'ERROR', error: 'not signed in' }));
+  return process.stdout.write(fs.readFileSync(process.env.FAKE_AGY_USAGE, 'utf8'));
+}
+process.exit(2);
+`;
+
 export function fakeBins(): CliBins & { dir: string } {
   const dir = mkdtempSync(join(tmpdir(), 'fake-cli-'));
+  writeFileSync(join(dir, 'agy.cjs'), AGY);
+  process.env.FAKE_AGY_USAGE = fileURLToPath(new URL('./agy-usage.fixture.json', import.meta.url));
+  process.env.FAKE_AGY_MODELS = fileURLToPath(new URL('./agy-models.fixture.txt', import.meta.url));
   writeFileSync(join(dir, 'claude.cjs'), CLAUDE);
   writeFileSync(join(dir, 'codex.cjs'), CODEX);
+  writeFileSync(join(dir, 'gemini.cjs'), GEMINI);
   return {
     dir,
+    gemini: { cmd: process.execPath, args: [join(dir, 'gemini.cjs')] },
+    antigravity: { cmd: process.execPath, args: [join(dir, 'agy.cjs')] },
     claude: { cmd: process.execPath, args: [join(dir, 'claude.cjs')] },
     openai: { cmd: process.execPath, args: [join(dir, 'codex.cjs')] },
   };

@@ -33,10 +33,32 @@ export const CLAUDE_MODELS: readonly ModelOption[] = [
   full('claude-fable-5-1', 'Fable 5.1'),
 ];
 
+/** Gemini CLI has no model listing command; `auto` leaves the choice to the CLI (no -m flag). */
 export const GEMINI_MODELS: readonly ModelOption[] = [
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', isDefault: true, source: 'builtin' },
+  alias('auto', 'Auto', 'Gemini CLI picks the model for each request', true),
+  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', isDefault: false, source: 'builtin' },
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', isDefault: false, source: 'builtin' },
+  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', isDefault: false, source: 'builtin' },
+  { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (preview)', isDefault: false, source: 'builtin' },
+  { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (preview)', isDefault: false, source: 'builtin' },
 ];
+
+/**
+ * `agy models` prints `<id>\t<label>` per line (stdout; the progress line goes elsewhere). The reasoning
+ * effort is part of the id (`-high`, `-low`), so each id is passed to --model as is.
+ */
+export function parseAgyModels(text: string): ModelOption[] {
+  const items: ModelOption[] = [
+    alias('auto', 'Auto', 'Leave the model to agy: no --model flag is passed', true),
+  ];
+  for (const line of text.split('\n')) {
+    const [id, label] = line.split('\t');
+    if (id && label && /^[\w.-]+$/.test(id)) {
+      items.push({ id, label: label.trim(), isDefault: false, source: 'native' });
+    }
+  }
+  return items;
+}
 
 /** One page of the app-server `model/list` response. */
 export function parseCodexModelPage(result: Record<string, unknown>): {

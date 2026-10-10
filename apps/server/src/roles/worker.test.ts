@@ -332,6 +332,62 @@ describe('worker', () => {
     );
   });
 
+  it('gives Gemini runs a per-run settings file with the hook and registers the run token', async () => {
+    const acc = await kit.accountUc.createAccount(kit.db, kit.actor, {
+      name: 'gem',
+      provider: 'gemini',
+      type: 'api',
+      secret: 'g-key',
+      limits: { maxConcurrentRuns: 4 },
+    });
+    kit.adapters.set(acc.id, new FakeAdapter((s) => kit.script(s)));
+    const agent = await kit.agent('gm', acc.id);
+    let spec: RunSpec | undefined;
+    let settings: Record<string, unknown> = {};
+    kit.script = (s) => {
+      spec = s;
+      if (s.geminiSettingsPath)
+        settings = JSON.parse(readFileSync(s.geminiSettingsPath, 'utf8')) as Record<string, unknown>;
+      return { events: [] };
+    };
+    const task = await kit.task({ target: { agentId: agent.id } });
+    await run(kit);
+    await reachStatus(task.id, 'done');
+    expect(spec?.geminiSettingsPath).toMatch(/gemini\/settings\.json$/);
+    expect(spec?.skillsDir).toBeUndefined();
+    expect(spec?.mcpConfigPath).toBeUndefined();
+    expect(spec?.configDir).toBe(acc.configDir);
+    expect(spec?.env?.GEMINI_API_KEY).toBe('g-key');
+    expect(settings).toHaveProperty('hooks.BeforeTool');
+    expect(settings).not.toHaveProperty('mcpServers');
+    await waitFor(() => Promise.resolve(!existsSync(spec?.geminiSettingsPath ?? '')));
+  });
+
+  it('gives Antigravity runs the PreToolUse hook command, the run limit and no MCP or config dir', async () => {
+    const acc = await kit.account('agy', 'antigravity');
+    const agent = await kit.agent('ag', acc.id, { model: 'gemini-3.8-flash-low' });
+    let spec: RunSpec | undefined;
+    let hook = '';
+    kit.script = (s) => {
+      spec = s;
+      if (s.antigravityHookCommand) {
+        const script = /"(.+)"$/.exec(s.antigravityHookCommand)?.[1] ?? '';
+        hook = existsSync(script) ? readFileSync(script, 'utf8') : '';
+      }
+      return { events: [] };
+    };
+    const task = await kit.task({ target: { agentId: agent.id } });
+    await run(kit);
+    await reachStatus(task.id, 'done');
+    expect(spec?.antigravityHookCommand).toMatch(/^node ".*\/antigravity\/authorize-tool\.mjs"$/);
+    expect(hook).toContain('/authorize-tool');
+    expect(spec?.model).toBe('gemini-3.8-flash-low');
+    expect(spec?.mcpConfigPath).toBeUndefined();
+    expect(spec?.skillsDir).toBeUndefined();
+    expect(spec?.geminiSettingsPath).toBeUndefined();
+    expect(acc.configDir).toBeNull();
+  });
+
   it('fails runs left running by a previous worker with the same id on start', async () => {
     const acc = await kit.account('a');
     const agent = await kit.agent('alpha', acc.id);

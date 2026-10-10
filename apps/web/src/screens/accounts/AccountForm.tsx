@@ -119,7 +119,12 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
   const methods = methodsOf(provider);
   const showSecret = type === 'api' && (provider?.secretField != null || method === 'api');
   const secretLabel = provider?.secretField ?? 'API key';
-  const isCliHarness = providerId === 'claude' || providerId === 'openai';
+  const isCliHarness =
+    providerId === 'claude' ||
+    providerId === 'openai' ||
+    providerId === 'gemini' ||
+    providerId === 'antigravity';
+  const hasLimitWindows = (provider?.capabilities.limitWindows.length ?? 0) > 0;
 
   const errors: Record<string, string> = {};
   if (name.trim() === '') errors['name'] = 'Name is required.';
@@ -135,8 +140,9 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
     errors['costBudget'] = 'Daily cost budget must be a positive number.';
   const thresholdBad = (v: string) =>
     v !== '' && !(/^\d{1,3}$/.test(v) && Number(v) >= 1 && Number(v) <= 100);
-  if (type === 'cli' && isCliHarness && thresholdBad(stop5h)) errors['stop5h'] = 'Must be between 1 and 100.';
-  if (type === 'cli' && isCliHarness && thresholdBad(stopWeek))
+  if (type === 'cli' && isCliHarness && hasLimitWindows && thresholdBad(stop5h))
+    errors['stop5h'] = 'Must be between 1 and 100.';
+  if (type === 'cli' && isCliHarness && hasLimitWindows && thresholdBad(stopWeek))
     errors['stopWeek'] = 'Must be between 1 and 100.';
   if (!account && type === 'api' && isCliHarness && secret.trim() === '')
     errors['secret'] = 'Enter the API key.';
@@ -276,7 +282,8 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
           <legend className="form-label">Connection method</legend>
           {(['current', 'another', 'api'] as const).map((m) => {
             const offered = m === 'api' ? methods.api : methods.cli;
-            if (!offered) return null;
+            // agy keeps its login in the OS keyring: there is no way to add a second account.
+            if (!offered || (m === 'another' && providerId === 'antigravity')) return null;
             const disabled = m === 'api' && methods.apiDisabled;
             return (
               <label
@@ -301,9 +308,13 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
                     {disabled
                       ? ' Coming soon for this provider.'
                       : m === 'current'
-                        ? ` Uses the login already on this machine (${providerId === 'openai' ? '~/.codex' : '~/.claude'}).`
+                        ? providerId === 'antigravity'
+                          ? ' Uses the Google login of the agy CLI on this machine (one account per machine).'
+                          : ` Uses the login already on this machine (${{ openai: '~/.codex', gemini: '~/.gemini' }[providerId] ?? '~/.claude'}).`
                         : m === 'another'
-                          ? ' Log in a separate account with your browser.'
+                          ? providerId === 'gemini'
+                            ? ' Log in a separate Google account in its own Gemini home.'
+                            : ' Log in a separate account with your browser.'
                           : ' Pay per use with your own key.'}
                   </span>
                 </span>
@@ -328,7 +339,9 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
       ) : null}
       {method === 'another' && !account ? (
         <p className="dim">
-          {`After saving, a browser window opens to log in. To do it yourself: ${suggestedLoginCommand(providerId, name)}`}
+          {providerId === 'gemini'
+            ? `After saving, the exact login command is shown. Run it in a terminal, choose "Sign in with Google", then type /quit. Example: ${suggestedLoginCommand(providerId, name)}`
+            : `After saving, a browser window opens to log in. To do it yourself: ${suggestedLoginCommand(providerId, name)}`}
         </p>
       ) : null}
       {type === 'cli' && isCliHarness && method !== 'another' ? (
@@ -491,7 +504,7 @@ export function AccountForm({ account, providers, pending, error, onCreate, onUp
           />
         </Field>
       ) : null}
-      {type === 'cli' && isCliHarness ? (
+      {type === 'cli' && isCliHarness && hasLimitWindows ? (
         <>
           <Field name="stop5h" label="Stop new work at (5h %)" help="Keeps a reserve for your own use.">
             <input
