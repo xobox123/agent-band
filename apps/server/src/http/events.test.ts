@@ -31,26 +31,39 @@ async function openStream(lastEventId?: number): Promise<Stream> {
   let buf = '';
   const reader = res.body?.getReader();
   const decoder = new TextDecoder();
+  const onData = new Set<() => void>();
   void (async () => {
     try {
       for (;;) {
         const r = await reader?.read();
         if (!r || r.done) return;
         buf += decoder.decode(r.value as Uint8Array, { stream: true });
+        for (const fn of [...onData]) fn();
       }
     } catch {
       // aborted
     }
   })();
+  const matches = (pattern: string | RegExp): boolean =>
+    typeof pattern === 'string' ? buf.includes(pattern) : pattern.test(buf);
   return {
     text: () => buf,
-    async waitFor(pattern, ms = 5000) {
-      const until = Date.now() + ms;
-      while (Date.now() < until) {
-        if (typeof pattern === 'string' ? buf.includes(pattern) : pattern.test(buf)) return;
-        await new Promise((r) => setTimeout(r, 20));
-      }
-      throw new Error(`timeout waiting for ${String(pattern)}; got:\n${buf}`);
+    // Resolves when a chunk containing the pattern arrives; the timeout is only a ceiling for a hung stream.
+    waitFor(pattern, ms = 30_000) {
+      return new Promise<void>((resolve, reject) => {
+        const check = (): void => {
+          if (!matches(pattern)) return;
+          clearTimeout(timer);
+          onData.delete(check);
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          onData.delete(check);
+          reject(new Error(`timeout waiting for ${String(pattern)}; got:\n${buf}`));
+        }, ms);
+        onData.add(check);
+        check();
+      });
     },
     close: () => {
       ctl.abort();

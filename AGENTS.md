@@ -34,6 +34,17 @@ npm run typecheck
 npm test
 ```
 
+## Running tests under load
+
+Several agents often run full suites at once, so the machine can be heavily oversubscribed.
+
+- `npm test` runs the fast suites. `npm run test:slow` runs the real-process suite (`*.slow.test.ts`, spawns `npx tsx`); run it when you change boot, config or shutdown code. It is not part of the pre-commit check.
+- Reproduce load locally by running two server suites in parallel: `npx vitest run --root apps/server --maxWorkers=2` in two terminals, then `npm test -w @agent-band/web`.
+- Timeouts are ceilings, not expected durations (server 60s, web 30s, slow 120s). Do not shorten them and do not add per-test timeouts to work around a flaky test.
+- Never wait with a fixed sleep. Use `waitFor` from `apps/server/src/roles/worker.testkit.ts`, a stream or event callback, or `findBy*` and `waitFor` in web tests. To prove that something did not happen, publish a later sentinel event and wait for it instead of sleeping.
+- Web tests that use fake timers must restore real timers in `afterEach`.
+- Use `openTestDatabase()` for PGlite: it restores a migrated snapshot per test instead of re-running migrations.
+
 ## Rules
 
 - Tests never call a real `claude` or `codex` CLI or any paid API.

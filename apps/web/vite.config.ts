@@ -12,5 +12,9 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.tsx'],
     setupFiles: ['./src/test-setup.ts'],
+    // jsdom rendering of whole screens is CPU bound and several times slower when the machine is
+    // oversubscribed. These are ceilings for hung tests; passing tests finish as soon as they can.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
   },
 });

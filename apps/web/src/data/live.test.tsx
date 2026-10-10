@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EventsClient, ServerEvent } from '../api/events.ts';
 import { ID, accountDto, agentDto, list, runDto, taskDto, testApi } from '../test-utils.tsx';
 import { createLiveDataSource } from './live.ts';
@@ -58,6 +58,11 @@ function setup(events?: EventsClient) {
 }
 
 describe('live board data source', () => {
+  // Restores real timers even when an assertion fails, so fake timers never leak into later tests.
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('maps DTOs into the board snapshot', async () => {
     const { source, calls } = setup();
     const snap = await source.load(emptyFilter);
@@ -125,6 +130,5 @@ describe('live board data source', () => {
     vi.advanceTimersByTime(10);
     expect(seen).toHaveBeenCalledTimes(1);
     expect(seen).toHaveBeenCalledWith({ cursor: '2' });
-    vi.useRealTimers();
   });
 });
