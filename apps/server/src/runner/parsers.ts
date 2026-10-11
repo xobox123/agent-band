@@ -268,7 +268,11 @@ function agyToolStep(s: Record<string, unknown>): NormalizedEvent[] {
   if (s.state === 'ERROR') {
     const message = object(info.error).message;
     const first = typeof message === 'string' ? message.split('\n')[0] : undefined;
-    return [{ kind: 'stderr', text: `tool ${name} failed: ${first ?? 'error'}` }];
+    const stderr: NormalizedEvent = { kind: 'stderr', text: `tool ${name} failed: ${first ?? 'error'}` };
+    const hookDenial = first?.match(/denied by pre-tool hook:\s*(?:agent-band:\s*)?(.+)$/);
+    return hookDenial?.[1]
+      ? [stderr, { kind: 'permission_denied', actions: [hookDenial[1].trim()] }]
+      : [stderr];
   }
   return [];
 }

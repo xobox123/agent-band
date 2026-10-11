@@ -102,6 +102,34 @@ describe('parseAgyLine (stream captured from a real agy 1.3.1)', () => {
   });
 });
 
+describe('agy hook denials', () => {
+  const step = (message: string) =>
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        conversation_id: 'c',
+        step_index: 2,
+        state: 'ERROR',
+        step_type: 'tool',
+        tool_name: 'run_command',
+        tool_info: { error: { message } },
+      },
+    });
+
+  it('reports a pre-tool hook denial as permission_denied with the reason', () => {
+    const events = parseAgyLine(
+      step('tool call denied by pre-tool hook: agent-band: tool X is not supported'),
+    );
+    expect(events.map((e) => e.kind)).toEqual(['stderr', 'permission_denied']);
+    expect(events[1]).toEqual({ kind: 'permission_denied', actions: ['tool X is not supported'] });
+    for (const e of events) NormalizedEvent.parse(e);
+  });
+
+  it('keeps other tool errors as stderr only', () => {
+    expect(parseAgyLine(step('exit status 1')).map((e) => e.kind)).toEqual(['stderr']);
+  });
+});
+
 describe('agy quota errors', () => {
   const now = Date.parse('2026-10-07T10:00:00.000Z');
   const failed = (error: string) =>

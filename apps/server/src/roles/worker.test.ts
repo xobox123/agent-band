@@ -7,6 +7,7 @@ import type { RunSpec } from '@agent-band/contracts';
 import { openPolicy } from '../ports/testing.ts';
 import { runs as runsTable } from '../modules/runs/infra/schema.ts';
 import { FakeAdapter } from '../runner/index.ts';
+import { parseAgyLine } from '../runner/parsers.ts';
 import { makeKit, tmp, waitFor, type Script } from './worker.testkit.ts';
 
 type Kit = Awaited<ReturnType<typeof makeKit>>;
@@ -438,6 +439,32 @@ describe('worker', () => {
       await reachStatus(task.id, 'failed');
       const t = await kit.tasks.getTask(kit.db, kit.actor, task.id);
       expect(t.error).toBe('tools were denied: tool Bash is not pre-approved for this agent');
+    });
+
+    it('fails an unchanged run whose agy hook denied a tool locally', async () => {
+      const acc = await kit.account('agy', 'antigravity');
+      const agent = await kit.agent('ag', acc.id);
+      const step = JSON.stringify({
+        event: 'step_update',
+        step_update: {
+          conversation_id: 'c',
+          step_index: 1,
+          state: 'ERROR',
+          step_type: 'tool',
+          tool_name: 'run_command',
+          tool_info: {
+            error: {
+              message: 'tool call denied by pre-tool hook: agent-band: the .agents directory is off limits',
+            },
+          },
+        },
+      });
+      kit.script = () => ({ events: parseAgyLine(step) });
+      const task = await kit.task({ target: { agentId: agent.id }, workDir: await repo() });
+      await run(kit);
+      await reachStatus(task.id, 'failed');
+      const t = await kit.tasks.getTask(kit.db, kit.actor, task.id);
+      expect(t.error).toBe('tools were denied: the .agents directory is off limits');
     });
 
     it('does not fail a run for allowed gate decisions', async () => {

@@ -559,7 +559,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         const gateDenials = (await deps.runs.listRunEvents(deps.db, d, run.id))
           .filter((e) => e.payload.kind === 'tool_decision' && e.payload.decision === 'deny')
           .map((e) => (e.payload.kind === 'tool_decision' ? e.payload.reason : ''));
-        const all = [...denied, ...new Set(gateDenials)];
+        const all = [...new Set([...denied, ...gateDenials])];
         if (all.length > 0 && (await treeFingerprint(task.workDir)) === treeBefore) {
           failure = `tools were denied: ${all.join(', ')}`;
           lastError = failure;
