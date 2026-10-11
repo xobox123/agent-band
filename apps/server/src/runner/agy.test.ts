@@ -66,7 +66,9 @@ describe('parseAgyLine (stream captured from a real agy 1.3.1)', () => {
     ]);
     expect(events.filter((e) => e.kind === 'stderr').map((e) => (e as { text: string }).text)).toEqual([
       'tool run_command failed: permission check failed for unsandboxed "echo hi": user denied permission to run command:',
-      'agy auto-denied permissions that headless mode cannot ask for: command',
+    ]);
+    expect(events.filter((e) => e.kind === 'permission_denied')).toEqual([
+      { kind: 'permission_denied', actions: ['command'] },
     ]);
     expect(events.some((e) => e.kind === 'error')).toBe(false);
   });
@@ -97,6 +99,34 @@ describe('parseAgyLine (stream captured from a real agy 1.3.1)', () => {
       result: { status: 'SUCCESS', usage: { input_tokens: 28352, output_tokens: 679 } },
     });
     expect(parseAgyLine(line)).toEqual([]);
+  });
+});
+
+describe('agy hook denials', () => {
+  const step = (message: string) =>
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        conversation_id: 'c',
+        step_index: 2,
+        state: 'ERROR',
+        step_type: 'tool',
+        tool_name: 'run_command',
+        tool_info: { error: { message } },
+      },
+    });
+
+  it('reports a pre-tool hook denial as permission_denied with the reason', () => {
+    const events = parseAgyLine(
+      step('tool call denied by pre-tool hook: agent-band: tool X is not supported'),
+    );
+    expect(events.map((e) => e.kind)).toEqual(['stderr', 'permission_denied']);
+    expect(events[1]).toEqual({ kind: 'permission_denied', actions: ['tool X is not supported'] });
+    for (const e of events) NormalizedEvent.parse(e);
+  });
+
+  it('keeps other tool errors as stderr only', () => {
+    expect(parseAgyLine(step('exit status 1')).map((e) => e.kind)).toEqual(['stderr']);
   });
 });
 
@@ -145,6 +175,14 @@ describe('agyArgs', () => {
     const full = agyArgs({ ...spec, mode: 'full-auto' });
     expect(full).toContain('--dangerously-skip-permissions');
     expect(full).not.toContain('--mode');
+  });
+
+  it('skips agy prompts in edit mode only when the policy hook is registered', () => {
+    const hooked = { ...spec, antigravityHookCommand: 'node "/h.mjs"', antigravityHookState: '/h.sha' };
+    expect(agyArgs(hooked)).toContain('--dangerously-skip-permissions');
+    expect(agyArgs(hooked)).not.toContain('--mode');
+    expect(agyArgs({ ...hooked, mode: 'read-only' }).slice(-2)).toEqual(['--mode', 'plan']);
+    expect(agyArgs(spec)).not.toContain('--dangerously-skip-permissions');
   });
 
   it('passes model, timeout and resume, prefixes the system prompt and never passes secrets', () => {

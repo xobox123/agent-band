@@ -104,7 +104,9 @@ async function main() {
   });
   if (res.status !== 200) return deny('authorization service returned ' + res.status);
   const body = await res.json();
-  if (body && body.decision === 'allow') return finish(JSON.stringify({ decision: 'allow' }), 0);
+  if (body && body.decision === 'allow') {
+    return finish(JSON.stringify({ decision: 'allow' }), 0);
+  }
   if (body && body.decision === 'deny') {
     return deny(typeof body.reason === 'string' ? body.reason : 'denied by policy');
   }

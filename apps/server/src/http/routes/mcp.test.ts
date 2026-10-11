@@ -15,6 +15,7 @@ import {
 import { newRunToken, registerRunAuth } from '../../execution/app/run-auth.ts';
 import { FakeEffectivePolicySource, FakeEffectiveSkillsSource, openPolicy } from '../../ports/testing.ts';
 import { createWorker, type Worker } from '../../roles/worker.ts';
+import { waitFor } from '../../roles/worker.testkit.ts';
 import { claudeArgs, codexArgs } from '../../runner/adapters.ts';
 import { makeApi, type TestApi } from '../test-helpers.ts';
 
@@ -25,16 +26,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await api.close();
 });
-
-const waitFor = async <T>(fn: () => Promise<T | undefined | false>, ms = 10_000): Promise<T> => {
-  const end = Date.now() + ms;
-  for (;;) {
-    const v = await fn();
-    if (v) return v;
-    if (Date.now() > end) throw new Error('waitFor timed out');
-    await new Promise((r) => setTimeout(r, 25));
-  }
-};
 
 interface Rpc {
   jsonrpc: string;

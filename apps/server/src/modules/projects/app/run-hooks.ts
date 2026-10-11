@@ -5,6 +5,7 @@ import {
   commitAll,
   ensureWorktree,
   removeWorktree,
+  revParse,
   runCheck,
   type CheckResult,
   type GitIdentity,
@@ -50,6 +51,7 @@ export function createProjectRuns(deps: ProjectRunsDeps) {
     ): Promise<TaskReview> {
       const project = await projectOf(db, task);
       await commitAll(task.workDir, `${task.key}: ${task.title}`, identity);
+      const checksSha = await revParse(task.workDir, 'HEAD');
       const checks: TaskReview['checks'] = [];
       for (const command of project.checks) {
         const result = await runCheck(task.workDir, command, deps.checkTimeoutMs ?? CHECK_TIMEOUT_MS);
@@ -69,6 +71,8 @@ export function createProjectRuns(deps: ProjectRunsDeps) {
         commits: range.commits,
         baseSha: range.baseSha,
         headSha: range.headSha,
+        checksSha,
+        reviewLoops: task.review?.reviewLoops ?? 0,
       };
     },
     /** Removes the worktree and branch of a merged or cancelled task unless the project keeps them. */

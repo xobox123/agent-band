@@ -178,6 +178,17 @@ export function ProjectsScreen() {
                 ))
               )}
             </dd>
+            <dt>Reviewer</dt>
+            <dd>
+              {!project.reviewerTarget ? (
+                <span className="dim">None</span>
+              ) : 'agentId' in project.reviewerTarget ? (
+                <span className="mono">{`agent ${project.reviewerTarget.agentId}`}</span>
+              ) : (
+                <span className="mono">{`label ${project.reviewerTarget.label}`}</span>
+              )}
+              {project.autoMergeOnApprove ? ', merges automatically on approval' : ''}
+            </dd>
             <dt>After merge</dt>
             <dd>{project.keepWorktrees ? 'Keep worktrees and branches' : 'Remove worktree and branch'}</dd>
           </dl>

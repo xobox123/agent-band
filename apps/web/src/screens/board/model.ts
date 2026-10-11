@@ -84,6 +84,10 @@ export function reviewBadges(task: Task): ReviewBadge[] {
     case 'rejected':
       return [{ tone: 'warn', text: 'Changes requested', title: review.feedback ?? undefined }];
     case 'pending':
+      if (review.reviewerVerdict === 'APPROVE' && review.reviewedSha === review.headSha)
+        return [...checks, { tone: 'ok', text: 'Reviewer approved' }];
+      if (review.reviewerVerdict === 'CHANGES REQUESTED' && review.reviewedSha === review.headSha)
+        return [...checks, { tone: 'warn', text: 'Reviewer requested changes' }];
       return [...checks, { tone: 'warn', text: 'Awaiting review' }];
   }
 }

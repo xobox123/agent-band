@@ -47,7 +47,25 @@ const diffText = [
   '',
 ].join('\n');
 
-function routes(extra: Routes = {}, r = review()): Routes {
+const SHA = 'b'.repeat(40);
+const gate = (over: Record<string, unknown> = {}) => ({
+  sha: SHA,
+  liveSha: SHA,
+  checks: 'passed',
+  verdict: 'approved',
+  blockers: [],
+  overridable: false,
+  canMerge: true,
+  ...over,
+});
+const missingVerdict = gate({
+  verdict: 'missing',
+  canMerge: false,
+  overridable: true,
+  blockers: [{ code: 'reviewer_missing', message: 'No reviewer verdict yet' }],
+});
+
+function routes(extra: Routes = {}, r = review(), g: Record<string, unknown> | null = gate()): Routes {
   return {
     [`GET /tasks/${ID(30)}/diff`]: {
       diff: diffText,
@@ -60,6 +78,7 @@ function routes(extra: Routes = {}, r = review()): Routes {
       headSha: 'b'.repeat(40),
       review: r,
       reviewer: { taskId: ID(31), status: 'done', summary: 'Looks fine' },
+      gate: g,
     },
     ...extra,
   };
@@ -90,6 +109,23 @@ describe('review badges', () => {
     expect(conflict.at(-1)).toMatchObject({ text: 'Conflict', tone: 'crit', title: 'a.ts' });
     expect(reviewBadges(task({ review: null }))).toEqual([]);
   });
+
+  it('tells the human when the reviewer approved this commit', () => {
+    const ok = [{ command: 'x', exitCode: 0, durationMs: 1 }];
+    const approved = review({ checks: ok, reviewerVerdict: 'APPROVE', reviewedSha: 'b'.repeat(40) });
+    expect(reviewBadges(task({ review: approved })).map((b) => b.text)).toEqual([
+      'Checks passed',
+      'Reviewer approved',
+    ]);
+    const stale = review({ checks: ok, reviewerVerdict: 'APPROVE', reviewedSha: 'e'.repeat(40) });
+    expect(reviewBadges(task({ review: stale })).at(-1)?.text).toBe('Awaiting review');
+    const changes = review({
+      checks: ok,
+      reviewerVerdict: 'CHANGES REQUESTED',
+      reviewedSha: 'b'.repeat(40),
+    });
+    expect(reviewBadges(task({ review: changes })).at(-1)?.text).toBe('Reviewer requested changes');
+  });
 });
 
 describe('Changes tab', () => {
@@ -114,6 +150,71 @@ describe('Changes tab', () => {
     await waitFor(() => {
       expect(calls.some((c) => c.method === 'POST' && c.path.endsWith('/review/approve'))).toBe(true);
     });
+  });
+
+  it('shows the merge gate and the reviewer findings', async () => {
+    const r = review({
+      reviewerVerdict: 'CHANGES REQUESTED',
+      reviewerFindings: ['src/a.ts:3 missing check'],
+      reviewedSha: SHA,
+    });
+    setup(
+      routes(
+        {},
+        r,
+        gate({
+          verdict: 'changes_requested',
+          canMerge: false,
+          overridable: true,
+          blockers: [{ code: 'reviewer_changes_requested', message: 'The reviewer requested changes' }],
+        }),
+      ),
+      task({ review: r }),
+    );
+    const section = (await screen.findByRole('heading', { name: 'Merge gate' })).parentElement as HTMLElement;
+    expect(within(section).getByText('Checks passed')).toBeInTheDocument();
+    expect(within(section).getByText('Reviewer requested changes')).toBeInTheDocument();
+    expect(screen.getByText('src/a.ts:3 missing check')).toBeInTheDocument();
+  });
+
+  it('blocks the merge until an owner gives an override reason, then sends it', async () => {
+    const calls = setup(
+      routes({ [`POST /tasks/${ID(30)}/review/approve`]: taskDto() }, review(), missingVerdict),
+    );
+    const merge = await screen.findByRole('button', { name: 'Approve and merge' });
+    expect(merge).toBeDisabled();
+    expect(screen.getByText('No reviewer verdict yet')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Override reason/), { target: { value: ' Urgent fix ' } });
+    expect(merge).toBeEnabled();
+    fireEvent.click(merge);
+    await waitFor(() => {
+      expect(calls.find((c) => c.path.endsWith('/review/approve'))?.body).toEqual({
+        overrideReason: 'Urgent fix',
+      });
+    });
+  });
+
+  it('cannot merge failed checks or a moved branch, not even with a reason', async () => {
+    setup(
+      routes(
+        {},
+        review(),
+        gate({
+          checks: 'failed',
+          liveSha: 'd'.repeat(40),
+          canMerge: false,
+          overridable: false,
+          blockers: [
+            { code: 'branch_moved', message: 'The branch moved' },
+            { code: 'checks_not_passed', message: 'The checks failed on bbbbbbb' },
+          ],
+        }),
+      ),
+    );
+    expect(await screen.findByRole('button', { name: 'Approve and merge' })).toBeDisabled();
+    expect(screen.queryByLabelText(/Override reason/)).toBeNull();
+    expect(screen.getByText('Branch moved')).toBeInTheDocument();
+    expect(screen.getByText('The checks failed on bbbbbbb')).toBeInTheDocument();
   });
 
   it('sends feedback with a request for changes', async () => {

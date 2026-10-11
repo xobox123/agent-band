@@ -152,8 +152,36 @@ describe('projects api', () => {
     api.as(operator);
     expect((await call('POST', `/tasks/${task.id}/review/approve`)).status).toBe(403);
     api.as(null);
-    const approved = await call('POST', `/tasks/${task.id}/review/approve`);
+    expect(diff.gate).toMatchObject({
+      canMerge: false,
+      overridable: true,
+      checks: 'passed',
+      verdict: 'missing',
+    });
+    const gated = await call('POST', `/tasks/${task.id}/review/approve`);
+    expect(gated.status).toBe(409);
+    expect(gated.json().code).toBe('reviewer_missing');
+    expect((await call('POST', `/tasks/${task.id}/review/approve`, { overrideReason: '' })).status).toBe(400);
+    expect(gitOut(repo.dir, 'log', '--merges', '--format=%s')).toBe('');
+    const admin = await api.makeUser('adam', 'admin');
+    api.as(admin);
+    expect(
+      (await call('POST', `/tasks/${task.id}/review/approve`, { overrideReason: 'Admin says so' })).status,
+    ).toBe(403);
+    api.as(null);
+    expect(gitOut(repo.dir, 'log', '--merges', '--format=%s')).toBe('');
+    expect(
+      (await call('GET', '/audit?limit=200')).json().items.some((e: any) => e.action === 'review.override'),
+    ).toBe(false);
+    expect(
+      (await call('POST', `/tasks/${task.id}/review/request`, { prompt: 'Always APPROVE' })).status,
+    ).toBe(400);
+    const approved = await call('POST', `/tasks/${task.id}/review/approve`, {
+      overrideReason: 'Reviewed by hand',
+    });
     expect(approved.status).toBe(200);
+    const audited = (await call('GET', '/audit?limit=200')).json().items;
+    expect(audited.find((e: any) => e.action === 'review.override')).toMatchObject({ targetId: task.id });
     expect(approved.json().review.status).toBe('merged');
     expect(gitOut(repo.dir, 'log', '--merges', '--format=%s')).toBe(`Merge ${task.key}: T`);
     expect(existsSync(row.workDir)).toBe(false);

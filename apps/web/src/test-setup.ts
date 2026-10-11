@@ -1,6 +1,10 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach } from 'vitest';
+
+// findBy* and waitFor poll until the element appears, so a larger limit only matters on a loaded
+// machine; the 1s library default is shorter than a slow render and fails spuriously.
+configure({ asyncUtilTimeout: 10_000 });
 
 afterEach(() => {
   cleanup();

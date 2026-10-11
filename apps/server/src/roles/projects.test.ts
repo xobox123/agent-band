@@ -31,7 +31,7 @@ const project = (extra: Record<string, unknown> = {}) =>
     name: 'Repo',
     repoPath: repo.dir,
     worktreesRoot: worktrees,
-    checks: ['echo ok', 'echo broken >&2; exit 3'],
+    checks: ['echo ok'],
     ...extra,
   });
 const projectTask = (projectId: string, extra: Record<string, unknown> = {}) =>
@@ -58,6 +58,24 @@ const writes = (files: Record<string, string>) => {
     for (const [name, text] of Object.entries(files)) writeFileSync(join(s.workDir, name), text);
     return { events: [{ kind: 'text', text: 'done' }] };
   };
+};
+/** Stores a reviewer verdict on the task review, bound to the given commit (default: its head). */
+const verdict = async (
+  id: string,
+  value: 'APPROVE' | 'CHANGES REQUESTED' = 'APPROVE',
+  reviewedSha?: string,
+  findings: string[] = [],
+) => {
+  const review = (await reload(id)).review;
+  if (!review) throw new Error('task has no review');
+  await kit.db.transaction((tx) =>
+    kit.tasks.setReview(tx, kit.actor, id, {
+      ...review,
+      reviewerVerdict: value,
+      reviewerFindings: findings,
+      reviewedSha: reviewedSha ?? review.headSha,
+    }),
+  );
 };
 const markDone = async (task: Task, review: NonNullable<Task['review']>) => {
   await kit.db.update(tasksTable).set({ status: 'done' }).where(eq(tasksTable.id, task.id));
@@ -112,7 +130,7 @@ describe('projects', () => {
   });
 
   it('runs tasks in parallel on separate branches, commits as the agent and records the checks', async () => {
-    const p = await project();
+    const p = await project({ checks: ['echo ok', 'echo broken >&2; exit 3'] });
     const acc = await kit.account('a');
     const agent = await kit.agent('alpha', acc.id, { gitIdentity: identity });
     writes({ 'feature.txt': 'one\ntwo\n' });
@@ -136,6 +154,7 @@ describe('projects', () => {
       'Alpha Bot <alpha@example.com>|Alpha Bot',
     );
     expect(a.review?.headSha).toBe(gitOut(a.workDir, 'rev-parse', 'HEAD'));
+    expect(a.review?.checksSha).toBe(a.review?.headSha);
     expect(a.review?.baseSha).toBe(gitOut(repo.dir, 'rev-parse', 'main'));
     expect(gitOut(repo.dir, 'rev-list', '--count', 'main')).toBe('1');
     expect(existsSync(join(repo.dir, 'feature.txt'))).toBe(false);
@@ -152,12 +171,16 @@ describe('projects', () => {
     await kit.agent('alpha', acc.id, { labels: ['x'] });
     await startWorker();
     const done = await settled(t.id);
+    await verdict(t.id);
     const diff = await kit.review.diff(kit.db, kit.actor, t.id);
     expect(diff.files).toEqual([{ path: 'feature.txt', additions: 1, deletions: 0 }]);
     expect(diff.diff).toContain('+x');
     expect(diff.truncated).toBe(false);
+    expect(diff.gate).toMatchObject({ canMerge: true, checks: 'passed', verdict: 'approved' });
     const merged = await kit.review.approve(kit.db, kit.actor, t.id);
     expect(merged.review?.status).toBe('merged');
+    // The reviewed commit itself is the second parent of the merge.
+    expect(gitOut(repo.dir, 'rev-parse', 'main^2')).toBe(done.review?.headSha);
     expect(readFileSync(join(repo.dir, 'feature.txt'), 'utf8')).toBe('x\n');
     expect(gitOut(repo.dir, 'log', '--merges', '--format=%s')).toBe(`Merge ${done.key}: Add feature`);
     expect(existsSync(done.workDir)).toBe(false);
@@ -175,6 +198,7 @@ describe('projects', () => {
     const t = await projectTask(p.id, { target: { label: 'x' } });
     await startWorker();
     await settled(t.id);
+    await verdict(t.id);
     await kit.review.approve(kit.db, kit.actor, t.id);
     expect(existsSync(t.workDir)).toBe(true);
     expect(branches()).toContain(`ab/${t.key}`);
@@ -194,6 +218,8 @@ describe('projects', () => {
     await settled(t1.id);
     const t2 = await projectTask(p.id, { target: { label: 'x' } });
     await settled(t2.id);
+    await verdict(t1.id);
+    await verdict(t2.id);
     await kit.review.approve(kit.db, kit.actor, t1.id);
     const result = await kit.review.approve(kit.db, kit.actor, t2.id);
     expect(result.review).toMatchObject({ status: 'conflict', conflictFiles: ['shared.txt'] });
@@ -215,6 +241,7 @@ describe('projects', () => {
     const t = await projectTask(p.id, { target: { label: 'x' } });
     await startWorker();
     await settled(t.id);
+    await verdict(t.id);
     writeFileSync(join(repo.dir, 'scratch.txt'), 'wip');
     await failsWith(kit.review.approve(kit.db, kit.actor, t.id), 409, 'base_dirty');
     gitOut(repo.dir, 'checkout', '-q', '-b', 'other');
@@ -268,10 +295,9 @@ describe('projects', () => {
       workDir: t.workDir,
       projectId: null,
     });
-    expect(reviewer.prompt).toContain(`Reviewed task: ${t.key}`);
-    expect(reviewer.prompt).toContain(`Task title: ${t.title}`);
+    expect(reviewer.prompt).toContain(`${t.key} (${t.title})`);
     expect(reviewer.prompt).toContain(t.prompt);
-    await waitFor(async () => (await reload(reviewer.id)).status === 'done', 15_000);
+    await waitFor(async () => (await reload(reviewer.id)).status === 'done');
     const diff = await kit.review.diff(kit.db, kit.actor, t.id);
     expect(diff.reviewer).toEqual({
       taskId: reviewer.id,
@@ -298,11 +324,10 @@ describe('projects', () => {
     expect(second.review?.status).toBe('pending');
     kit.script = () => ({ events: [{ kind: 'text', text: 'Looks fine, ready to merge' }] });
     const reviewer = await kit.review.requestReview(kit.db, kit.actor, t.id, {});
-    expect(reviewer.prompt).toContain(`Reviewed task: ${t.key}`);
-    expect(reviewer.prompt).toContain(`Task title: ${t.title}`);
+    expect(reviewer.prompt).toContain(`${t.key} (${t.title})`);
     expect(reviewer.prompt).toContain('Build it');
     expect(reviewer.prompt.match(/unique-feedback-marker/g)).toHaveLength(1);
-    await waitFor(async () => (await reload(reviewer.id)).status === 'done', 15_000);
+    await waitFor(async () => (await reload(reviewer.id)).status === 'done');
   });
 
   it('needs agent.manage to merge', async () => {
@@ -377,7 +402,9 @@ describe('projects', () => {
     const childReview = await kit.projectRuns.finalize(kit.db, child, identity);
     expect(childReview.commits).toHaveLength(1);
     await markDone(child, childReview);
+    await verdict(child.id);
     await markDone(goal, await kit.projectRuns.finalize(kit.db, goal, identity));
+    await verdict(goal.id);
     await failsWith(kit.review.approve(kit.db, kit.actor, goal.id), 409, 'subtasks_unmerged');
 
     await kit.review.approve(kit.db, kit.actor, child.id);
@@ -389,6 +416,8 @@ describe('projects', () => {
     const goalReview = await kit.projectRuns.finalize(kit.db, goal, identity);
     expect(goalReview.commits.map((c) => c.subject)).toContain(`${child.key}: Sub`);
     await kit.db.transaction((tx) => kit.tasks.setReview(tx, kit.actor, goal.id, goalReview));
+    await failsWith(kit.review.approve(kit.db, kit.actor, goal.id), 409, 'reviewer_missing');
+    await verdict(goal.id);
     const merged = await kit.review.approve(kit.db, kit.actor, goal.id);
     expect(merged.review?.status).toBe('merged');
     expect(readFileSync(join(repo.dir, 'part.txt'), 'utf8')).toBe('part\n');

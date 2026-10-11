@@ -17,6 +17,7 @@
     "format:check": "prettier --check .",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p scripts/tsconfig.json",
     "test": "npm run test --workspaces --if-present",
+    "test:slow": "npm run test:slow --workspaces --if-present",
     "start": "npm run start -w @agent-band/server",
     "smoke": "tsx scripts/smoke.ts"
   },

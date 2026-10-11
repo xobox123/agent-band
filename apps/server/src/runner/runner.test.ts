@@ -3,6 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RunHandle, RunSpec } from '@agent-band/contracts';
+import { waitFor } from '../roles/worker.testkit.ts';
 import {
   ApiStubAdapter,
   FakeAdapter,
@@ -301,18 +302,14 @@ describe('process runner', () => {
     }
     await h.done;
     expect(grandchild).toBeGreaterThan(0);
-    const alive = async () => {
-      for (let i = 0; i < 50; i++) {
-        try {
-          process.kill(grandchild, 0);
-        } catch {
-          return false;
-        }
-        await new Promise((r) => setTimeout(r, 50));
+    await waitFor(() => {
+      try {
+        process.kill(grandchild, 0);
+        return Promise.resolve(false);
+      } catch {
+        return Promise.resolve(true);
       }
-      return true;
-    };
-    expect(await alive()).toBe(false);
+    });
   });
   it('settles when the exit hook fails', async () => {
     const h = start('', () => Promise.reject(new Error('hook failed')));

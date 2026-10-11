@@ -6,6 +6,11 @@ const AbsolutePath = z
   .refine((p) => p.startsWith('/') && !p.includes('\0'), 'must be an absolute path');
 const Checks = z.array(z.string().trim().min(1).max(1000)).max(20);
 
+const ReviewerTarget = z.union([
+  z.object({ agentId: z.uuid() }).strict(),
+  z.object({ label: z.string().trim().min(1).max(100) }).strict(),
+]);
+
 export const CreateProject = z
   .object({
     name: z.string().trim().min(1).max(100),
@@ -17,6 +22,8 @@ export const CreateProject = z
     worktreesRoot: AbsolutePath.optional(),
     checks: Checks.default([]),
     keepWorktrees: z.boolean().default(false),
+    reviewerTarget: ReviewerTarget.nullable().optional(),
+    autoMergeOnApprove: z.boolean().default(false),
   })
   .strict();
 export type CreateProjectInput = z.input<typeof CreateProject>;
@@ -26,6 +33,8 @@ export const UpdateProject = z
     name: z.string().trim().min(1).max(100),
     checks: Checks,
     keepWorktrees: z.boolean(),
+    reviewerTarget: ReviewerTarget.nullable(),
+    autoMergeOnApprove: z.boolean(),
   })
   .partial()
   .strict();
@@ -82,20 +91,4 @@ export function tailBytes(text: string, max: number): string {
 
 export function feedbackPrompt(prompt: string, feedback: string, attempt: number): string {
   return `${prompt}\n\nReviewer feedback (attempt ${attempt}). Fix the issues below in the same worktree:\n${feedback}`;
-}
-
-/** The task prompt already carries the reviewer feedback of earlier attempts (see feedbackPrompt). */
-export function reviewTaskPrompt(
-  task: { key: string; title: string; prompt: string; branch?: string | null; baseBranch?: string | null },
-  instructions?: string,
-): string {
-  return [
-    `Review the changes of ${task.key} (${task.title}) in this worktree.`,
-    `They are the commits on branch ${task.branch ?? ''} that are not in ${task.baseBranch ?? 'the base branch'}.`,
-    instructions ??
-      'Do not modify files. Report problems by file and line, and say whether the change is ready to merge.',
-    `Reviewed task: ${task.key}`,
-    `Task title: ${task.title}`,
-    `Task prompt as given to the implementer (including the acceptance criteria and any reviewer feedback from earlier attempts):\n${task.prompt}`,
-  ].join('\n\n');
 }

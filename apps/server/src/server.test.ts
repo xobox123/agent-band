@@ -1,9 +1,7 @@
-import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 import { createComposition } from './composition.ts';
 import { fixedKeySource } from './modules/accounts/index.ts';
@@ -12,6 +10,7 @@ import { startAll } from './roles/all.ts';
 import { startApi } from './roles/api.ts';
 import { loadConfig } from './platform/config.ts';
 import { start } from './server.ts';
+import { waitFor } from './roles/worker.testkit.ts';
 
 async function freePort(): Promise<number> {
   return new Promise((resolve) => {
@@ -108,46 +107,12 @@ it('role api runs the scheduler loop and stops it with the role', async () => {
       target: { label: 'x' },
       runAt: future,
     });
-    let status = 'scheduled';
-    for (let i = 0; i < 60 && status === 'scheduled'; i++) {
-      await new Promise((r) => setTimeout(r, 50));
-      status = (await composition.tasks.listTasks(database.db, composition.localUser))[0]?.status ?? status;
-    }
-    expect(status).toBe('queued');
+    await waitFor(async () => {
+      const [task] = await composition.tasks.listTasks(database.db, composition.localUser);
+      return task?.status === 'queued';
+    });
   } finally {
     await api.stop();
     await database.close();
   }
 });
-
-it('runs as a real process via main.ts and exits 0 on SIGTERM', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'ab-proc-'));
-  const port = await freePort();
-  const main = fileURLToPath(new URL('./main.ts', import.meta.url));
-  const child = spawn('npx', ['tsx', main], {
-    env: {
-      ...process.env,
-      AGENT_BAND_HOME: home,
-      AGENT_BAND_PORT: String(port),
-      AGENT_BAND_ROLE: 'all',
-      LOG_LEVEL: 'silent',
-    },
-    stdio: 'ignore',
-    cwd: fileURLToPath(new URL('..', import.meta.url)),
-  });
-  const exited = new Promise<number | null>((resolve) => child.on('exit', resolve));
-  try {
-    let ready = false;
-    for (let i = 0; i < 250 && !ready; i++) {
-      try {
-        ready = (await fetch(`http://127.0.0.1:${port}/readyz`)).status === 200;
-      } catch {
-        await new Promise((r) => setTimeout(r, 200));
-      }
-    }
-    expect(ready).toBe(true);
-  } finally {
-    child.kill('SIGTERM');
-  }
-  expect(await exited).toBe(0);
-}, 90_000);

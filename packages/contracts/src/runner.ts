@@ -35,6 +35,8 @@ export const NormalizedEvent = z.discriminatedUnion('kind', [
   }),
   z.object({ kind: z.literal('error'), message: z.string() }),
   z.object({ kind: z.literal('stderr'), text: z.string() }),
+  /** The provider reported tools it denied itself (permission prompt it could not show, sandbox). */
+  z.object({ kind: z.literal('permission_denied'), actions: z.array(z.string()).min(1) }),
   z.object({ kind: z.literal('session'), sessionId: z.string() }),
 ]);
 export type NormalizedEvent = z.infer<typeof NormalizedEvent>;

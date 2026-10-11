@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { waitFor } from '../roles/worker.testkit.ts';
 import { openDatabase } from './db.ts';
 import { EventStream, publish, type OutboxEvent } from './outbox.ts';
 import { withTx } from './tx.ts';
@@ -14,7 +15,7 @@ describe.skipIf(!url)('real Postgres', () => {
     await stream.start();
     try {
       await withTx(database.db, (tx) => publish(tx, 'it.event', { ok: true }));
-      for (let i = 0; i < 50 && received.length === 0; i++) await new Promise((r) => setTimeout(r, 100));
+      await waitFor(() => Promise.resolve(received.length > 0));
       expect(received[0]).toMatchObject({ type: 'it.event', payload: { ok: true } });
     } finally {
       await stream.stop();

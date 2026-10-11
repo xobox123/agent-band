@@ -545,7 +545,11 @@ export function createTasks(deps: TasksDeps) {
       tx: Tx,
       actor: ActorContext,
       id: string,
-      change: { prompt: (current: string, attempt: number) => string; feedback: string },
+      change: {
+        prompt: (current: string, attempt: number) => string;
+        feedback: string;
+        review?: Partial<TaskReview>;
+      },
     ): Promise<Task> {
       const task = await get(tx, actor, id);
       await deps.authorizer.authorize(tx, actor, 'task.write', resource(task.target));
@@ -568,7 +572,7 @@ export function createTasks(deps: TasksDeps) {
           resumeAt: null,
           runAt: null,
           result: null,
-          review: { ...task.review, status: 'rejected', feedback: change.feedback },
+          review: { ...task.review, ...change.review, status: 'rejected', feedback: change.feedback },
         },
         'task.review_reject',
       );
