@@ -1,0 +1,5 @@
+{"event":"init","conversation_id":"b95ea074-cc97-4e74-aa6e-81c91b386475","init":{"cwd":"/work","tools":["list_dir","run_command","view_file","write_to_file"],"permission_mode":"request-review","expanded_commands":[{"name":"plan","type":"system"}]}}
+{"event":"step_update","step_update":{"conversation_id":"b95ea074-cc97-4e74-aa6e-81c91b386475","step_index":0,"state":"DONE","step_type":"user_input"}}
+{"event":"step_update","step_update":{"conversation_id":"b95ea074-cc97-4e74-aa6e-81c91b386475","step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"OK"}}
+{"event":"step_update","step_update":{"conversation_id":"b95ea074-cc97-4e74-aa6e-81c91b386475","step_index":1,"state":"DONE","step_type":"agent_response","text_delta":"\n","duration_seconds":9.902527,"usage":{"input_tokens":13221,"output_tokens":678,"thinking_tokens":677,"cache_read_tokens":0,"total_tokens":13899}}}
+{"event":"result","result":{"conversation_id":"b95ea074-cc97-4e74-aa6e-81c91b386475","status":"SUCCESS","response":"OK\n","duration_seconds":9.956608,"num_turns":1,"usage":{"input_tokens":13221,"output_tokens":678,"thinking_tokens":677,"cache_read_tokens":0,"total_tokens":13899}}}

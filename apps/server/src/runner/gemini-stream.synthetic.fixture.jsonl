@@ -1,0 +1,10 @@
+{"type":"init","timestamp":"2026-10-07T10:00:00.000Z","session_id":"sess-synthetic-1","model":"gemini-2.5-pro"}
+{"type":"message","timestamp":"2026-10-07T10:00:00.100Z","role":"user","content":"List the files"}
+{"type":"message","timestamp":"2026-10-07T10:00:01.000Z","role":"assistant","content":"I will list ","delta":true}
+{"type":"tool_use","timestamp":"2026-10-07T10:00:01.500Z","tool_name":"run_shell_command","tool_id":"tool-1","parameters":{"command":"ls"}}
+{"type":"tool_result","timestamp":"2026-10-07T10:00:02.000Z","tool_id":"tool-1","status":"success","output":"a.txt"}
+{"type":"tool_use","timestamp":"2026-10-07T10:00:02.100Z","tool_name":"read_file","tool_id":"tool-2","parameters":{"file_path":"/nope"}}
+{"type":"tool_result","timestamp":"2026-10-07T10:00:02.200Z","tool_id":"tool-2","status":"error","error":{"type":"FILE_NOT_FOUND","message":"File not found"}}
+{"type":"error","timestamp":"2026-10-07T10:00:02.300Z","severity":"warning","message":"Loop detection is disabled"}
+{"type":"message","timestamp":"2026-10-07T10:00:03.000Z","role":"assistant","content":"Done.","delta":true}
+{"type":"result","timestamp":"2026-10-07T10:00:03.500Z","status":"success","stats":{"total_tokens":1500,"input_tokens":1200,"output_tokens":300,"cached":800,"input":400,"duration_ms":3400,"tool_calls":2,"models":{"gemini-2.5-pro":{"total_tokens":1500,"input_tokens":1200,"output_tokens":300,"cached":800,"input":400}}}}

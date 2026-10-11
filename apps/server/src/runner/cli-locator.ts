@@ -3,7 +3,7 @@ import { accessSync, constants, readdirSync, readFileSync, statSync } from 'node
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
-export type CliName = 'claude' | 'codex' | 'gemini';
+export type CliName = 'claude' | 'codex' | 'gemini' | 'agy';
 export type CliSource = 'env' | 'path' | 'shell' | 'known';
 
 export interface CliDiagnostic {
@@ -27,12 +27,13 @@ export interface LocatorOptions {
   knownDirs?: string[];
 }
 
-export const CLI_NAMES: readonly CliName[] = ['claude', 'codex', 'gemini'];
+export const CLI_NAMES: readonly CliName[] = ['claude', 'codex', 'gemini', 'agy'];
 
 const LABEL: Record<CliName, string> = {
   claude: 'Claude Code CLI',
   codex: 'Codex CLI',
   gemini: 'Gemini CLI',
+  agy: 'Antigravity CLI',
 };
 
 export const cliEnvVar = (name: CliName): string => `AGENT_BAND_${name.toUpperCase()}_BIN`;

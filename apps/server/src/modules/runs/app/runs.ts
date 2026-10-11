@@ -278,6 +278,15 @@ export function createRuns(deps: ModuleDeps) {
         .groupBy(runs.taskId);
       return Object.fromEntries(rows.map((r) => [r.taskId, r.tokens]));
     },
+    async countByTask(db: DbOrTx, actor: ActorContext, taskIds: string[]): Promise<Record<string, number>> {
+      if (taskIds.length === 0) return {};
+      const rows = await db
+        .select({ taskId: runs.taskId, n: count() })
+        .from(runs)
+        .where(and(eq(runs.orgId, actor.orgId), inArray(runs.taskId, taskIds)))
+        .groupBy(runs.taskId);
+      return Object.fromEntries(rows.map((r) => [r.taskId, r.n]));
+    },
     async runningCount(db: DbOrTx, actor: ActorContext, accountId: string): Promise<number> {
       return db.transaction(async (tx) => {
         await deps.authorizer.authorize(tx, actor, 'read', {});

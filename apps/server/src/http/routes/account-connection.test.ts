@@ -74,9 +74,9 @@ describe('probe-config', () => {
   });
 
   it('is refused for non-cli providers and for viewers', async () => {
-    expect((await call('POST', '/accounts/probe-config', { provider: 'gemini', type: 'cli' })).status).toBe(
-      400,
-    );
+    expect(
+      (await call('POST', '/accounts/probe-config', { provider: 'openai_compatible', type: 'cli' })).status,
+    ).toBe(400);
     api.as(await api.makeUser('viewer', 'viewer'));
     expect((await call('POST', '/accounts/probe-config', { provider: 'claude', type: 'cli' })).status).toBe(
       403,
@@ -358,7 +358,9 @@ describe('api key accounts', () => {
   it('advertises runnable types in the provider registry', async () => {
     const items = (await call('GET', '/providers')).json().items as { id: string; runnableTypes: string[] }[];
     expect(items.find((p) => p.id === 'claude')?.runnableTypes).toEqual(['cli', 'api']);
-    expect(items.find((p) => p.id === 'gemini')?.runnableTypes).toEqual([]);
+    expect(items.find((p) => p.id === 'gemini')?.runnableTypes).toEqual(['api']);
+    expect(items.find((p) => p.id === 'antigravity')?.runnableTypes).toEqual(['cli']);
+    expect(items.find((p) => p.id === 'openai_compatible')?.runnableTypes).toEqual([]);
   });
 });
 

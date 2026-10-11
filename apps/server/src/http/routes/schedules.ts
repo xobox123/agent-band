@@ -147,10 +147,15 @@ export function scheduleRoutes(c: Composition): FastifyPluginCallbackZod {
           actor,
           items.map((t) => t.id),
         );
+        const counts = await c.runs.countByTask(
+          db,
+          actor,
+          items.map((t) => t.id),
+        );
         return {
           items: items.map((t) => {
             const run = runs.find((r) => r.taskId === t.id);
-            return { ...taskDto(t), latestRun: run ? runDto(run) : null };
+            return { ...taskDto(t), latestRun: run ? runDto(run) : null, runCount: counts[t.id] ?? 0 };
           }),
           cursor,
           nextCursor: null,

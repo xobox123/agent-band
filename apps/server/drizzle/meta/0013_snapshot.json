@@ -1,5 +1,5 @@
 {
-  "id": "a9dfbc1f-ac1e-4005-a069-2eb3958b4bbe",
+  "id": "d319519a-37f1-4596-bf0a-f21da91a3e8c",
   "prevId": "1b455079-d3f2-4f8f-bd47-7036bfce27db",
   "version": "7",
   "dialect": "postgresql",
@@ -1272,19 +1272,6 @@
           "notNull": true,
           "default": false
         },
-        "reviewer_target": {
-          "name": "reviewer_target",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "auto_merge_on_approve": {
-          "name": "auto_merge_on_approve",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "created_by": {
           "name": "created_by",
           "type": "uuid",
@@ -2221,6 +2208,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "work_dir_explicit": {
+          "name": "work_dir_explicit",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "target": {
           "name": "target",

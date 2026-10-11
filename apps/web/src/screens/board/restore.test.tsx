@@ -11,8 +11,12 @@ function setup() {
   const mock = createMockDataSource({ live: false, latencyMs: 0 });
   const toBacklog = vi.fn((ids: string[]) => mock.toBacklog(ids));
   const source: BoardDataSource = { ...mock, toBacklog };
+  const load: typeof mock.load = async (filter) => {
+    const snapshot = await mock.load(filter);
+    return { ...snapshot, tasks: snapshot.tasks.filter((task) => ['AB-22', 'AB-23'].includes(task.key)) };
+  };
   render(
-    <DataSourceProvider source={source}>
+    <DataSourceProvider source={{ ...source, load }}>
       <BoardScreen />
     </DataSourceProvider>,
   );
@@ -92,5 +96,6 @@ describe('Move to backlog', () => {
     expect(evaluateDrop(view('AB-23'), 'l', target)).toEqual({ kind: 'backlog' });
     expect(evaluateDrop(view('AB-20'), 'l', target)).toEqual({ kind: 'backlog' });
     expect(evaluateDrop(view('AB-31'), 'l', target).kind).toBe('reject');
+    expect(evaluateDrop(view('AB-24'), 'l', target)).toEqual({ kind: 'backlog' });
   });
 });

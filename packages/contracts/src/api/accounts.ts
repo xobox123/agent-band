@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Id, IsoDate, Labels, listOf } from './common.ts';
 
-export const ProviderId = z.enum(['claude', 'openai', 'gemini', 'openai_compatible']);
+export const ProviderId = z.enum(['claude', 'openai', 'gemini', 'antigravity', 'openai_compatible']);
 export type ProviderId = z.infer<typeof ProviderId>;
 export const PROVIDER_IDS = ProviderId.options;
 
@@ -19,7 +19,7 @@ export const ProviderCapabilities = z.object({
 export const ProviderDto = z.object({
   id: ProviderId,
   displayName: z.string(),
-  harness: z.enum(['claude-cli', 'codex-cli', 'gemini-cli']),
+  harness: z.enum(['claude-cli', 'codex-cli', 'gemini-cli', 'antigravity-cli']),
   accountTypes: z.array(AccountType),
   /** JSON Schema of the provider-specific account fields. */
   accountFields: z.unknown(),
@@ -44,6 +44,7 @@ export const ProviderDiagnostics = z.object({
   claude: CliDiagnostic,
   openai: CliDiagnostic,
   gemini: CliDiagnostic,
+  agy: CliDiagnostic,
 });
 export type ProviderDiagnostics = z.infer<typeof ProviderDiagnostics>;
 

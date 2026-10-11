@@ -2,6 +2,7 @@ import type {
   BoardEvent,
   BoardFilter,
   BoardSnapshot,
+  Run,
   NewTask,
   Priority,
   StartWhen,
@@ -22,6 +23,9 @@ export interface BoardDataSource {
   createTask(task: NewTask): Promise<void>;
   /** Moves backlog tasks to the queue, all or none. */
   startTasks(ids: string[], when: StartWhen): Promise<void>;
+  rerunTasks(ids: string[], when: StartWhen): Promise<void>;
+  duplicateTask(id: string): Promise<void>;
+  taskRuns(id: string): Promise<Run[]>;
   /** Moves failed, denied, cancelled or rate-limited tasks back to the backlog, all or none. */
   toBacklog(ids: string[]): Promise<void>;
   updateTask(taskId: string, patch: TaskPatch): Promise<void>;

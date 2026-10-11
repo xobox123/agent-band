@@ -20,10 +20,12 @@ import {
   cliEnv,
   defaultConfigDir,
   fetchOpenAiCompatibleModels,
+  listAgyModels,
   listCodexModels,
   readCodexModelsCache,
   probeAccount,
   probeApiKey,
+  readAgyUsage,
   readClaudeUsage,
   readCodexUsage,
   readLatestCodexRateLimits,
@@ -52,9 +54,15 @@ export interface AccountConnectionDeps {
 }
 
 function cliProvider(provider: string, type: string, allowApi = false): CliProvider {
-  if ((provider !== 'claude' && provider !== 'openai') || (type !== 'cli' && !(allowApi && type === 'api'))) {
+  if (
+    (provider !== 'claude' && provider !== 'openai' && provider !== 'gemini' && provider !== 'antigravity') ||
+    (type !== 'cli' && !(allowApi && type === 'api'))
+  ) {
     throw invalid([
-      { path: 'provider', message: 'login checks are only available for Claude and Codex cli accounts' },
+      {
+        path: 'provider',
+        message: 'login checks are only available for Claude, Codex, Gemini and Antigravity cli accounts',
+      },
     ]);
   }
   return provider;
@@ -111,6 +119,8 @@ export function createAccountConnection(deps: AccountConnectionDeps) {
   async function readLimits(account: AccountDto): Promise<RefreshLimitsResult> {
     if (account.type === 'api') return { windows: [], updatedAt: null, error: null, details: null };
     const provider = cliProvider(account.provider, account.type);
+    // Google quota has no free headless reading: see /stats in Gemini. No windows are invented.
+    if (provider === 'gemini') return { windows: [], updatedAt: null, error: null, details: null };
     const opts = { ...(deps.bins && { bins: deps.bins }) };
     const known = async (error: string | null): Promise<RefreshLimitsResult> => ({
       windows: await usage.latestWindows(db, system, account.id),
@@ -121,6 +131,7 @@ export function createAccountConnection(deps: AccountConnectionDeps) {
     try {
       let reading: LimitReading;
       if (provider === 'claude') reading = await readClaudeUsage({ configDir: account.configDir }, opts);
+      else if (provider === 'antigravity') reading = await readAgyUsage(opts);
       else {
         try {
           reading = await readCodexUsage({ configDir: account.configDir }, opts);
@@ -152,7 +163,15 @@ export function createAccountConnection(deps: AccountConnectionDeps) {
     const at = new Date().toISOString();
     if (account.provider === 'claude') return { items: [...CLAUDE_MODELS], fetchedAt: at };
     if (account.provider === 'gemini') {
-      return { items: [...GEMINI_MODELS], fetchedAt: at, note: 'Gemini adapter is disabled' };
+      return {
+        items: [...GEMINI_MODELS],
+        fetchedAt: at,
+        note: 'Built-in list: Gemini CLI cannot list models. Auto lets the CLI choose.',
+      };
+    }
+    if (account.provider === 'antigravity') {
+      const opts = { ...(deps.bins && { bins: deps.bins }) };
+      return { items: await listAgyModels(opts), fetchedAt: at };
     }
     if (account.provider === 'openai_compatible') {
       const run = await accounts.getAccountForRun(db, account.orgId, account.id);
@@ -277,7 +296,7 @@ export function createAccountConnection(deps: AccountConnectionDeps) {
     async probeAll(): Promise<void> {
       const list = await accounts.listAccounts(db, system, { type: 'cli' });
       for (const account of list) {
-        if (account.provider !== 'claude' && account.provider !== 'openai') continue;
+        if (!['claude', 'openai', 'gemini', 'antigravity'].includes(account.provider)) continue;
         try {
           await probeAndRecord(account);
         } catch (err) {

@@ -95,7 +95,7 @@ export function TaskCard({
             }}
           />
         ) : null}
-        {task.status === 'failed' || task.status === 'denied' ? (
+        {task.status === 'done' || task.status === 'failed' || task.status === 'denied' ? (
           canRestore ? (
             <input
               type="checkbox"
@@ -203,6 +203,30 @@ export function TaskCard({
                     </button>
                   ))
                 : null}
+              {canRestore ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    backlog.rerun([task.id]);
+                  }}
+                >
+                  Run again
+                </button>
+              ) : null}
+              {task.kind !== 'goal' && task.parentTaskId === null ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    backlog.duplicate(task.id);
+                  }}
+                >
+                  Duplicate
+                </button>
+              ) : null}
               {canRestore ? (
                 <button
                   type="button"

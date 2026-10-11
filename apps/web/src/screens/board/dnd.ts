@@ -38,7 +38,7 @@ export function evaluateDrop(dragged: Task, dragLane: string, target: DropTarget
       ? { kind: 'backlog' }
       : {
           kind: 'reject',
-          reason: 'Only failed, denied, cancelled or rate-limited tasks can move to the backlog.',
+          reason: 'Only done, failed, denied, cancelled or rate-limited tasks can move to the backlog.',
         };
   }
 

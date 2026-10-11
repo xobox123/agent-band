@@ -9,19 +9,19 @@ import {
   type RunHandle,
   RunSpec,
 } from '@agent-band/contracts';
+import { registerAgyHook } from './agy-hook.ts';
 import { cliCommand, missingCliMessage, withCliPath } from './cli-locator.ts';
-import { parseClaudeLine, parseCodexLine } from './parsers.ts';
+import { geminiAllowedTools } from './gemini-tools.ts';
+import { parseAgyLine, parseClaudeLine, parseCodexLine, parseGeminiLine } from './parsers.ts';
 import { eventQueue, spawnJsonLines } from './process.ts';
 import { readCodexRateLimits } from './rollout.ts';
 
-export function runEnv(s: RunSpec, provider: 'claude' | 'openai'): Record<string, string> {
-  const key = provider === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME';
-  // Setting the variable even to the default dir changes where the CLI looks up its login
-  // (Claude on macOS keys the Keychain entry by it), so the default dir is left implicit.
-  const isDefault = resolve(s.configDir) === join(homedir(), provider === 'claude' ? '.claude' : '.codex');
+const HOME_KEY = { claude: 'CLAUDE_CONFIG_DIR', openai: 'CODEX_HOME', gemini: 'GEMINI_CLI_HOME' } as const;
+
+/** Variables every run gets: the agent's git identity and ids, on top of the spec's own env. */
+function identityEnv(s: RunSpec): Record<string, string> {
   return {
     ...s.env,
-    ...(isDefault ? {} : { [key]: s.configDir }),
     GIT_AUTHOR_NAME: s.gitIdentity.name,
     GIT_AUTHOR_EMAIL: s.gitIdentity.email,
     GIT_COMMITTER_NAME: s.gitIdentity.name,
@@ -29,6 +29,21 @@ export function runEnv(s: RunSpec, provider: 'claude' | 'openai'): Record<string
     AGENT_BAND_AGENT_ID: s.agentId,
     AGENT_BAND_RUN_ID: s.runId,
   };
+}
+
+export function runEnv(s: RunSpec, provider: keyof typeof HOME_KEY): Record<string, string> {
+  const key = HOME_KEY[provider];
+  // Setting the variable even to the default dir changes where the CLI looks up its login
+  // (Claude on macOS keys the Keychain entry by it), so the default dir is left implicit.
+  // Gemini's variable names the home root that contains `.gemini`, so the root is a default too.
+  const dir = resolve(s.configDir);
+  const defaults = {
+    claude: [join(homedir(), '.claude')],
+    openai: [join(homedir(), '.codex')],
+    gemini: [join(homedir(), '.gemini'), homedir()],
+  }[provider];
+  const isDefault = defaults.includes(dir);
+  return { ...identityEnv(s), ...(isDefault ? {} : { [key]: s.configDir }) };
 }
 function allowedToolsArg(s: RunSpec): string | undefined {
   const tools = [
@@ -99,6 +114,123 @@ export function codexArgs(s: RunSpec): string[] {
     ...(s.model !== undefined ? ['-m', s.model] : []),
     s.systemPrompt !== undefined ? `${s.systemPrompt}\n\n${s.prompt}` : s.prompt,
   ];
+}
+/** Variables that would silently switch a Gemini run to another auth route than the account's. */
+const GEMINI_AUTH_ENV = [
+  'GEMINI_API_KEY',
+  'GOOGLE_API_KEY',
+  'GOOGLE_GENAI_USE_VERTEXAI',
+  'GOOGLE_GENAI_USE_GCA',
+  'GOOGLE_CLOUD_PROJECT',
+  'GOOGLE_CLOUD_LOCATION',
+  'GOOGLE_APPLICATION_CREDENTIALS',
+];
+
+/** `auto` is the CLI's own routing: no -m flag. */
+const GEMINI_AUTO_MODELS = new Set(['auto', 'default']);
+
+export function geminiArgs(s: RunSpec): string[] {
+  const prompt = s.systemPrompt !== undefined ? `${s.systemPrompt}\n\n${s.prompt}` : s.prompt;
+  const args = [
+    // The = form keeps a prompt that starts with a dash from being read as a flag.
+    `--prompt=${prompt}`,
+    '--output-format',
+    'stream-json',
+    '--approval-mode',
+    { 'read-only': 'plan', edit: 'auto_edit', 'full-auto': 'yolo' }[s.mode],
+  ];
+  if (s.model !== undefined && !GEMINI_AUTO_MODELS.has(s.model)) args.push('-m', s.model);
+  // --allowed-tools auto-approves; it is not an exclusive allowlist (the BeforeTool hook is).
+  for (const tool of geminiAllowedTools(s.preApprovedTools)) args.push('--allowed-tools', tool);
+  return args;
+}
+
+/** Gemini env: the account home, the per-run settings, and no inherited key that changes the auth route. */
+export function geminiEnv(s: RunSpec): Record<string, string | undefined> {
+  return {
+    ...process.env,
+    ...Object.fromEntries(GEMINI_AUTH_ENV.map((name) => [name, undefined])),
+    ...runEnv(s, 'gemini'),
+    ...(s.geminiSettingsPath !== undefined ? { GEMINI_CLI_SYSTEM_SETTINGS_PATH: s.geminiSettingsPath } : {}),
+  };
+}
+export class GeminiAdapter implements ProviderAdapter {
+  readonly provider = 'gemini';
+  start(s: RunSpec): RunHandle {
+    return spawnJsonLines(
+      {
+        cmd: cliCommand('gemini'),
+        args: geminiArgs(s),
+        cwd: s.workDir,
+        env: withCliPath('gemini', geminiEnv(s)),
+        missingMessage: missingCliMessage('gemini'),
+      },
+      (line) => parseGeminiLine(line),
+    );
+  }
+}
+/** Variables that would switch an Antigravity run from the machine's Google login to an API key. */
+const AGY_AUTH_ENV = ['GEMINI_API_KEY', 'ANTIGRAVITY_API_KEY', 'GOOGLE_GEMINI_BASE_URL'];
+
+/**
+ * agy has no config-dir variable: its login sits in the OS keyring and its settings under ~/.gemini,
+ * so every run uses the machine's one default account.
+ */
+export function agyArgs(s: RunSpec): string[] {
+  const prompt = s.systemPrompt !== undefined ? `${s.systemPrompt}\n\n${s.prompt}` : s.prompt;
+  const args = [
+    // The = form keeps a prompt that starts with a dash from being read as a flag.
+    `--print=${prompt}`,
+    '--output-format',
+    'stream-json',
+    ...(s.mode === 'full-auto'
+      ? ['--dangerously-skip-permissions']
+      : ['--mode', s.mode === 'read-only' ? 'plan' : 'accept-edits']),
+  ];
+  if (s.model !== undefined && !GEMINI_AUTO_MODELS.has(s.model)) args.push('--model', s.model);
+  if (s.maxRunMinutes !== undefined) args.push('--print-timeout', `${s.maxRunMinutes}m`);
+  if (s.resumeSessionId !== undefined) args.push('--conversation', s.resumeSessionId);
+  return args;
+}
+
+export function agyEnv(s: RunSpec): Record<string, string | undefined> {
+  return {
+    ...process.env,
+    ...Object.fromEntries(AGY_AUTH_ENV.map((name) => [name, undefined])),
+    ...identityEnv(s),
+  };
+}
+
+export class AntigravityAdapter implements ProviderAdapter {
+  readonly provider = 'antigravity';
+  start(s: RunSpec): RunHandle {
+    let restore: (() => void) | undefined;
+    try {
+      if (s.antigravityHookCommand && s.antigravityHookState) {
+        restore = registerAgyHook(s.workDir, s.antigravityHookCommand, s.antigravityHookState);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const queue = eventQueue();
+      queue.push({ kind: 'error', message });
+      queue.end();
+      return { events: queue.events, done: Promise.resolve({ exitCode: 1, error: message }), cancel() {} };
+    }
+    return spawnJsonLines(
+      {
+        cmd: cliCommand('agy'),
+        args: agyArgs(s),
+        cwd: s.workDir,
+        env: withCliPath('agy', agyEnv(s)),
+        missingMessage: missingCliMessage('agy'),
+      },
+      (line) => parseAgyLine(line),
+      () => {
+        restore?.();
+        return Promise.resolve([]);
+      },
+    );
+  }
 }
 export class ClaudeAdapter implements ProviderAdapter {
   readonly provider = 'claude';

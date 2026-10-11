@@ -69,6 +69,25 @@ describe('effective policy provenance and coverage', () => {
     expect(result.rules.maxRunMinutes?.coverage).toBe('runner');
     expect(result.rules.maxRunMinutes?.coverageDetails[0]?.scope).toContain('process group');
   });
+  it('describes Gemini hook enforcement with its own tool names and no sandbox claim', () => {
+    const result = describePolicy(
+      mergePolicies([
+        { ...org, rules: { workDirs: ['/work'], allowedTools: ['Read'], preApprovedTools: ['Read'] } },
+      ]),
+      {
+        ...provider('gemini-cli'),
+        capabilities: { ...provider('gemini-cli').capabilities, runtimeToolEnforcement: true },
+      },
+    );
+    expect(result.rules.workDirs?.coverageDetails.map((d) => d.mechanism)).toEqual([
+      'admission',
+      'runtime-hook',
+      'not-enforced',
+    ]);
+    expect(result.rules.workDirs?.coverageDetails[1]?.scope).toContain('read_file');
+    expect(result.rules.allowedTools?.coverage).toBe('runtime-hook');
+    expect(result.rules.preApprovedTools?.coverageDetails[0]?.scope).toContain('--allowed-tools');
+  });
   it('marks disabled providers unenforced and identifies implicit defaults', () => {
     const result = describePolicy(mergePolicies([]), provider('gemini-cli', false));
     expect(result.rules.maxMode).toMatchObject({

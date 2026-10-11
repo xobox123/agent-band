@@ -659,6 +659,9 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/tasks/{id}',
   'PATCH /api/v1/tasks/{id}',
   'DELETE /api/v1/tasks/{id}',
+  'POST /api/v1/tasks/rerun',
+  'POST /api/v1/tasks/{id}/rerun',
+  'POST /api/v1/tasks/{id}/duplicate',
   'POST /api/v1/tasks/start',
   'POST /api/v1/tasks/to-backlog',
   'POST /api/v1/tasks/{id}/to-backlog',
@@ -812,9 +815,10 @@ describe('T12 API gaps', () => {
       'claude',
       'openai',
       'gemini',
+      'antigravity',
       'openai_compatible',
     ]);
-    expect(providers[3].accountFields).toMatchObject({
+    expect(providers[4].accountFields).toMatchObject({
       type: 'object',
       additionalProperties: false,
       properties: {
