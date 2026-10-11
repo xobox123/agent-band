@@ -15,6 +15,8 @@ export function eventText(event: RunEventDto): string {
       return p.text;
     case 'error':
       return p.message;
+    case 'permission_denied':
+      return `tools were denied: ${p.actions.join(', ')}`;
     case 'tool_decision':
       return `${p.decision}: ${p.reason}`;
     case 'tool':
@@ -59,7 +61,12 @@ export function RunEventLine({ event, decisions = [] }: { event: RunEventDto; de
         )}
       </div>
     );
-  } else if (p.kind === 'text' || p.kind === 'stderr' || p.kind === 'error') {
+  } else if (
+    p.kind === 'text' ||
+    p.kind === 'stderr' ||
+    p.kind === 'error' ||
+    p.kind === 'permission_denied'
+  ) {
     body = <pre className="log-text">{eventText(event)}</pre>;
   } else if (
     p.kind === 'usage' ||

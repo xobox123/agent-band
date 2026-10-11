@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
@@ -6,7 +7,8 @@ import type { RunSpec } from '@agent-band/contracts';
 import { openPolicy } from '../ports/testing.ts';
 import { runs as runsTable } from '../modules/runs/infra/schema.ts';
 import { FakeAdapter } from '../runner/index.ts';
-import { makeKit, waitFor, type Script } from './worker.testkit.ts';
+import { parseAgyLine } from '../runner/parsers.ts';
+import { makeKit, tmp, waitFor, type Script } from './worker.testkit.ts';
 
 type Kit = Awaited<ReturnType<typeof makeKit>>;
 let kit: Kit;
@@ -390,6 +392,107 @@ describe('worker', () => {
     expect(spec?.skillsDir).toBeUndefined();
     expect(spec?.geminiSettingsPath).toBeUndefined();
     expect(acc.configDir).toBeNull();
+  });
+
+  describe('denied tools', () => {
+    const denial: Script = (s) => {
+      if (s.workDir.endsWith('-changed')) writeFileSync(join(s.workDir, 'new.txt'), 'x');
+      return {
+        events: [
+          { kind: 'text', text: 'could not run npm' },
+          { kind: 'permission_denied', actions: ['command', 'web'] },
+        ],
+      };
+    };
+
+    async function repo(suffix = ''): Promise<string> {
+      const dir = `${await tmp()}${suffix}`;
+      mkdirSync(dir, { recursive: true });
+      const git = (...args: string[]) =>
+        execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args]);
+      git('init', '-q');
+      writeFileSync(join(dir, 'a.txt'), 'a');
+      git('add', '.');
+      git('commit', '-q', '-m', 'init');
+      return dir;
+    }
+
+    it('fails a run that was denied tools and changed no files, naming them', async () => {
+      const acc = await kit.account('agy', 'antigravity');
+      const agent = await kit.agent('ag', acc.id);
+      kit.script = denial;
+      const task = await kit.task({ target: { agentId: agent.id }, workDir: await repo() });
+      await run(kit);
+      await reachStatus(task.id, 'failed');
+      const t = await kit.tasks.getTask(kit.db, kit.actor, task.id);
+      expect(t.error).toBe('tools were denied: command, web');
+      expect((await runOf(task.id))?.status).toBe('failed');
+    });
+
+    it('fails an unchanged run whose tool calls our own gate denied', async () => {
+      const acc = await kit.account('agy', 'antigravity');
+      const agent = await kit.agent('ag', acc.id);
+      kit.script = () => ({
+        events: [
+          { kind: 'tool_decision', decision: 'deny', reason: 'tool Bash is not pre-approved for this agent' },
+          { kind: 'text', text: 'could not run npm' },
+        ],
+      });
+      const task = await kit.task({ target: { agentId: agent.id }, workDir: await repo() });
+      await run(kit);
+      await reachStatus(task.id, 'failed');
+      const t = await kit.tasks.getTask(kit.db, kit.actor, task.id);
+      expect(t.error).toBe('tools were denied: tool Bash is not pre-approved for this agent');
+    });
+
+    it('fails an unchanged run whose agy hook denied a tool locally', async () => {
+      const acc = await kit.account('agy', 'antigravity');
+      const agent = await kit.agent('ag', acc.id);
+      const step = JSON.stringify({
+        event: 'step_update',
+        step_update: {
+          conversation_id: 'c',
+          step_index: 1,
+          state: 'ERROR',
+          step_type: 'tool',
+          tool_name: 'run_command',
+          tool_info: {
+            error: {
+              message: 'tool call denied by pre-tool hook: agent-band: the .agents directory is off limits',
+            },
+          },
+        },
+      });
+      kit.script = () => ({ events: parseAgyLine(step) });
+      const task = await kit.task({ target: { agentId: agent.id }, workDir: await repo() });
+      await run(kit);
+      await reachStatus(task.id, 'failed');
+      const t = await kit.tasks.getTask(kit.db, kit.actor, task.id);
+      expect(t.error).toBe('tools were denied: the .agents directory is off limits');
+    });
+
+    it('does not fail a run for allowed gate decisions', async () => {
+      const acc = await kit.account('agy', 'antigravity');
+      const agent = await kit.agent('ag', acc.id);
+      kit.script = () => ({ events: [{ kind: 'tool_decision', decision: 'allow', reason: 'ok' }] });
+      const task = await kit.task({ target: { agentId: agent.id }, workDir: await repo() });
+      await run(kit);
+      await reachStatus(task.id, 'done');
+    });
+
+    it('keeps a run done when files changed or the tree cannot be inspected', async () => {
+      const acc = await kit.account('agy', 'antigravity');
+      const agent = await kit.agent('ag', acc.id);
+      kit.script = denial;
+      const changed = await kit.task({
+        target: { agentId: agent.id },
+        workDir: await repo('-changed'),
+      });
+      const notGit = await kit.task({ target: { agentId: agent.id }, workDir: await tmp() });
+      await run(kit);
+      await reachStatus(changed.id, 'done');
+      await reachStatus(notGit.id, 'done');
+    });
   });
 
   it('fails runs left running by a previous worker with the same id on start', async () => {

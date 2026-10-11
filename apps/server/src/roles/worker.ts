@@ -42,6 +42,7 @@ import {
   mcpUrl,
   writeMcpConfig,
 } from '../execution/index.ts';
+import { treeFingerprint } from './tree-fingerprint.ts';
 import { FRESH_SNAPSHOT_MS } from '../modules/usage/index.ts';
 import { LEADER_PROMPT, PLAN_APPROVAL_PROMPT } from './leader-prompt.ts';
 
@@ -309,6 +310,9 @@ export function createWorker(deps: WorkerDeps): Worker {
                 : {}),
               deniedTools: c.policy.deniedTools,
               ...(preApprovedTools.length ? { preApprovedTools } : {}),
+              ...(usesAgyHook(c.account) && c.mode === 'edit'
+                ? { requirePreApproved: ['Bash', 'WebFetch', 'WebSearch'] }
+                : {}),
               workDirSets: c.policy.workDirSets,
             },
           });
@@ -518,6 +522,8 @@ export function createWorker(deps: WorkerDeps): Worker {
           handle?.cancel();
         }, c.policy.maxRunMinutes * minuteMs);
       }
+      const treeBefore = await treeFingerprint(task.workDir);
+      const denied = new Set<string>();
       const attempt = async (s: RunSpec) => {
         let worked = false;
         handle = adapter.start(s);
@@ -529,6 +535,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         for await (const event of h.events) {
           if (event.kind === 'error') lastError = event.message;
           if (event.kind === 'text' || event.kind === 'tool') worked = true;
+          if (event.kind === 'permission_denied') for (const action of event.actions) denied.add(action);
           await append(run.id, event);
           if (event.kind === 'rate_limit') await recordLimits(c.account.id, event);
         }
@@ -547,6 +554,19 @@ export function createWorker(deps: WorkerDeps): Worker {
         result.error ??
         (result.exitCode !== 0 && !entry.userCancelled ? `exit code ${result.exitCode}` : undefined);
       if (result.exitCode === 0 && !result.error) failure = undefined;
+      if (!failure && c.mode !== 'read-only' && !isGoal && treeBefore !== undefined) {
+        // Provider-reported denials and denials by our own tool gate (recorded as tool_decision events).
+        // There is no awaiting_input status yet: a run that was denied tools and changed nothing fails,
+        // so its checks never run on an unchanged tree and the owner sees why.
+        const gateDenials = (await deps.runs.listRunEvents(deps.db, d, run.id))
+          .filter((e) => e.payload.kind === 'tool_decision' && e.payload.decision === 'deny')
+          .map((e) => (e.payload.kind === 'tool_decision' ? e.payload.reason : ''));
+        const all = [...new Set([...denied, ...gateDenials])];
+        if (all.length > 0 && (await treeFingerprint(task.workDir)) === treeBefore) {
+          failure = `tools were denied: ${all.join(', ')}`;
+          lastError = failure;
+        }
+      }
       const succeeded = !failure && !timedOut && !forceStop && !entry.userCancelled;
       let review: TaskReview | undefined;
       if (succeeded && task.branch && task.kind !== 'goal' && deps.projectRuns) {

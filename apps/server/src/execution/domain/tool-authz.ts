@@ -6,6 +6,8 @@ export interface ToolPolicySnapshot {
   deniedTools: string[];
   /** Effective pre-approved rules; an allowed call that matches one is granted explicitly. */
   preApprovedTools?: string[];
+  /** Tools denied unless a pre-approved rule covers the call (a provider that cannot ask for permission). */
+  requirePreApproved?: string[];
   workDirSets: string[][];
 }
 
@@ -122,5 +124,9 @@ export function decideTool(
   const preApproved = (policy.preApprovedTools ?? []).some((rule) =>
     matchesPreApproved(rule, toolName, toolInput),
   );
-  return preApproved ? { ...allow('allowed by policy'), preApproved: true } : allow('allowed by policy');
+  if (preApproved) return { ...allow('allowed by policy'), preApproved: true };
+  if (policy.requirePreApproved?.includes(toolName)) {
+    return deny(`tool ${toolName} is not pre-approved for this agent`);
+  }
+  return allow('allowed by policy');
 }
