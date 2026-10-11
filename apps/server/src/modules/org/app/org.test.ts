@@ -5,6 +5,7 @@ import type { ActorContext } from '../../../platform/actor.ts';
 import { openTestDatabase, type Database } from '../../../platform/db.ts';
 import { EventStream, type OutboxEvent } from '../../../platform/outbox.ts';
 import { withTx } from '../../../platform/tx.ts';
+import { waitFor } from '../../../roles/worker.testkit.ts';
 import { createAudit } from '../../audit/index.ts';
 import {
   authorize,
@@ -223,11 +224,14 @@ describe('org use cases', () => {
     stream.subscribe((e) => got.push(e));
     await stream.start();
     const team = await orgUseCases.createTeam(db, boot.localUser, { name: 'evt' });
-    await new Promise((r) => setTimeout(r, 150));
-    await stream.stop();
-    expect(got.some((e) => e.type === 'org.changed' && (e.payload as { id: string }).id === team.id)).toBe(
-      true,
-    );
+    const delivered = () =>
+      got.some((e) => e.type === 'org.changed' && (e.payload as { id: string }).id === team.id);
+    try {
+      await waitFor(() => Promise.resolve(delivered()));
+    } finally {
+      await stream.stop();
+    }
+    expect(delivered()).toBe(true);
   });
 });
 

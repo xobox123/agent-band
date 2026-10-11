@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { openTestDatabase, type Database } from './db.ts';
 import { EventStream, publish, type OutboxEvent } from './outbox.ts';
 import { withTx } from './tx.ts';
+import { waitFor } from '../roles/worker.testkit.ts';
 
 let database: Database | undefined;
 let stream: EventStream | undefined;
@@ -12,7 +13,11 @@ afterEach(async () => {
   database = undefined;
 });
 
-const tick = (ms = 100): Promise<void> => new Promise((r) => setTimeout(r, ms));
+// Events are delivered in commit order, so once a later sentinel arrives every earlier one has been seen or skipped.
+async function flush(received: OutboxEvent[], db: Database['db']): Promise<void> {
+  await withTx(db, (tx) => publish(tx, 'test.sentinel', {}));
+  await waitFor(() => Promise.resolve(received.some((e) => e.type === 'test.sentinel')));
+}
 
 async function setup(): Promise<{ database: Database; received: OutboxEvent[] }> {
   database = await openTestDatabase();
@@ -30,7 +35,7 @@ describe('outbox', () => {
       await publish(tx, 'task.created', { id: 'a' });
       await publish(tx, 'task.moved', { id: 'a' });
     });
-    await tick();
+    await waitFor(() => Promise.resolve(received.length >= 2));
     expect(received.map((e) => [e.type, e.payload])).toEqual([
       ['task.created', { id: 'a' }],
       ['task.moved', { id: 'a' }],
@@ -46,8 +51,8 @@ describe('outbox', () => {
         throw new Error('rollback');
       }),
     ).rejects.toThrow('rollback');
-    await tick();
-    expect(received).toEqual([]);
+    await flush(received, database.db);
+    expect(received.map((e) => e.type)).toEqual(['test.sentinel']);
   });
 
   it('stops delivering after unsubscribe', async () => {
@@ -56,8 +61,8 @@ describe('outbox', () => {
     const off = (stream as EventStream).subscribe((e) => extra.push(e));
     off();
     await withTx(database.db, (tx) => publish(tx, 'a', {}));
-    await tick();
-    expect(received).toHaveLength(1);
+    await flush(received, database.db);
+    expect(received.filter((e) => e.type === 'a')).toHaveLength(1);
     expect(extra).toEqual([]);
   });
 });

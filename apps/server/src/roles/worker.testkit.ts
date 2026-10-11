@@ -140,7 +140,8 @@ export async function makeKit(existing?: Database) {
   return kit;
 }
 
-export async function waitFor<T>(fn: () => Promise<T | undefined | false>, ms = 8000): Promise<T> {
+// The deadline is only a ceiling for a hung test: waitFor returns as soon as the condition holds.
+export async function waitFor<T>(fn: () => Promise<T | undefined | false>, ms = 25_000): Promise<T> {
   const end = Date.now() + ms;
   for (;;) {
     const v = await fn();

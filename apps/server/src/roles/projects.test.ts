@@ -268,7 +268,7 @@ describe('projects', () => {
       workDir: t.workDir,
       projectId: null,
     });
-    await waitFor(async () => (await reload(reviewer.id)).status === 'done', 15_000);
+    await waitFor(async () => (await reload(reviewer.id)).status === 'done');
     const diff = await kit.review.diff(kit.db, kit.actor, t.id);
     expect(diff.reviewer).toEqual({
       taskId: reviewer.id,

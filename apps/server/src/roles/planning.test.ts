@@ -22,7 +22,7 @@ const run = async () => {
   return w;
 };
 const status = async (id: string) => (await kit.taskStatus(id))?.status;
-const reach = (id: string, want: string) => waitFor(async () => (await status(id)) === want, 10_000);
+const reach = (id: string, want: string) => waitFor(async () => (await status(id)) === want);
 const runsOf = (taskId: string) => kit.runs.listRuns(kit.db, kit.actor, { taskId });
 const settle = (ms = 300) => new Promise((r) => setTimeout(r, ms));
 
