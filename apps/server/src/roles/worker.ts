@@ -308,6 +308,9 @@ export function createWorker(deps: WorkerDeps): Worker {
                 : {}),
               deniedTools: c.policy.deniedTools,
               ...(preApprovedTools.length ? { preApprovedTools } : {}),
+              ...(usesAgyHook(c.account) && c.mode === 'edit'
+                ? { requirePreApproved: ['Bash', 'WebFetch', 'WebSearch'] }
+                : {}),
               workDirSets: c.policy.workDirSets,
             },
           });
@@ -457,7 +460,7 @@ export function createWorker(deps: WorkerDeps): Worker {
         });
       }
       const agyConfig = usesAgyHook(c.account)
-        ? await writeAgyRunConfig({ dir, runId: run.id, port: deps.apiPort, mode: c.mode })
+        ? await writeAgyRunConfig({ dir, runId: run.id, port: deps.apiPort })
         : undefined;
       if (isGoal && !geminiSettingsPath) {
         const goal = await deps.tasks.getGoalState(deps.db, orgId, task.id);
@@ -549,11 +552,16 @@ export function createWorker(deps: WorkerDeps): Worker {
         result.error ??
         (result.exitCode !== 0 && !entry.userCancelled ? `exit code ${result.exitCode}` : undefined);
       if (result.exitCode === 0 && !result.error) failure = undefined;
-      if (!failure && denied.size > 0 && treeBefore !== undefined) {
+      if (!failure && c.mode !== 'read-only' && !isGoal && treeBefore !== undefined) {
+        // Provider-reported denials and denials by our own tool gate (recorded as tool_decision events).
         // There is no awaiting_input status yet: a run that was denied tools and changed nothing fails,
         // so its checks never run on an unchanged tree and the owner sees why.
-        if ((await treeFingerprint(task.workDir)) === treeBefore) {
-          failure = `tools were denied: ${[...denied].join(', ')}`;
+        const gateDenials = (await deps.runs.listRunEvents(deps.db, d, run.id))
+          .filter((e) => e.payload.kind === 'tool_decision' && e.payload.decision === 'deny')
+          .map((e) => (e.payload.kind === 'tool_decision' ? e.payload.reason : ''));
+        const all = [...denied, ...new Set(gateDenials)];
+        if (all.length > 0 && (await treeFingerprint(task.workDir)) === treeBefore) {
+          failure = `tools were denied: ${all.join(', ')}`;
           lastError = failure;
         }
       }

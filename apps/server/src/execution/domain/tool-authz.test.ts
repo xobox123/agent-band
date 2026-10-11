@@ -66,6 +66,25 @@ describe('pre-approved tools', () => {
     expect(decideTool(policy(), '/work/repo', 'WebSearch', {}).preApproved).toBeUndefined();
   });
 
+  it('denies tools that require pre-approval unless a rule covers the call', () => {
+    const gated = (rules: string[], tool: string, input: unknown) =>
+      decideTool(
+        policy({ preApprovedTools: rules, requirePreApproved: ['Bash', 'WebFetch', 'WebSearch'] }),
+        '/work/repo',
+        tool,
+        input,
+      );
+    const npm = { command: 'npm install --silent' };
+    expect(gated([], 'Bash', npm)).toEqual({
+      decision: 'deny',
+      reason: 'tool Bash is not pre-approved for this agent',
+    });
+    expect(gated(['Bash(git:*)'], 'Bash', npm).decision).toBe('deny');
+    expect(gated(['Bash(npm:*)'], 'Bash', npm)).toMatchObject({ decision: 'allow', preApproved: true });
+    expect(gated([], 'WebFetch', { url: 'https://example.com' }).decision).toBe('deny');
+    expect(gated([], 'Write', { file_path: '/work/repo/a' }).decision).toBe('allow');
+  });
+
   it('never pre-approves a denied call', () => {
     const d = decideTool(
       policy({ preApprovedTools: ['WebSearch'], deniedTools: ['WebSearch'] }),

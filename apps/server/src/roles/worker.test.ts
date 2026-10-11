@@ -424,6 +424,31 @@ describe('worker', () => {
       expect((await runOf(task.id))?.status).toBe('failed');
     });
 
+    it('fails an unchanged run whose tool calls our own gate denied', async () => {
+      const acc = await kit.account('agy', 'antigravity');
+      const agent = await kit.agent('ag', acc.id);
+      kit.script = () => ({
+        events: [
+          { kind: 'tool_decision', decision: 'deny', reason: 'tool Bash is not pre-approved for this agent' },
+          { kind: 'text', text: 'could not run npm' },
+        ],
+      });
+      const task = await kit.task({ target: { agentId: agent.id }, workDir: await repo() });
+      await run(kit);
+      await reachStatus(task.id, 'failed');
+      const t = await kit.tasks.getTask(kit.db, kit.actor, task.id);
+      expect(t.error).toBe('tools were denied: tool Bash is not pre-approved for this agent');
+    });
+
+    it('does not fail a run for allowed gate decisions', async () => {
+      const acc = await kit.account('agy', 'antigravity');
+      const agent = await kit.agent('ag', acc.id);
+      kit.script = () => ({ events: [{ kind: 'tool_decision', decision: 'allow', reason: 'ok' }] });
+      const task = await kit.task({ target: { agentId: agent.id }, workDir: await repo() });
+      await run(kit);
+      await reachStatus(task.id, 'done');
+    });
+
     it('keeps a run done when files changed or the tree cannot be inspected', async () => {
       const acc = await kit.account('agy', 'antigravity');
       const agent = await kit.agent('ag', acc.id);
