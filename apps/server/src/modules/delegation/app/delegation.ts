@@ -391,8 +391,6 @@ export function createDelegation(deps: DelegationDeps) {
           '',
           `Instructions: ${v.instructions}`,
           '',
-          `Reviewed task: ${subject.key}`,
-          `Original task title: ${subject.title}`,
           `Original task prompt:\n${subject.prompt}`,
           '',
           `Result summary: ${subject.result?.summary ?? '(none)'}`,

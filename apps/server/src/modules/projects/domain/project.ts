@@ -84,21 +84,18 @@ export function feedbackPrompt(prompt: string, feedback: string, attempt: number
   return `${prompt}\n\nReviewer feedback (attempt ${attempt}). Fix the issues below in the same worktree:\n${feedback}`;
 }
 
-export function reviewerPrompt(
+/** The task prompt already carries the reviewer feedback of earlier attempts (see feedbackPrompt). */
+export function reviewTaskPrompt(
   task: { key: string; title: string; prompt: string; branch?: string | null; baseBranch?: string | null },
-  feedback: string | null | undefined,
   instructions?: string,
 ): string {
   return [
+    `Review the changes of ${task.key} (${task.title}) in this worktree.`,
+    `They are the commits on branch ${task.branch ?? ''} that are not in ${task.baseBranch ?? 'the base branch'}.`,
     instructions ??
-      [
-        `Review the changes of ${task.key} (${task.title}) in this worktree.`,
-        `They are the commits on branch ${task.branch ?? ''} that are not in ${task.baseBranch ?? 'the base branch'}.`,
-        'Do not modify files. Report problems by file and line, and say whether the change is ready to merge.',
-      ].join('\n'),
+      'Do not modify files. Report problems by file and line, and say whether the change is ready to merge.',
     `Reviewed task: ${task.key}`,
-    `Original task title: ${task.title}`,
-    `Original task prompt (including the acceptance criteria):\n${task.prompt}`,
-    ...(feedback ? [`Latest reviewer feedback that this rerun addressed:\n${feedback}`] : []),
+    `Task title: ${task.title}`,
+    `Task prompt as given to the implementer (including the acceptance criteria and any reviewer feedback from earlier attempts):\n${task.prompt}`,
   ].join('\n\n');
 }

@@ -11,7 +11,7 @@ import {
   type TaskTarget,
   type createTasks,
 } from '../../tasks/index.ts';
-import { DIFF_MAX_BYTES, feedbackPrompt, reviewerPrompt, type FileStat } from '../domain/project.ts';
+import { DIFF_MAX_BYTES, feedbackPrompt, reviewTaskPrompt, type FileStat } from '../domain/project.ts';
 import { currentBranch, diffFiles, isClean, mergeNoFf, unifiedDiff } from '../infra/git.ts';
 import type { Project } from '../infra/schema.ts';
 import { branchRange } from './branch.ts';
@@ -200,7 +200,7 @@ export function createReview(deps: ReviewDeps) {
       await deps.authorizer.authorize(db, actor, 'task.write', taskResource(target));
       if (!openReviewStatuses.includes(review.status) || review.status === 'rejected')
         throw conflict('review_not_open', `${task.key} is not waiting for a decision`);
-      const prompt = reviewerPrompt(task, review.feedback, input.prompt);
+      const prompt = reviewTaskPrompt(task, input.prompt);
       return db.transaction(async (tx) => {
         const reviewer = await deps.tasks.createReviewTask(tx, actor, task, { target, prompt });
         await deps.tasks.setReview(

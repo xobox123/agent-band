@@ -1,5 +1,12 @@
 import { expect, it } from 'vitest';
-import { feedbackPrompt, parseNumstat, reviewerPrompt, slugOf, summarizeStat, tailBytes } from './project.ts';
+import {
+  feedbackPrompt,
+  parseNumstat,
+  reviewTaskPrompt,
+  slugOf,
+  summarizeStat,
+  tailBytes,
+} from './project.ts';
 
 it('derives slugs', () => {
   expect(slugOf('Agent Band!')).toBe('agent-band');
@@ -36,16 +43,23 @@ const reviewed = {
 };
 
 it('puts the original task into the reviewer prompt', () => {
-  const p = reviewerPrompt(reviewed, null);
+  const p = reviewTaskPrompt(reviewed);
   expect(p).toContain('Reviewed task: AB-1');
-  expect(p).toContain('Original task title: Add x');
+  expect(p).toContain('Task title: Add x');
   expect(p).toContain('Acceptance: y');
-  expect(p).not.toContain('Latest reviewer feedback');
+  expect(p).toContain('commits on branch b that are not in main');
 });
 
-it('keeps custom reviewer instructions and adds the latest feedback', () => {
-  const p = reviewerPrompt(reviewed, 'fix z', 'Check security only.');
-  expect(p.startsWith('Check security only.')).toBe(true);
+it('keeps the branch info and the task with custom reviewer instructions', () => {
+  const p = reviewTaskPrompt(reviewed, 'Check security only.');
+  expect(p).toContain('Check security only.');
+  expect(p).toContain('commits on branch b');
   expect(p).toContain('Do x.');
-  expect(p).toContain('fix z');
+  expect(p).not.toContain('Do not modify files');
+});
+
+it('carries earlier reviewer feedback once, through the task prompt', () => {
+  const p = reviewTaskPrompt({ ...reviewed, prompt: feedbackPrompt('Do x.', 'fix z', 2) });
+  expect(p).toContain('Reviewer feedback (attempt 2)');
+  expect(p.match(/fix z/g)).toHaveLength(1);
 });

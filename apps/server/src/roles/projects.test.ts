@@ -269,7 +269,7 @@ describe('projects', () => {
       projectId: null,
     });
     expect(reviewer.prompt).toContain(`Reviewed task: ${t.key}`);
-    expect(reviewer.prompt).toContain(`Original task title: ${t.title}`);
+    expect(reviewer.prompt).toContain(`Task title: ${t.title}`);
     expect(reviewer.prompt).toContain(t.prompt);
     await waitFor(async () => (await reload(reviewer.id)).status === 'done', 15_000);
     const diff = await kit.review.diff(kit.db, kit.actor, t.id);
@@ -279,6 +279,30 @@ describe('projects', () => {
       summary: 'Looks fine, ready to merge',
     });
     expect(gitOut(t.workDir, 'status', '--porcelain')).toBe('');
+  });
+
+  it('gives the reviewer of a rerun the original task and the feedback exactly once', async () => {
+    const p = await project();
+    const acc = await kit.account('a');
+    await kit.agent('alpha', acc.id, { labels: ['x'] });
+    let n = 0;
+    kit.script = (s) => {
+      writeFileSync(join(s.workDir, `f${++n}.txt`), 'x\n');
+      return { events: [{ kind: 'text', text: 'done' }] };
+    };
+    const t = await projectTask(p.id, { target: { label: 'x' }, prompt: 'Build it' });
+    await startWorker();
+    await settled(t.id);
+    await kit.review.reject(kit.db, kit.actor, t.id, 'Add unique-feedback-marker');
+    const second = await settled(t.id, 2);
+    expect(second.review?.status).toBe('pending');
+    kit.script = () => ({ events: [{ kind: 'text', text: 'Looks fine, ready to merge' }] });
+    const reviewer = await kit.review.requestReview(kit.db, kit.actor, t.id, {});
+    expect(reviewer.prompt).toContain(`Reviewed task: ${t.key}`);
+    expect(reviewer.prompt).toContain(`Task title: ${t.title}`);
+    expect(reviewer.prompt).toContain('Build it');
+    expect(reviewer.prompt.match(/unique-feedback-marker/g)).toHaveLength(1);
+    await waitFor(async () => (await reload(reviewer.id)).status === 'done', 15_000);
   });
 
   it('needs agent.manage to merge', async () => {
