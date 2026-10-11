@@ -27,7 +27,7 @@ import {
   type Task,
   type TaskReview,
 } from '../modules/tasks/index.ts';
-import type { ProjectRuns } from '../modules/projects/index.ts';
+import type { ProjectRuns, Review } from '../modules/projects/index.ts';
 import type { createUsage } from '../modules/usage/index.ts';
 import { evaluateRunStart, type EffectivePolicy } from '../modules/policy/index.ts';
 import {
@@ -80,6 +80,8 @@ export interface WorkerDeps {
   orgSettings: OrgSettings;
   /** Git worktrees, checks and review data for project tasks; without it project tasks run in place. */
   projectRuns?: ProjectRuns;
+  /** Starts the project's reviewer for a finished task and applies the reviewer's verdict. */
+  review?: Pick<Review, 'onTaskReviewable' | 'onReviewerFinished'>;
   policy: EffectivePolicySource;
   skills: EffectiveSkillsSource;
   adapterFor(account: AccountForRun): ProviderAdapter | undefined;
@@ -570,6 +572,8 @@ export function createWorker(deps: WorkerDeps): Worker {
         userCancelled: entry.userCancelled,
       });
       if (succeeded && task.branch && task.kind === 'goal') await finalizeGoal(task, c, run.id);
+      else if (review) await startReviewer(task);
+      else if (succeeded && task.kind === 'review') await applyVerdict(task);
     } catch (err) {
       log('error', `run ${run.id} failed`, err);
       handle?.cancel();
@@ -605,8 +609,27 @@ export function createWorker(deps: WorkerDeps): Worker {
         }),
       );
       await deps.db.transaction((tx) => deps.tasks.setReview(tx, d, task.id, review));
+      await startReviewer(task);
     } catch (err) {
       log('error', `could not prepare the review of goal ${task.key}`, err);
+    }
+  }
+
+  /** Asks the project's reviewer to look at a task whose review was just stored. */
+  async function startReviewer(task: Task): Promise<void> {
+    try {
+      await deps.review?.onTaskReviewable(deps.db, d, task.id);
+    } catch (err) {
+      log('warn', `could not start the reviewer of ${task.key}`, err);
+    }
+  }
+
+  /** Stores the verdict of a finished reviewer task on the task it reviewed. */
+  async function applyVerdict(task: Task): Promise<void> {
+    try {
+      await deps.review?.onReviewerFinished(deps.db, d, task.id);
+    } catch (err) {
+      log('warn', `could not apply the verdict of ${task.key}`, err);
     }
   }
 

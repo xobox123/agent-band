@@ -1,6 +1,7 @@
 export type Role = 'owner' | 'admin' | 'operator' | 'viewer';
 export type Scope = { org: true } | { agentGroupId: string } | { agentId: string };
-export type Action = 'read' | 'task.write' | 'agent.manage' | 'org.manage' | 'audit.export';
+export type Action =
+  'read' | 'task.write' | 'agent.manage' | 'org.manage' | 'audit.export' | 'review.override';
 
 export interface Binding {
   role: Role;
@@ -21,9 +22,10 @@ const MIN_ROLE: Record<Action, Role> = {
   'agent.manage': 'admin',
   'org.manage': 'owner',
   'audit.export': 'owner',
+  'review.override': 'owner',
 };
 
-const ORG_SCOPE_ONLY: ReadonlySet<Action> = new Set(['org.manage', 'audit.export']);
+const ORG_SCOPE_ONLY: ReadonlySet<Action> = new Set(['org.manage', 'audit.export', 'review.override']);
 
 function covers(scope: Scope, res: ResourceRef): boolean {
   if ('org' in scope) return true;

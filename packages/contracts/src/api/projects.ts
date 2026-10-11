@@ -5,6 +5,11 @@ const AbsolutePath = z
   .string()
   .max(4096)
   .refine((p) => p.startsWith('/') && !p.includes('\0'), 'must be an absolute path');
+export const ReviewerTarget = z.union([
+  z.object({ agentId: Id }).strict(),
+  z.object({ label: z.string().trim().min(1).max(100) }).strict(),
+]);
+export type ReviewerTarget = z.infer<typeof ReviewerTarget>;
 const Checks = z.array(z.string().trim().min(1).max(1000)).max(20);
 
 export const ProjectDto = z.object({
@@ -21,6 +26,10 @@ export const ProjectDto = z.object({
   checks: z.array(z.string()),
   /** Keep the worktree and branch after a merge or cancel. */
   keepWorktrees: z.boolean(),
+  /** Agent or label that reviews a finished task automatically; null for no automatic review. */
+  reviewerTarget: ReviewerTarget.nullable(),
+  /** Merge without asking when the reviewer approves and the checks passed. */
+  autoMergeOnApprove: z.boolean(),
   createdBy: Id,
   createdAt: IsoDate,
   updatedAt: IsoDate,
@@ -41,6 +50,8 @@ export const CreateProjectBody = z
     worktreesRoot: AbsolutePath.optional(),
     checks: Checks.optional(),
     keepWorktrees: z.boolean().optional(),
+    reviewerTarget: ReviewerTarget.nullable().optional(),
+    autoMergeOnApprove: z.boolean().optional(),
   })
   .strict();
 export type CreateProjectBody = z.input<typeof CreateProjectBody>;
@@ -50,6 +61,8 @@ export const UpdateProjectBody = z
     name: z.string().trim().min(1).max(100),
     checks: Checks,
     keepWorktrees: z.boolean(),
+    reviewerTarget: ReviewerTarget.nullable(),
+    autoMergeOnApprove: z.boolean(),
   })
   .partial()
   .strict()
@@ -69,6 +82,9 @@ export const AllowProjectBody = z.object({ policyId: Id }).strict();
 
 export const ReviewStatus = z.enum(['pending', 'approved', 'rejected', 'merged', 'conflict']);
 export type ReviewStatus = z.infer<typeof ReviewStatus>;
+
+export const ReviewerVerdict = z.enum(['APPROVE', 'CHANGES REQUESTED']);
+export type ReviewerVerdict = z.infer<typeof ReviewerVerdict>;
 
 export const ReviewCheck = z.object({
   command: z.string(),
@@ -97,8 +113,17 @@ export const ReviewDto = z.object({
   commits: z.array(z.object({ sha: z.string(), subject: z.string() })),
   baseSha: z.string(),
   headSha: z.string(),
-  /** Reviewer subtask requested through `review/request`. */
+  /** Commit the checks ran on. */
+  checksSha: z.string().nullable().optional(),
+  /** Reviewer subtask requested through `review/request` or started by the project's reviewer setting. */
   reviewerTaskId: Id.nullable().optional(),
+  /** Latest reviewer verdict, parsed from the reviewer's reply. */
+  reviewerVerdict: ReviewerVerdict.nullable().optional(),
+  reviewerFindings: z.array(z.string()).optional(),
+  /** Commit the reviewer verdict applies to. */
+  reviewedSha: z.string().nullable().optional(),
+  /** Automatic requeues after CHANGES REQUESTED so far. */
+  reviewLoops: z.number().int().nonnegative().optional(),
   /** Files that conflicted on the last merge attempt. */
   conflictFiles: z.array(z.string()).optional(),
   /** Feedback of the last rejection. */
@@ -107,6 +132,28 @@ export const ReviewDto = z.object({
   mergeError: z.string().nullable().optional(),
 });
 export type ReviewDto = z.infer<typeof ReviewDto>;
+
+export const GateCode = z.enum([
+  'branch_moved',
+  'checks_not_passed',
+  'checks_stale',
+  'reviewer_missing',
+  'reviewer_changes_requested',
+  'reviewer_stale',
+]);
+
+/** Merge gate: checks and reviewer verdict must apply to the commit that is merged. */
+export const GateDto = z.object({
+  sha: z.string(),
+  liveSha: z.string().nullable(),
+  checks: z.enum(['passed', 'failed', 'stale']),
+  verdict: z.enum(['approved', 'changes_requested', 'stale', 'missing']),
+  blockers: z.array(z.object({ code: GateCode, message: z.string() })),
+  /** Only the reviewer verdict blocks, so an owner may override it with a reason. */
+  overridable: z.boolean(),
+  canMerge: z.boolean(),
+});
+export type GateDto = z.infer<typeof GateDto>;
 
 export const TaskDiffDto = z.object({
   /** Unified diff against the base, cut at `maxBytes`. */
@@ -117,7 +164,17 @@ export const TaskDiffDto = z.object({
   headSha: z.string(),
   review: ReviewDto,
   reviewer: z.object({ taskId: Id, status: z.string(), summary: z.string().nullable() }).nullable(),
+  /** Null once merged. */
+  gate: GateDto.nullable(),
 });
 export type TaskDiffDto = z.infer<typeof TaskDiffDto>;
+
+export const ApproveReviewBody = z
+  .object({
+    /** Merge although the reviewer has not approved this commit; audited. */
+    overrideReason: z.string().trim().min(1).max(1000).optional(),
+  })
+  .strict();
+export type ApproveReviewBody = z.input<typeof ApproveReviewBody>;
 
 export const RejectReviewBody = z.object({ feedback: z.string().trim().min(1).max(4000) }).strict();

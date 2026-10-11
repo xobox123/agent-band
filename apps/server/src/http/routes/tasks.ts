@@ -9,6 +9,7 @@ import {
   GoalStateDto,
   IdParams,
   RejectPlanBody,
+  ApproveReviewBody,
   RerunTaskBody,
   RerunTasksBody,
   RejectReviewBody,
@@ -478,14 +479,18 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
       {
         schema: {
           tags: ['review'],
-          summary: 'Merge the task branch into its base with --no-ff; a conflict keeps the branch',
+          summary:
+            'Merge the reviewed commit into the base with --no-ff once checks passed and the reviewer approved it (or an override reason is given); a conflict keeps the branch',
           params: IdParams,
           response: { 200: TaskDto },
         },
       },
       async (req) => {
         const actor = await c.resolveActor(req);
-        return dto(actor, await c.review.approve(db, actor, req.params.id));
+        // The body is optional: a plain approval sends none.
+        const body = ApproveReviewBody.safeParse(req.body ?? {});
+        if (!body.success) throw invalid(body.error.issues);
+        return dto(actor, await c.review.approve(db, actor, req.params.id, body.data));
       },
     );
 

@@ -6,6 +6,11 @@ const AbsolutePath = z
   .refine((p) => p.startsWith('/') && !p.includes('\0'), 'must be an absolute path');
 const Checks = z.array(z.string().trim().min(1).max(1000)).max(20);
 
+const ReviewerTarget = z.union([
+  z.object({ agentId: z.uuid() }).strict(),
+  z.object({ label: z.string().trim().min(1).max(100) }).strict(),
+]);
+
 export const CreateProject = z
   .object({
     name: z.string().trim().min(1).max(100),
@@ -17,6 +22,8 @@ export const CreateProject = z
     worktreesRoot: AbsolutePath.optional(),
     checks: Checks.default([]),
     keepWorktrees: z.boolean().default(false),
+    reviewerTarget: ReviewerTarget.nullable().optional(),
+    autoMergeOnApprove: z.boolean().default(false),
   })
   .strict();
 export type CreateProjectInput = z.input<typeof CreateProject>;
@@ -26,6 +33,8 @@ export const UpdateProject = z
     name: z.string().trim().min(1).max(100),
     checks: Checks,
     keepWorktrees: z.boolean(),
+    reviewerTarget: ReviewerTarget.nullable(),
+    autoMergeOnApprove: z.boolean(),
   })
   .partial()
   .strict();

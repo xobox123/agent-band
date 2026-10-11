@@ -1,4 +1,10 @@
-import type { CreateProjectBody, ProjectDto, UpdateProjectBody } from '@agent-band/contracts';
+import type {
+  AgentDto,
+  CreateProjectBody,
+  ProjectDto,
+  ReviewerTarget,
+  UpdateProjectBody,
+} from '@agent-band/contracts';
 import { useEffect, useRef, useState } from 'react';
 import { errorMessage } from '../../api/client.ts';
 import { useApi } from '../../api/context.tsx';
@@ -25,9 +31,44 @@ export const parseChecks = (text: string): string[] =>
     .map((l) => l.trim())
     .filter((l) => l !== '');
 
+type ReviewerKind = 'none' | 'label' | 'agent';
+
+function reviewerOf(project: ProjectDto | undefined): { kind: ReviewerKind; value: string } {
+  const target = project?.reviewerTarget;
+  if (!target) return { kind: 'none', value: '' };
+  return 'agentId' in target
+    ? { kind: 'agent', value: target.agentId }
+    : { kind: 'label', value: target.label };
+}
+
 export function ProjectForm({ project, pending, error, onCreate, onUpdate, onCancel }: Props) {
   const api = useApi();
   const editing = project !== undefined;
+  const initialReviewer = reviewerOf(project);
+  const [reviewerKind, setReviewerKind] = useState<ReviewerKind>(initialReviewer.kind);
+  const [reviewerValue, setReviewerValue] = useState(initialReviewer.value);
+  const [autoMerge, setAutoMerge] = useState(project?.autoMergeOnApprove ?? false);
+  const [agents, setAgents] = useState<AgentDto[]>([]);
+
+  useEffect(() => {
+    if (reviewerKind !== 'agent') return;
+    let live = true;
+    api.agents.list().then(
+      (page) => {
+        if (live) setAgents(page.items);
+      },
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, reviewerKind]);
+
+  const reviewerTarget = (): ReviewerTarget | null => {
+    const value = reviewerValue.trim();
+    if (reviewerKind === 'none' || value === '') return null;
+    return reviewerKind === 'agent' ? { agentId: value } : { label: value };
+  };
   const [name, setName] = useState(project?.name ?? '');
   const [repoPath, setRepoPath] = useState(project?.repoPath ?? '');
   const [worktreesRoot, setWorktreesRoot] = useState('');
@@ -88,15 +129,24 @@ export function ProjectForm({ project, pending, error, onCreate, onUpdate, onCan
       onCancel={onCancel}
       onSubmit={() => {
         if (project) {
-          onUpdate(project.id, { name: name.trim(), checks: parseChecks(checks), keepWorktrees: keep });
+          onUpdate(project.id, {
+            name: name.trim(),
+            checks: parseChecks(checks),
+            keepWorktrees: keep,
+            reviewerTarget: reviewerTarget(),
+            autoMergeOnApprove: autoMerge,
+          });
           return;
         }
+        const target = reviewerTarget();
         onCreate({
           name: name.trim(),
           repoPath: repoPath.trim(),
           ...(worktreesRoot.trim() ? { worktreesRoot: worktreesRoot.trim() } : {}),
           checks: parseChecks(checks),
           keepWorktrees: keep,
+          ...(target ? { reviewerTarget: target } : {}),
+          ...(autoMerge ? { autoMergeOnApprove: true } : {}),
         });
       }}
     >
@@ -155,6 +205,57 @@ export function ProjectForm({ project, pending, error, onCreate, onUpdate, onCan
           />
         </Field>
       </div>
+      <Field
+        label="Reviewer"
+        help="Reviews a finished task automatically when its checks pass. The reviewer works read-only in the same worktree."
+      >
+        <select
+          className="field"
+          value={reviewerKind}
+          onChange={(e) => {
+            setReviewerKind(e.target.value as ReviewerKind);
+            setReviewerValue('');
+          }}
+        >
+          <option value="none">No automatic review</option>
+          <option value="label">Agents with a label</option>
+          <option value="agent">One agent</option>
+        </select>
+      </Field>
+      {reviewerKind === 'label' ? (
+        <Field label="Reviewer label">
+          <input
+            className="field mono"
+            value={reviewerValue}
+            maxLength={100}
+            placeholder="ab-review"
+            onChange={(e) => {
+              setReviewerValue(e.target.value);
+            }}
+          />
+        </Field>
+      ) : null}
+      {reviewerKind === 'agent' ? (
+        <Field label="Reviewer agent">
+          <select
+            className="field"
+            value={reviewerValue}
+            onChange={(e) => {
+              setReviewerValue(e.target.value);
+            }}
+          >
+            <option value="">Choose an agent</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+            {reviewerValue !== '' && !agents.some((a) => a.id === reviewerValue) ? (
+              <option value={reviewerValue}>{reviewerValue}</option>
+            ) : null}
+          </select>
+        </Field>
+      ) : null}
       {editing ? null : (
         <details className="advanced wide" open={worktreesRoot !== ''}>
           <summary>Advanced: worktrees folder</summary>
@@ -184,6 +285,18 @@ export function ProjectForm({ project, pending, error, onCreate, onUpdate, onCan
             }}
           />
           Keep worktrees and branches after a merge or cancel
+        </label>
+      </div>
+      <div className="form-field form-check">
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={autoMerge}
+            onChange={(e) => {
+              setAutoMerge(e.target.checked);
+            }}
+          />
+          Merge automatically when the reviewer approves and the checks passed
         </label>
       </div>
     </FormDialog>

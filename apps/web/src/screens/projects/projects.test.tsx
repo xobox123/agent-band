@@ -14,6 +14,8 @@ const project = (over: Record<string, unknown> = {}) => ({
   worktreesRoot: '/ws/agent-band/worktrees',
   checks: ['npm run lint', 'npm test'],
   keepWorktrees: false,
+  reviewerTarget: null,
+  autoMergeOnApprove: false,
   createdBy: ID(200),
   createdAt: NOW,
   updatedAt: NOW,
@@ -142,6 +144,39 @@ describe('Projects screen', () => {
         repoPath: '/repos/ok',
         checks: ['npm test', 'npm run lint'],
         keepWorktrees: false,
+      });
+    });
+  });
+
+  it('saves the reviewer label and automatic merge of a project', async () => {
+    const calls = setup(
+      routes({
+        [`PATCH /projects/${ID(60)}`]: project({
+          reviewerTarget: { label: 'ab-review' },
+          autoMergeOnApprove: true,
+        }),
+      }),
+    );
+    fireEvent.click(await screen.findByRole('row', { name: /agent-band/ }));
+    const panel = await screen.findByRole('complementary', { name: 'agent-band details' });
+    expect(within(panel).getByText('Reviewer')).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Edit agent-band' });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: /^Reviewer/ }), {
+      target: { value: 'label' },
+    });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Reviewer label/ }), {
+      target: { value: 'ab-review' },
+    });
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Merge automatically/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.method === 'PATCH')?.body).toEqual({
+        name: 'agent-band',
+        checks: ['npm run lint', 'npm test'],
+        keepWorktrees: false,
+        reviewerTarget: { label: 'ab-review' },
+        autoMergeOnApprove: true,
       });
     });
   });

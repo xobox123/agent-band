@@ -111,6 +111,7 @@ export async function makeKit(existing?: Database) {
         audit: deps.audit,
         tasks,
         projectRuns,
+        review,
         runs,
         usage,
         agents: agentUc,

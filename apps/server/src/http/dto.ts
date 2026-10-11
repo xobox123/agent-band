@@ -63,6 +63,8 @@ export function projectDto(p: Project): ProjectDto {
     worktreesRoot: p.worktreesRoot,
     checks: p.checks,
     keepWorktrees: p.keepWorktrees,
+    reviewerTarget: p.reviewerTarget,
+    autoMergeOnApprove: p.autoMergeOnApprove,
     createdBy: p.createdBy,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),

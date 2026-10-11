@@ -12,8 +12,10 @@ export { formatTaskKey, branchOf } from './domain/key.ts';
 export {
   openReviewStatuses,
   reviewStatuses,
+  reviewerVerdicts,
   type ReviewCheck,
   type ReviewStatus,
+  type ReviewerVerdict,
   type TaskReview,
 } from './domain/review.ts';
 export {
