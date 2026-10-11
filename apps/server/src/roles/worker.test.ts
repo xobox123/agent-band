@@ -28,7 +28,7 @@ const run = async (kit0: Kit, overrides = {}) => {
   return w;
 };
 const status = async (id: string) => (await kit.taskStatus(id))?.status;
-const reachStatus = (id: string, want: string) => waitFor(async () => (await status(id)) === want, 10_000);
+const reachStatus = (id: string, want: string) => waitFor(async () => (await status(id)) === want);
 const runOf = async (taskId: string) => (await kit.runs.listRuns(kit.db, kit.actor, { taskId }))[0];
 const actions = () => kit.deps.audit.entries.map((e) => e.action);
 
@@ -140,11 +140,15 @@ describe('worker', () => {
     const task = await kit.task({ target: { label: 'x' } });
     await run(kit);
     await waitFor(async () => (await kit.taskStatus(task.id))?.error?.startsWith('no eligible agent: '));
-    await new Promise((r) => setTimeout(r, 150));
+    // A later task that runs proves the worker polled again after the release.
+    const second = await kit.agent('sentinel', acc2.id, { labels: ['y'] });
+    kit.script = () => ({ events: [{ kind: 'text', text: 'ok' }] });
+    const sentinel = await kit.task({ target: { agentId: second.id } });
+    await reachStatus(sentinel.id, 'done');
     const t = await kit.taskStatus(task.id);
     expect(t?.status).toBe('queued');
     expect(t?.error).toContain('rate limited');
-    expect(kit.adapters.get(acc2.id)?.started).toHaveLength(0);
+    expect(kit.adapters.get(acc2.id)?.started).toHaveLength(1);
     expect(actions()).not.toContain('task.failover');
   });
 
@@ -364,7 +368,7 @@ describe('worker', () => {
     expect(w.activeRuns).toBe(0);
     expect(await status(task.id)).toBe('done');
     const t2 = await kit.task({ target: { agentId: agent.id } });
-    await new Promise((r) => setTimeout(r, 100));
+    // stop() resolves only after the poll loop has ended, so nothing can claim t2 from here on.
     expect(await status(t2.id)).toBe('queued');
     expect(await kit.db.select().from(runsTable).where(eq(runsTable.taskId, t2.id))).toHaveLength(0);
   });
@@ -453,10 +457,15 @@ describe('worker and goals', () => {
 describe('worker eligibility', () => {
   it('does not churn claims or audit rows for a task with no eligible agent, and picks it up once one exists', async () => {
     const acc = await kit.account('a');
+    // Created before the worker starts so the agent set does not change while the ghost task is judged.
+    const other = await kit.agent('other', acc.id, { labels: ['other'] });
     const task = await kit.task({ target: { label: 'ghost' } });
     await run(kit, { pollIntervalMs: 20, retryDelayMs: 1000 });
     await waitFor(async () => (await kit.taskStatus(task.id))?.eligibility?.reason);
-    await new Promise((r) => setTimeout(r, 400));
+    // A later task that runs proves the worker went through further poll cycles.
+    kit.script = () => ({ events: [{ kind: 'text', text: 'ok' }] });
+    const sentinel = await kit.task({ target: { agentId: other.id } });
+    await reachStatus(sentinel.id, 'done');
     const mine = kit.deps.audit.entries.filter((e) => e.targetId === task.id).map((e) => e.action);
     expect(mine.filter((a) => a === 'task.ineligible')).toHaveLength(1);
     expect(mine.filter((a) => a === 'task.claim' || a === 'task.release')).toHaveLength(0);
@@ -512,8 +521,13 @@ describe('worker eligibility', () => {
       kit.usage.recordWindows(tx, kit.dispatcher, acc.id, [{ window: '5h', usedPercent: 72, resetsAt }]),
     );
     const task = await kit.task({ target: { agentId: agent.id } });
+    const free = await kit.account('free');
+    const freeAgent = await kit.agent('free', free.id);
+    kit.script = () => ({ events: [{ kind: 'text', text: 'ok' }] });
+    const sentinel = await kit.task({ target: { agentId: freeAgent.id } });
     await run(kit, { refreshLimits: () => Promise.resolve() });
-    await new Promise((r) => setTimeout(r, 400));
+    // The sentinel finishing proves the worker polled past the reserved task.
+    await reachStatus(sentinel.id, 'done');
     expect(await status(task.id)).not.toBe('done');
     expect(await runOf(task.id)).toBeUndefined();
     await kit.db.transaction((tx) =>

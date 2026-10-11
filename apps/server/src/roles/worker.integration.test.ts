@@ -19,8 +19,7 @@ describe.skipIf(!url)('real Postgres workers', () => {
         workers.push(w);
         await w.start();
       }
-      for (const t of tasks)
-        await waitFor(async () => (await kit.taskStatus(t.id))?.status === 'done', 20_000);
+      for (const t of tasks) await waitFor(async () => (await kit.taskStatus(t.id))?.status === 'done');
       const all = await kit.db.select().from(runs);
       const mine = all.filter((r) => tasks.some((t) => t.id === r.taskId));
       expect(new Set(mine.map((r) => r.taskId)).size).toBe(10);

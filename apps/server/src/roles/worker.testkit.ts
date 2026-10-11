@@ -141,11 +141,8 @@ export async function makeKit(existing?: Database) {
 }
 
 // The deadline is only a ceiling for a hung test: waitFor returns as soon as the condition holds.
-// It never shrinks below this floor so a loaded machine cannot turn slowness into a failure.
-const WAIT_FLOOR_MS = 25_000;
-
-export async function waitFor<T>(fn: () => Promise<T | undefined | false>, ms = WAIT_FLOOR_MS): Promise<T> {
-  const end = Date.now() + Math.max(ms, WAIT_FLOOR_MS);
+export async function waitFor<T>(fn: () => Promise<T | undefined | false>, ms = 25_000): Promise<T> {
+  const end = Date.now() + ms;
   for (;;) {
     const v = await fn();
     if (v) return v;
