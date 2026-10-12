@@ -265,10 +265,10 @@ describe('queue blocker summary', () => {
       },
     ] as unknown as Parameters<typeof queueBlockers>[0];
     const rows = queueBlockers(views);
-    expect(rows).toEqual([
-      { label: 'waiting for slots', count: 2 },
-      { label: expect.stringContaining('account Claude Main: reserve threshold reached until'), count: 1 },
-    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual({ label: 'waiting for slots', count: 2 });
+    expect(rows[1]?.count).toBe(1);
+    expect(rows[1]?.label).toContain('account Claude Main: reserve threshold reached until');
     expect(rows[1]?.label).not.toContain('2026-10-12T14:15:00.000Z');
   });
 });
