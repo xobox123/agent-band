@@ -145,7 +145,6 @@ function describeUnavailable(a: Extract<Availability, { ok: false }>, accountId:
   }
 }
 
-// prettier-ignore
 export function createWorker(deps: WorkerDeps): Worker {
   const d = deps.dispatcher;
   const orgId = d.orgId;
@@ -426,6 +425,7 @@ export function createWorker(deps: WorkerDeps): Worker {
     }
   }
 
+  // prettier-ignore
   async function cleanProcess(runId: string, identity: RunProcessRecord): Promise<void> {
     try {
       const result = await terminateRecordedGroup(identity, processTable);
@@ -546,6 +546,7 @@ export function createWorker(deps: WorkerDeps): Worker {
       }
       const treeBefore = await treeFingerprint(task.workDir);
       const denied = new Set<string>();
+      // prettier-ignore
       const attempt = async (s: RunSpec) => {
         let worked = false;
         handle = adapter.start(s);
@@ -863,6 +864,7 @@ export function createWorker(deps: WorkerDeps): Worker {
     get activeRuns() {
       return active.size;
     },
+    // prettier-ignore
     async start() {
       stopping = false;
       forceStop = false;
