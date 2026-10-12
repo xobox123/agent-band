@@ -554,7 +554,9 @@ export function BoardScreen() {
           task={reassignView.task}
           agents={snapshot?.agents ?? []}
           groups={snapshot?.groups ?? []}
-          onCancel={() => { setReassignId(null); }}
+          onCancel={() => {
+            setReassignId(null);
+          }}
           onSave={async (target) => {
             await source.retargetTask(reassignView.task.id, target);
             setReassignId(null);
