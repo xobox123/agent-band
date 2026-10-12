@@ -377,6 +377,8 @@ Research date: 2026-10-12. This section extends task 003 and reflects the curren
 
 ### Claude Code: exact knobs and limitations
 
+<!-- prettier-ignore-start -->
+
 | Control | What it removes or injects | Important limitation / evidence |
 | --- | --- | --- |
 | `--setting-sources ""` | Selects no *user/project/local settings sources* and is the proposed **OAuth-preserving** isolation mode. Omission of `user`/`project`/`local` is intended to prevent their settings, hooks, scope-discovered skills and instruction files from loading. | The [CLI reference](https://code.claude.com/docs/en/cli-reference) documents source names (`user,project,local`), **not** the empty-string syntax; community [reproduction with `""`](https://github.com/anthropics/claude-code/issues/38651) is not a version-pinned official guarantee. Check current binary and `system/init`/hook events. Managed configuration is a separate high-priority source, not removed by this flag; [settings](https://code.claude.com/docs/en/settings), [project skills / source behavior](https://code.claude.com/docs/en/skills), [memory](https://code.claude.com/docs/en/memory). |
@@ -388,6 +390,8 @@ Research date: 2026-10-12. This section extends task 003 and reflects the curren
 | `--bare` / `CLAUDE_CODE_SIMPLE=1` | Documented fast noninteractive path: skips hooks, skills, commands, agents, installed plugins, normal MCP, auto memory and CLAUDE.md; explicit `--settings`, `--plugin-dir`, `--mcp-config` can supply controlled components. | **Not suitable for subscription OAuth**: Anthropic explicitly says bare mode never reads OAuth/keychain and requires `ANTHROPIC_API_KEY` or approved external-provider credentials. Also drops some system reminders/background work. [Bare-mode contract](https://code.claude.com/docs/en/headless). |
 | `--safe-mode` | Disables customizations (plugins, hooks, skills, MCP, memory, instructions) while keeping authentication, built-in tools, permissions and model. | Does **not** meet the goal of *re-introducing* band's own hooks/skills/MCP for a normal run; treat as diagnostic or minimal run only. [CLI reference](https://code.claude.com/docs/en/cli-reference). |
 | `--disable-slash-commands`, `--tools`, `--disallowedTools`, `--no-session-persistence` | Can disable all skills/commands, narrow built-ins, deny MCP tools, or suppress session transcript persistence. | These are supplemental. Disabling all skills prevents band skills too; narrowing tools does not isolate settings/hooks/memory; no persistence is unrelated to initial context. [CLI reference](https://code.claude.com/docs/en/cli-reference). |
+
+<!-- prettier-ignore-end -->
 
 **Instructions and non-settings content:** `CLAUDE.md` may be in the account, worktree, ancestor directories, nested directories and managed policy, and modern releases can also load `AGENTS.md`. Auto memory and the additional rules directories are other sources. Omitting the corresponding sources should be checked against each category, rather than equating the absence of `settings.json` with zero instruction files. Managed CLAUDE.md **cannot** be excluded by `claudeMdExcludes`. Avoid trusting arbitrary repository hooks or plugins before a run. Sources: [memory and exclusions](https://code.claude.com/docs/en/memory), [headless trust behavior](https://code.claude.com/docs/en/headless), [skills discovery](https://code.claude.com/docs/en/skills).
 
