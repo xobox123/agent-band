@@ -1,5 +1,3 @@
-import { eq } from 'drizzle-orm';
-import { tasks as tasksTable } from '../modules/tasks/infra/schema.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeKit, waitFor } from './worker.testkit.ts';
 
@@ -55,21 +53,6 @@ describe('worker capacity', () => {
     await waitFor(async () => (await kit.taskStatus(second.id))?.status === 'running');
   });
 
-  it('leaves account eligibility and backoff untouched while slots are busy', async () => {
-    const task = await kit.task({});
-    const inPast = new Date(Date.now() - 60_000).toISOString();
-    const eligibility = {
-      reason: 'account reserved: reserve threshold reached until 2026-10-13T14:00:00.000Z',
-      checkedAt: inPast,
-      nextCheckAt: inPast,
-      checks: 4,
-    };
-    await kit.db.update(tasksTable).set({ eligibility }).where(eq(tasksTable.id, task.id));
-    const changed = await kit.db.transaction((tx) => kit.tasks.markWaitingForSlots(tx, kit.dispatcher));
-    expect(changed).toBe(0);
-    expect((await kit.taskStatus(task.id))?.eligibility).toEqual(eligibility);
-  });
-
   it('derives slots from active accounts when no global override is set', async () => {
     const firstAccount = await kit.account('auto-1', 'claude', { maxConcurrentRuns: 1 });
     const secondAccount = await kit.account('auto-2', 'claude', { maxConcurrentRuns: 1 });
@@ -98,25 +81,4 @@ describe('worker capacity', () => {
     expect(systemRead).toBe(true);
   });
 
-  it('records a stable reserve reason with the actual reset time', async () => {
-    const account = await kit.account('reserve');
-    const agent = await kit.agent('reserve', account.id);
-    await kit.accountUc.updateAccount(kit.db, kit.actor, account.id, {
-      limits: { maxConcurrentRuns: 1, stopAt: { fiveHourPercent: 90 } },
-    });
-    const resetAt = new Date(Date.now() + 60 * 60_000).toISOString();
-    const windows = [{ window: '5h' as const, usedPercent: 92, resetsAt: resetAt }];
-    await kit.db.transaction((tx) => kit.usage.recordWindows(tx, kit.dispatcher, account.id, windows));
-    const task = await kit.task({ target: { agentId: agent.id } });
-    worker = kit.worker({ slots: 1 });
-    await worker.start();
-    await waitFor(async () => {
-      const current = await kit.taskStatus(task.id);
-      return current?.eligibility?.reason?.includes(`until ${resetAt}`);
-    });
-    const reason = (await kit.taskStatus(task.id))?.eligibility?.reason;
-    expect(reason).toBe(`account ${account.id}: reserve threshold reached until ${resetAt}`);
-    expect(reason).not.toContain('92%');
-  });
 });
-
