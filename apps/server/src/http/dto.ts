@@ -62,6 +62,7 @@ export function projectDto(p: Project): ProjectDto {
     defaultBranch: p.defaultBranch,
     worktreesRoot: p.worktreesRoot,
     checks: p.checks,
+    docsOnlyChecks: p.docsOnlyChecks,
     keepWorktrees: p.keepWorktrees,
     reviewerTarget: p.reviewerTarget,
     autoMergeOnApprove: p.autoMergeOnApprove,
