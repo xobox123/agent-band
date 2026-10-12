@@ -8,3 +8,5 @@ Only the architect edits this file.
 | 001 | [UI screen specification (Lens style)](inbox/001-ui-screens.md) | done | [report](reports/001-report.md) |
 | 002 | [UI screens part 2: skills, groups, people](inbox/002-ui-screens-part2.md) | done | [report](reports/002-report.md) |
 | 003 | [CLI capability and enforcement matrix](inbox/003-cli-enforcement-matrix.md) | done | [report](reports/003-report.md) |
+| 004 | [Docs-only changes run only the formatting check](inbox/004-docs-only-checks.md) | todo | |
+| 005 | [Isolated agent profile for Claude Code runs (research)](inbox/005-isolated-agent-profile.md) | todo | |
