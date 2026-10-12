@@ -35,41 +35,6 @@ const runOf = async (taskId: string) => (await kit.runs.listRuns(kit.db, kit.act
 const actions = () => kit.deps.audit.entries.map((e) => e.action);
 
 describe('worker', () => {
-  it('sets a slot-wait reason without claiming another task at capacity', async () => {
-    const acc = await kit.account('one');
-    const agent = await kit.agent('one', acc.id, { labels: ['x'] });
-    kit.script = () => ({ events: [], hang: true });
-    const first = await kit.task({ target: { agentId: agent.id } });
-    const second = await kit.task({ target: { agentId: agent.id } });
-    const w = await run(kit, { slots: 1 });
-    await reachStatus(first.id, 'running');
-    await waitFor(async () => {
-      const current = await kit.taskStatus(second.id);
-      return current?.eligibility?.reason === 'waiting for worker slots';
-    });
-    expect(await status(second.id)).toBe('queued');
-    expect((await runOf(second.id))).toBeUndefined();
-    await w.stop({ force: true });
-  });
-
-  it('uses persisted slot settings without restarting', async () => {
-    const acc = await kit.account('two');
-    const agent = await kit.agent('two', acc.id, { labels: ['x'] });
-    kit.script = () => ({ events: [], hang: true });
-    const first = await kit.task({ target: { agentId: agent.id } });
-    const second = await kit.task({ target: { agentId: agent.id } });
-    kit.orgSettings.settings.workerSlots = 1;
-    const w = await run(kit, { slots: 4 });
-    await reachStatus(first.id, 'running');
-    await waitFor(async () => {
-      const current = await kit.taskStatus(second.id);
-      return current?.eligibility?.reason === 'waiting for worker slots';
-    });
-    kit.orgSettings.settings.workerSlots = 2;
-    await reachStatus(second.id, 'running');
-    await w.stop({ force: true });
-  });
-
   it('runs a task for an agent target and records events, usage and the agent as tool actor', async () => {
     const acc = await kit.account('a');
     const agent = await kit.agent('alpha', acc.id, { model: 'm1', persona: 'P', systemPrompt: 'S' });

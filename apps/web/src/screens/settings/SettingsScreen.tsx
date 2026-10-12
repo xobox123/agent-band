@@ -126,9 +126,7 @@ export function SettingsScreen() {
                   }}
                   placeholder="Automatic"
                 />
-                <span className="form-help dim">
-                  {WORKER_SLOTS_HELP}
-                </span>
+                <span className="form-help dim">{WORKER_SLOTS_HELP}</span>
                 {slotsError ? (
                   <span className="field-error" role="alert">
                     {slotsError}

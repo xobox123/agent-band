@@ -17,7 +17,7 @@ Added worker-capacity diagnostics and visible queue-blocker reasons. Worker slot
 - `apps/server/src/roles/worker-capacity.test.ts`: default cap, empty accounts, precedence.
 - `apps/server/src/platform/config.test.ts`: optional environment override.
 - `apps/server/src/http/api.test.ts`: capacity endpoint, account concurrency, settings persistence and validation.
-- `apps/server/src/roles/worker.test.ts`: slot wait reason and live capacity changes.
+- `apps/server/src/roles/worker-capacity.integration.test.ts`: slot wait reason and live capacity changes.
 - `apps/web/src/screens/settings/settings.test.tsx`: capacity settings UI validation and persistence.
 - `apps/web/src/screens/board/board.test.tsx`: grouped slot and account blockers.
 - CI must pass formatting, lint, typecheck, server/web tests, and migrations before this report can be marked done.
