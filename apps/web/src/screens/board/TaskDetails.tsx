@@ -156,7 +156,9 @@ export function TaskDetails({
             <button
               type="button"
               className="btn"
-              onClick={() => { backlog.reassign(task.id); }}
+              onClick={() => {
+                backlog.reassign(task.id);
+              }}
             >
               Reassign
             </button>
