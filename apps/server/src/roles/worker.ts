@@ -882,8 +882,9 @@ export function createWorker(deps: WorkerDeps): Worker {
             !observed ||
             observed.startedAt !== run.owner.startedAt ||
             observed.command !== run.owner.command
-          )
+          ) {
             lost.push(run.id);
+          }
         } else if (run.workerId === deps.workerId) {
           // Legacy runs lack an owner fingerprint: keep the original workerId recovery behavior.
           lost.push(run.id);
