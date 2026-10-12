@@ -283,7 +283,12 @@ export function createRuns(deps: ModuleDeps) {
         return result;
       });
     },
-    async recoverStaleRuns(db: Db, actor: ActorContext, workerId?: string, runIds?: string[]): Promise<Run[]> {
+    async recoverStaleRuns(
+      db: Db,
+      actor: ActorContext,
+      workerId?: string,
+      runIds?: string[],
+    ): Promise<Run[]> {
       system(actor);
       if (runIds && !runIds.length) return [];
       return db.transaction(async (tx) => {
