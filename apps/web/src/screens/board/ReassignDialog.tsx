@@ -29,7 +29,12 @@ export function ReassignDialog({ task, agents, groups, onSave, onCancel }: Props
   const choices = task.kind === 'goal' ? agents.filter((a) => a.role === 'leader') : agents;
 
   return (
-    <Dialog label={`Reassign ${task.key}`} onClose={() => { if (!busy) onCancel(); }}>
+    <Dialog
+      label={`Reassign ${task.key}`}
+      onClose={() => {
+        if (!busy) onCancel();
+      }}
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -43,7 +48,9 @@ export function ReassignDialog({ task, agents, groups, onSave, onCancel }: Props
         }}
       >
         <h2>Reassign {task.key}</h2>
-        <p className="dim">Change the dispatch target without cancelling the task or deleting its worktree.</p>
+        <p className="dim">
+          Change the dispatch target without cancelling the task or deleting its worktree.
+        </p>
         <label className="form-field">
           Target type
           <select
@@ -51,7 +58,9 @@ export function ReassignDialog({ task, agents, groups, onSave, onCancel }: Props
             aria-label="Reassign target type"
             value={type}
             disabled={busy}
-            onChange={(event) => { setType(event.target.value as TaskTarget['type']); }}
+            onChange={(event) => {
+              setType(event.target.value as TaskTarget['type']);
+            }}
           >
             <option value="agent">Agent</option>
             {task.kind !== 'goal' ? <option value="group">Group</option> : null}
@@ -66,12 +75,15 @@ export function ReassignDialog({ task, agents, groups, onSave, onCancel }: Props
               aria-label="Reassign agent"
               value={agentId}
               disabled={busy}
-              onChange={(event) => { setAgentId(event.target.value); }}
+              onChange={(event) => {
+                setAgentId(event.target.value);
+              }}
             >
               <option value="">Select an agent</option>
               {choices.map((agent) => (
                 <option key={agent.id} value={agent.id}>
-                  {agent.name}{!agent.enabled ? ' (disabled)' : ''}
+                  {agent.name}
+                  {!agent.enabled ? ' (disabled)' : ''}
                 </option>
               ))}
             </select>
@@ -84,10 +96,16 @@ export function ReassignDialog({ task, agents, groups, onSave, onCancel }: Props
               aria-label="Reassign group"
               value={groupId}
               disabled={busy}
-              onChange={(event) => { setGroupId(event.target.value); }}
+              onChange={(event) => {
+                setGroupId(event.target.value);
+              }}
             >
               <option value="">Select a group</option>
-              {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
             </select>
           </label>
         ) : (
@@ -99,13 +117,17 @@ export function ReassignDialog({ task, agents, groups, onSave, onCancel }: Props
               maxLength={63}
               value={label}
               disabled={busy}
-              onChange={(event) => { setLabel(event.target.value); }}
+              onChange={(event) => {
+                setLabel(event.target.value);
+              }}
             />
           </label>
         )}
         {error ? <p role="alert">{error}</p> : null}
         <div className="dialog-actions">
-          <button className="btn" type="button" disabled={busy} onClick={onCancel}>Cancel</button>
+          <button className="btn" type="button" disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
           <button className="btn btn-primary" type="submit" disabled={!valid || busy}>
             {busy ? 'Reassigning...' : 'Reassign'}
           </button>
