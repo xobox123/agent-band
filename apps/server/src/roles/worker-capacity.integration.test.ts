@@ -105,11 +105,8 @@ describe('worker capacity', () => {
       limits: { maxConcurrentRuns: 1, stopAt: { fiveHourPercent: 90 } },
     });
     const resetAt = new Date(Date.now() + 60 * 60_000).toISOString();
-    await kit.db.transaction((tx) =>
-      kit.usage.recordWindows(tx, kit.dispatcher, account.id, [
-        { window: '5h', usedPercent: 92, resetsAt: resetAt },
-      ]),
-    );
+    const windows = [{ window: '5h' as const, usedPercent: 92, resetsAt: resetAt }];
+    await kit.db.transaction((tx) => kit.usage.recordWindows(tx, kit.dispatcher, account.id, windows));
     const task = await kit.task({ target: { agentId: agent.id } });
     worker = kit.worker({ slots: 1 });
     await worker.start();
