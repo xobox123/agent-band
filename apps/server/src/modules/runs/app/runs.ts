@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { NormalizedEvent } from '@agent-band/contracts';
 import type { ActorContext } from '../../../platform/actor.ts';
 import type { Db } from '../../../platform/db.ts';
@@ -7,7 +7,7 @@ import type { DbOrTx, ModuleDeps } from '../../../ports/index.ts';
 import { conflict, forbidden, invalid, notFound } from '../../../platform/errors.ts';
 import { publish } from '../../../platform/outbox.ts';
 import { runs, runEvents, type Run, type RunEvent } from '../infra/schema.ts';
-import type { StartRunInput, FinishRunInput, RunStatus, UsageScope } from '../domain/run.ts';
+import type { StartRunInput, FinishRunInput, RunStatus, UsageScope, RunProcessRecord } from '../domain/run.ts';
 export interface RunFilter {
   taskIds?: string[];
   from?: string;
@@ -101,6 +101,62 @@ export function createRuns(deps: ModuleDeps) {
         .returning();
       if (!run) throw new Error('Missing inserted run');
       return changed(tx, actor, run, 'run.start');
+    },
+    /** Records the current detached process group before consuming the CLI event stream. */
+    async recordProcess(
+      tx: Tx,
+      actor: ActorContext,
+      id: string,
+      info: RunProcessRecord,
+    ): Promise<void> {
+      system(actor);
+      const run = await get(tx, actor, id);
+      await deps.authorizer.authorize(tx, actor, 'task.write', { agentId: run.agentId });
+      if (run.status !== 'running') throw conflict('run_terminal', 'Cannot attach a process to a finished run');
+      if (
+        !Number.isSafeInteger(info.pid) ||
+        info.pid <= 0 ||
+        info.pgid !== info.pid ||
+        !info.host ||
+        !info.startedAt ||
+        !info.command
+      )
+        throw invalid('Invalid process identity');
+      await tx.update(runs).set({ process: info, processReapedAt: null }).where(where(actor, id));
+    },
+    /** Mark cleanup only after process identity has been verified, or the child has exited. */
+    async markProcessReaped(tx: Tx, actor: ActorContext, id: string, expected: RunProcessRecord): Promise<void> {
+      system(actor);
+      const run = await get(tx, actor, id);
+      await deps.authorizer.authorize(tx, actor, 'task.write', { agentId: run.agentId });
+      if (
+        !run.process ||
+        run.process.pid !== expected.pid ||
+        run.process.startedAt !== expected.startedAt ||
+        run.process.command !== expected.command ||
+        run.process.pgid !== expected.pgid
+      )
+        throw conflict('process_changed', 'Process identity changed during cleanup');
+      await tx.update(runs).set({ processReapedAt: new Date() }).where(where(actor, id));
+    },
+    /** All org running runs, including previous workers whose workerId included a now-dead PID. */
+    async runningForRecovery(db: Db, actor: ActorContext): Promise<Run[]> {
+      system(actor);
+      await deps.authorizer.authorize(db, actor, 'task.write', {});
+      return db.select().from(runs).where(and(eq(runs.orgId, actor.orgId), eq(runs.status, 'running')));
+    },
+    /** Failed recovery remains retryable if the server crashes before SIGTERM/SIGKILL. */
+    async pendingProcessCleanup(db: Db, actor: ActorContext): Promise<Run[]> {
+      system(actor);
+      await deps.authorizer.authorize(db, actor, 'task.write', {});
+      return db.select().from(runs).where(
+        and(
+          eq(runs.orgId, actor.orgId),
+          ne(runs.status, 'running'),
+          isNotNull(runs.process),
+          isNull(runs.processReapedAt),
+        ),
+      );
     },
     async appendRunEvent(tx: Tx, actor: ActorContext, id: string, input: NormalizedEvent): Promise<RunEvent> {
       system(actor);
@@ -217,8 +273,9 @@ export function createRuns(deps: ModuleDeps) {
         return result;
       });
     },
-    async recoverStaleRuns(db: Db, actor: ActorContext, workerId?: string): Promise<Run[]> {
+    async recoverStaleRuns(db: Db, actor: ActorContext, workerId?: string, runIds?: string[]): Promise<Run[]> {
       system(actor);
+      if (runIds && !runIds.length) return [];
       return db.transaction(async (tx) => {
         await deps.authorizer.authorize(tx, actor, 'task.write', {});
         const stale = await tx
@@ -229,6 +286,7 @@ export function createRuns(deps: ModuleDeps) {
               eq(runs.orgId, actor.orgId),
               eq(runs.status, 'running'),
               workerId ? eq(runs.workerId, workerId) : undefined,
+              runIds ? inArray(runs.id, runIds) : undefined,
             ),
           )
           .orderBy(asc(runs.id))
