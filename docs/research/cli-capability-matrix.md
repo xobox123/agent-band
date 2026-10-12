@@ -371,13 +371,13 @@ Free (no model call) ways to read identity, limits and login per provider. agent
 
 To be researched.
 
+<!-- prettier-ignore-start -->
+
 ## Isolated agent profile
 
 Research date: 2026-10-12. This section extends task 003 and reflects the current official CLI contracts; it is **research**, not an executed macOS/Linux smoke test. The host problem is concrete: [agent-band's Claude adapter](https://github.com/xobox123/agent-band/blob/main/apps/server/src/runner/adapters.ts) passes `--plugin-dir`, `--mcp-config` and optionally `--strict-mcp-config`, but **not** a `--setting-sources` isolation flag. `runEnv()` deliberately leaves the default account's `CLAUDE_CONFIG_DIR` unset, since setting it can change the Keychain credential lookup. The spawned child inherits `process.env`. [Adapter](https://github.com/xobox123/agent-band/blob/main/apps/server/src/runner/adapters.ts), [spawn implementation](https://github.com/xobox123/agent-band/blob/main/apps/server/src/runner/process.ts).
 
 ### Claude Code: exact knobs and limitations
-
-<!-- prettier-ignore-start -->
 
 | Control | What it removes or injects | Important limitation / evidence |
 | --- | --- | --- |
@@ -390,8 +390,6 @@ Research date: 2026-10-12. This section extends task 003 and reflects the curren
 | `--bare` / `CLAUDE_CODE_SIMPLE=1` | Documented fast noninteractive path: skips hooks, skills, commands, agents, installed plugins, normal MCP, auto memory and CLAUDE.md; explicit `--settings`, `--plugin-dir`, `--mcp-config` can supply controlled components. | **Not suitable for subscription OAuth**: Anthropic explicitly says bare mode never reads OAuth/keychain and requires `ANTHROPIC_API_KEY` or approved external-provider credentials. Also drops some system reminders/background work. [Bare-mode contract](https://code.claude.com/docs/en/headless). |
 | `--safe-mode` | Disables customizations (plugins, hooks, skills, MCP, memory, instructions) while keeping authentication, built-in tools, permissions and model. | Does **not** meet the goal of *re-introducing* band's own hooks/skills/MCP for a normal run; treat as diagnostic or minimal run only. [CLI reference](https://code.claude.com/docs/en/cli-reference). |
 | `--disable-slash-commands`, `--tools`, `--disallowedTools`, `--no-session-persistence` | Can disable all skills/commands, narrow built-ins, deny MCP tools, or suppress session transcript persistence. | These are supplemental. Disabling all skills prevents band skills too; narrowing tools does not isolate settings/hooks/memory; no persistence is unrelated to initial context. [CLI reference](https://code.claude.com/docs/en/cli-reference). |
-
-<!-- prettier-ignore-end -->
 
 **Instructions and non-settings content:** `CLAUDE.md` may be in the account, worktree, ancestor directories, nested directories and managed policy, and modern releases can also load `AGENTS.md`. Auto memory and the additional rules directories are other sources. Omitting the corresponding sources should be checked against each category, rather than equating the absence of `settings.json` with zero instruction files. Managed CLAUDE.md **cannot** be excluded by `claudeMdExcludes`. Avoid trusting arbitrary repository hooks or plugins before a run. Sources: [memory and exclusions](https://code.claude.com/docs/en/memory), [headless trust behavior](https://code.claude.com/docs/en/headless), [skills discovery](https://code.claude.com/docs/en/skills).
 
@@ -423,3 +421,5 @@ Place only approved band skills at `plugin/skills/<slug>/SKILL.md`; hook definit
 `agy -p ... --output-format stream-json` uses an existing interactive login in headless mode; if missing, it errors instead of prompting. Its headless flags include `--agent`, `--sandbox` and permission mode controls, **not a documented per-run config root or exclusive `--setting-sources` option**. Per-run preapproved agent-band hooks cannot be assumed to prevent user/global loading. In the inspected [agent-band implementation](https://github.com/xobox123/agent-band/blob/main/apps/server/src/runner/adapters.ts), `agy` uses default OS-keyring credentials and globally scoped `~/.gemini` settings, while a hook is registered under the worktree's `.agents/hooks.json`; treat process/user isolation as unimplemented. Prefer a dedicated OS user/container with a separately onboarded login and a controlled worktree if exclusivity becomes a requirement; the compatibility of sandbox/keyring forwarding is unverified. Sources: [Antigravity headless and auth](https://www.agy.dev/docs/cli/headless/), [agent-band hook implementation](https://github.com/xobox123/agent-band/blob/main/apps/server/src/runner/agy-hook.ts).
 
 **Acceptance smoke tests (not executed):** Pin `claude --version`; macOS Keychain and Linux file-backed subscription accounts; existing/default and custom account config dirs; verify `claude auth status` before/after; seeded malicious user/project hooks and CLAUDE.md/rules/skills/plugins/MCP (expect *zero* side effects); selected band skill/hook/MCP (expect exactly those); `system/init` plugin/MCP lists; include one resume; compare run cost/tokens/latency to the current adapter. A failed isolation test must block production rollout, not silently fall back to legacy inherited settings. [Auth](https://code.claude.com/docs/en/authentication), [headless system/init](https://code.claude.com/docs/en/headless).
+
+<!-- prettier-ignore-end -->
