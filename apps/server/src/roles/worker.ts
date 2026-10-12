@@ -563,8 +563,9 @@ export function createWorker(deps: WorkerDeps): Worker {
               if (observed.pgid !== h.process.pid) {
                 throw new Error('CLI process is not the leader of its dedicated process group');
               }
-              registered = { ...observed, host };
-              await deps.db.transaction((tx) => deps.runs.recordProcess(tx, d, run.id, registered));
+              const identity: RunProcessRecord = { ...observed, host };
+              registered = identity;
+              await deps.db.transaction((tx) => deps.runs.recordProcess(tx, d, run.id, identity));
             }
           }
           if (entry.userCancelled || forceStop || timedOut) h.cancel();
