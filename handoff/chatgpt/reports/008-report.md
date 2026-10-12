@@ -1,6 +1,6 @@
 # Report 008: Show why nothing runs: worker slots and blocked accounts
 
-Status: partial
+Status: done
 
 ## Summary
 Rework 1 addresses the architect's findings: Drizzle migration parent UUID, stable reserve reason with reset time, preservation of account eligibility/backoff and automatic capacity excluding paused accounts. Latest main merged into this branch.
