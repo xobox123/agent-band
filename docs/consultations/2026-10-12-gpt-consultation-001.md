@@ -249,3 +249,40 @@ Agent *identity and long-lived permissions* should stay separate from task *work
 ### Request for Claude (architect)
 
 Compare this idea with current task trees, `dependsOn`, goal orchestration, planning/review UI and project/agent policy models. Identify what can be visualized directly now versus what would require new schema, APIs or scheduler semantics. Propose a phased UX and technical approach, e.g. React Flow / XYFlow **as an implementation candidate, not a technology mandate**. Define a simple node/edge schema, source-of-truth and sync behavior between natural language, form and graph; address policy enforcement and traceable approvals. Provide prioritized candidate tasks and acceptance criteria, **without automatically creating tickets or changing the roadmap**.
+
+## Follow-up: cost-aware model delegation and configurable code review
+
+Date: 2026-10-12
+Status: Owner preference and product configuration candidate, **not an approved implementation task**
+
+### Discussion and intent
+
+The owner has limited access to high-capability model usage and does not want routine software development to consume expensive tokens unnecessarily. The owner also correctly points out that **code review may deserve a stronger model than implementation**: a capable reviewer can detect consequential mistakes in code written by a less expensive worker. The aim is to optimize quality per unit of cost, **not** always select the cheapest model.
+
+### Distinguish existing implementation from additional capabilities
+
+Verified in the `main` source during this consultation:
+
+- Agents have individually configured models and provider accounts. The model is passed into the worker runner: `apps/server/src/modules/agents/app/agents.ts`, `apps/server/src/roles/worker.ts`, `apps/server/src/runner/models.ts`.
+- The leader can discover eligible agents and their configured models, then delegate subtasks or request reviews through the existing MCP workflow: `apps/server/src/modules/delegation/app/delegation.ts` and `apps/server/src/roles/leader-prompt.ts`.
+- Existing controls include per-account daily token/cost budgets, per-goal token budgets and limits on rounds/subtasks, plus policy-dependent account failover: `apps/server/src/modules/usage/app/usage.ts`, `apps/server/src/modules/delegation/app/orchestrator.ts`, `apps/server/src/roles/worker.ts`.
+
+**Not verified as an implemented feature:** a deterministic, cost-aware model-selection policy that classifies task complexity and picks a minimum-sufficient model automatically, or a configurable per-task versus final-PR review schedule. The leader's ability to choose a configured agent is not the same as guaranteed automated cost optimization.
+
+### Proposed configurable strategy
+
+- **Planning / architecture:** use a more capable model when complexity or risk warrants it.
+- **Implementation:** delegate straightforward, well-scoped work to lower-cost agents; use intermediate/capable models for standard or challenging implementation. Prefer measured suitability over fixed model names.
+- **Code review:** allow a stronger model than the implementation model. The reviewer returns actionable findings to the implementation agent, rather than rewriting everything by default.
+- **Review frequency (user-configurable, not hardcoded):**
+  - `final_pr_only` — **suggested default to evaluate**, one strong review after subtasks are integrated into a final PR; lower token consumption.
+  - `each_subtask` — a review after every completed subtask, for high-assurance or tightly coupled work.
+  - `risk_based` — optional future strategy: review high-risk or complex subtasks early, then review the final integration.
+  - `none` — where allowed by project policies; do not remove required approval or security gates.
+- Configure the strategy per project / workflow / goal, with explicit overrides where appropriate. Surface the selected reviewer role/model, review trigger, budget and estimated impact before execution.
+- For each review, initially supply requirements, diff/changed files, relevant test results and targeted context; let the reviewer retrieve more repository context when needed. Large reviews are **not guaranteed to be cheap**.
+- Cap review iterations and spending; enforce approved access controls, auditable decisions and explicit human approval where policy requires it. A failed or unavailable strong reviewer should not silently waive a required review.
+
+### Request for Claude (architect)
+
+Inspect current delegation, review creation, leader continuation, account routing, per-agent model configuration and policy enforcement. Identify which review-frequency choices already exist and which would need additional configuration or scheduler behavior. Recommend the smallest implementation increment, potentially beginning with leader guidance and reusable reviewer-agent presets, before proposing a new automatic model router. Propose configuration scope, acceptance criteria, token/cost measurement, quality evaluation and a rollback path. **Do not create tasks or modify the roadmap without the owner's approval.**
