@@ -35,9 +35,7 @@ function fakeTable(initial: ProcessIdentity | null, stopOnTerm = true) {
 
 describe('process group cleanup', () => {
   it('parses process start time and executable using portable ps output', () => {
-    expect(
-      parseProcessLine(' 4100 4100 Mon Oct 12 12:00:00 2026 /usr/local/bin/claude'),
-    ).toEqual(child);
+    expect(parseProcessLine(' 4100 4100 Mon Oct 12 12:00:00 2026 /usr/local/bin/claude')).toEqual(child);
     expect(() => parseProcessLine('malformed')).toThrow('Unrecognized ps');
   });
 
@@ -67,9 +65,7 @@ describe('process group cleanup', () => {
 
   it('refuses non-leader group ids and treats vanished processes as gone', async () => {
     const { table, sent } = fakeTable(child);
-    expect(await terminateRecordedGroup({ ...child, pgid: child.pid + 1 }, table, 0)).toBe(
-      'mismatch',
-    );
+    expect(await terminateRecordedGroup({ ...child, pgid: child.pid + 1 }, table, 0)).toBe('mismatch');
     expect(sent).toEqual([]);
     expect(await terminateRecordedGroup(child, fakeTable(null).table, 0)).toBe('gone');
   });
