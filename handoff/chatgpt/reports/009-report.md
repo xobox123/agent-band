@@ -1,9 +1,9 @@
 # Report 009: Kill orphaned agent CLI processes after a server restart
 
-Status: partial
+Status: done
 
 ## Summary
-Implemented persisted process ownership and detached CLI process-group tracking for agent runs. Worker startup now identifies lost runs by the original owner's hostname, PID, process start time and executable rather than relying exclusively on a stable worker ID, and cleans orphaned CLI process groups with a verified identity guard. Production shutdown cancels CLI runs rather than draining indefinitely. The PR is not done until GitHub Actions finishes green.
+Implemented persisted process ownership and detached CLI process-group tracking for agent runs. Worker startup now identifies lost runs by the original owner's hostname, PID, process start time and executable rather than relying exclusively on a stable worker ID, and cleans orphaned CLI process groups with a verified identity guard. Production shutdown cancels CLI runs rather than draining indefinitely. The implementation passed the GitHub Actions format, lint, typecheck and test checks on commit `ddf2fa823dbfa8e0f364ee140189907c8621f37f`.
 
 ## Done
 - Added migration `0015_orphan_processes.sql` and schema metadata for worker owner identity, CLI PID/PGID/start time/executable, and the completed-cleanup timestamp.
@@ -15,7 +15,7 @@ Implemented persisted process ownership and detached CLI process-group tracking 
 - Added `apps/server/src/runner/process-table.test.ts` and `apps/server/src/roles/worker.recovery.test.ts`.
 
 ## Not done (and why)
-- No local test suite was executed, as required by the handoff protocol. GitHub Actions must pass `format:check`, `lint`, `typecheck` and `test` before the PR is ready.
+- No local test suite was executed, as required by the handoff protocol. GitHub Actions checked `format:check`, `lint`, `typecheck` and `test` successfully for the implementation.
 - Crash recovery cannot terminate a process which was spawned but not yet persisted if the server crashes in that narrow window. Mitigating this completely would require holding the child before exec or implementing a durable supervisor handshake.
 - A group whose original leader has exited but whose descendants remain cannot be safely signalled using the verified-leader-only strategy; it remains pending rather than risking a reused PID.
 
@@ -32,7 +32,7 @@ Implemented persisted process ownership and detached CLI process-group tracking 
 - Add a durable process-supervisor handshake to eliminate the crash window between spawn and metadata persistence.
 - Add a targeted Linux/macOS integration smoke test for process-group escalation and orphan grandchild behavior; continue using the fake process table in CI.
 
-## CI verification required
+## CI verification
 - `apps/server/src/runner/process-table.test.ts`: parse process identities; kill exactly a matching group; TERM->KILL escalation; reject PID reuse and nonleader PGIDs; report disappeared processes.
 - `apps/server/src/roles/worker.recovery.test.ts`: reclaim orphan after worker ID changes; retry cleanup for an already terminal run; leave a live owner untouched.
 - All existing runner and worker tests must remain green, including ordinary completion, user cancel, forced and draining stops, API stub runs and test databases after the new migration.
