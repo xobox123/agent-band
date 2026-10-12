@@ -9,6 +9,24 @@ results back. The human only says "bierz zadanie" (take a task).
 - `inbox/NNN-<slug>.md`: one task per file. Written by the architect only.
 - `reports/NNN-report.md`: one report per task. Written by ChatGPT only.
 
+## Stay in sync (every turn)
+
+You cannot listen for events; you only act when the human writes. So at the
+start of every turn, and before and after every task:
+
+1. Fetch the latest `main` and read `handoff/chatgpt/STATUS.md` again.
+2. Rework comes first: if a task you own (your PR) has status `rework`, read
+   the "Architect note" at the end of its inbox file, merge the latest
+   `main` into your branch, fix every point, push and wait for green CI.
+3. Check your open pull requests: CI result, merge conflicts with `main`
+   (merge `main` and resolve them), and comments.
+4. If `main` moved while you work, merge it into your branch before you mark
+   the PR ready.
+5. Then continue with a new `todo` task.
+
+The architect answers only through the repository (STATUS.md, architect
+notes in inbox files, PR merges and closes), never through chat.
+
 ## When the human says "bierz zadanie"
 
 1. Read `handoff/chatgpt/STATUS.md` on branch `main`.
