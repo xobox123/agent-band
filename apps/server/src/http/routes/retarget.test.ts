@@ -57,9 +57,7 @@ describe('POST /tasks/:id/retarget', () => {
   it('rejects malformed targets and tasks already claimed by the worker', async () => {
     const { task } = await seed();
     expect((await call('POST', `/tasks/${task.id}/retarget`, { target: {} })).status).toBe(400);
-    await api.database.db.transaction((tx) =>
-      api.c.tasks.claimNextTask(tx, api.c.dispatcher, 'worker'),
-    );
+    await api.database.db.transaction((tx) => api.c.tasks.claimNextTask(tx, api.c.dispatcher, 'worker'));
     const conflict = await call('POST', `/tasks/${task.id}/retarget`, { target: { label: 'other' } });
     expect(conflict.status).toBe(409);
     expect(conflict.json().code).toBe('task_not_retargetable');
