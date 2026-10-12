@@ -117,6 +117,7 @@ Keep chunks bounded (initial experiment: 400 to 800 tokens with 10 to 15 percent
 **PGlite support is feasible**: current PGlite documentation distributes pgvector as @electric-sql/pglite-pgvector, registered when creating PGlite, then enabled via CREATE EXTENSION. Standard PostgreSQL needs the extension installed in the instance and enabled in its database.
 
 References:
+
 - https://pglite.dev/extensions/
 - https://www.npmjs.com/package/@electric-sql/pglite-pgvector
 - https://github.com/pgvector/pgvector
@@ -124,7 +125,7 @@ References:
 Do **not** add unconditional CREATE EXTENSION vector and vector columns to ordinary migrations yet: users with existing PostgreSQL installations lacking pgvector would lose the ability to start the entire control plane. Proposed safe rollout:
 
 1. Keep core Drizzle migrations backward-compatible and feature disabled by default.
-2. Implement an explicit capability probe for vector support. In PGlite, register the extension in **every** constructor (disk, in-memory, migrated snapshot and restored snapshot) *before* vector migrations.
+2. Implement an explicit capability probe for vector support. In PGlite, register the extension in **every** constructor (disk, in-memory, migrated snapshot and restored snapshot) _before_ vector migrations.
 3. Ship an opt-in, committed **knowledge/vector migration set** with an idempotent migration runner and its own schema-version tracking. It runs only after the capability check and explicit enablement. Do not write ad hoc untracked CREATE TABLE on startup.
 4. For externally hosted PostgreSQL, document installing pgvector and enabling it using a sufficiently privileged DBA session before enabling the feature. Never silently escalate database privileges.
 5. Test a clean opt-in installation and upgrade from current data on PostgreSQL 17 and on both PGlite snapshot and persisted-directory modes. Existing installations without vectors must boot normally.
@@ -161,7 +162,7 @@ MVP query:
 Retrieval pipeline:
 
 1. Resolve authenticated org, project and if applicable run/task/agent.
-2. Check explicit permission to view project *and each source category*; deny by default for ambiguous scopes.
+2. Check explicit permission to view project _and each source category_; deny by default for ambiguous scopes.
 3. Validate and normalize input. Generate query embedding with the same pinned model as the current index generation.
 4. Run filtered semantic top-k and filtered lexical top-k over only active, permitted chunks. Combine with reciprocal rank fusion (RRF) initially; tune with offline relevance evaluation.
 5. Deduplicate near-identical chunks, group adjacent chunks from one source, cap per-source results and apply hard maximum characters/tokens.
