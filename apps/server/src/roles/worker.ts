@@ -81,7 +81,7 @@ export interface WorkerDeps {
   agents: Pick<ReturnType<typeof createAgentUseCases>, 'getAgent' | 'listAgents'>;
   accounts: {
     getAccountForRun(db: Db, orgId: string, id: string): Promise<AccountForRun>;
-    listAccounts(db: Db, actor: ActorContext): Promise<{ limits: { maxConcurrentRuns: number } }[]>;
+    listAccounts(db: Db, actor: ActorContext): Promise<{ limits: { maxConcurrentRuns: number }; paused: boolean }[]>;
   };
   orgSettings: OrgSettings;
   /** Git worktrees, checks and review data for project tasks; without it project tasks run in place. */
@@ -138,7 +138,7 @@ function describeUnavailable(a: Extract<Availability, { ok: false }>, accountId:
     case 'concurrency':
       return `account ${accountId} is at its concurrent run limit`;
     case 'reserve':
-      return `account ${accountId}: ${a.detail ?? 'reserve threshold reached'}`;
+      return `account ${accountId}: reserve threshold reached${a.resetsAt ? ` until ${a.resetsAt.toISOString()}` : ''}`;
     case 'daily_cost_budget':
       return `account ${accountId} exhausted its daily cost budget`;
     case 'daily_budget':
@@ -808,7 +808,7 @@ export function createWorker(deps: WorkerDeps): Worker {
     if (deps.slots !== undefined) return deps.slots;
     const accounts = await deps.accounts.listAccounts(deps.db, d);
     return resolveWorkerSlots(
-      accounts.map((a) => a.limits.maxConcurrentRuns),
+      accounts.filter((account) => !account.paused).map((account) => account.limits.maxConcurrentRuns),
       null,
     );
   }

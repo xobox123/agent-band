@@ -317,6 +317,8 @@ describe('review, notes and completion', () => {
     const task = (await kit.taskStatus(review.id)) as Task;
     expect(task.prompt).toContain('implemented X');
     expect(task.prompt).toContain('check the tests');
+    expect(task.prompt).toContain(`Review the result of ${a.key} "Sub"`);
+    expect(task.prompt).toContain('Original task prompt:\nDo it');
   });
 
   it('completeGoal finishes the goal, cancels open subtasks and stores the result', async () => {

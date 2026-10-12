@@ -64,7 +64,7 @@ export function orgRoutes(c: Composition): FastifyPluginCallbackZod {
         ]);
         return {
           slots: resolveWorkerSlots(
-            accounts.map((a) => a.limits.maxConcurrentRuns),
+            accounts.filter((account) => !account.paused).map((account) => account.limits.maxConcurrentRuns),
             org.workerSlots,
             workerSlotOverride(),
           ),

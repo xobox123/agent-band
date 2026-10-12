@@ -62,7 +62,7 @@ normal read authorization and does not reveal credentials. The header displays
 
 The worker slot limit is resolved in this order: organization `workerSlots`
 (persisted using `PATCH /organization`), `AGENT_BAND_WORKER_SLOTS` if set in
-the environment, then the **sum of account `maxConcurrentRuns`**, clamped to
+the environment, then the **sum of non-paused account `maxConcurrentRuns`**, clamped to
 1 through 256. Sending `workerSlots: null` restores automatic capacity.
 An explicit saved limit takes effect on the next worker poll without a restart;
 existing runs are not terminated if capacity is reduced. The older environment
@@ -73,6 +73,8 @@ When all slots are occupied, ready queued tasks acquire the reason
 `waiting for worker slots` without being claimed or postponed. Account
 concurrency/reserve/rate-limit reasons remain on the tasks until they are
 re-evaluated, and queue summaries group them without changing task status.
+Reserve messages include the reset time when available and exclude volatile usage
+percentages. Slot waits never replace existing account eligibility or backoff.
 The active run count comes from persisted running run rows, while the worker
 controls actual slot occupancy using its local in-flight tasks. Separate
 worker processes still each enforce their own local limit; a distributed

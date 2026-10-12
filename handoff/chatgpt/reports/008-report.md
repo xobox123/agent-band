@@ -1,8 +1,10 @@
 # Report 008: Show why nothing runs: worker slots and blocked accounts
 
-Status: done
+Status: partial
 
 ## Summary
+Rework 1 addresses the architect's findings: Drizzle migration parent UUID, stable reserve reason with reset time, preservation of account eligibility/backoff and automatic capacity excluding paused accounts. Latest main merged into this branch.
+
 Added worker-capacity diagnostics and visible queue-blocker reasons. Worker slots can be persisted in organization settings, take effect without restart, and default to the sum of account concurrency limits capped at 256. Existing environment configuration remains available when no organization override is present.
 
 ## Done
@@ -23,6 +25,7 @@ Added worker-capacity diagnostics and visible queue-blocker reasons. Worker slot
 - CI must pass formatting, lint, typecheck, server/web tests, and migrations before this report can be marked done.
 
 ## Not done (and why)
+- Rework CI is pending. Do not mark this task done until all GitHub Actions checks succeed.
 - Tests and typecheck were not executed in this agent session, per the task instructions.
 - A multi-worker distributed semaphore is not implemented: each worker applies its local cap, as before. The endpoint reports all persisted running runs.
 - A GUI test for header refresh remains for CI/full QA.
