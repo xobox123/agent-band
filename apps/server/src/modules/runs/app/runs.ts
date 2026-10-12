@@ -25,6 +25,7 @@ export interface RunFilter {
   accountId?: string;
   status?: RunStatus;
 }
+// prettier-ignore
 export function createRuns(deps: ModuleDeps) {
   const where = (actor: ActorContext, id: string) => and(eq(runs.orgId, actor.orgId), eq(runs.id, id));
   function system(actor: ActorContext) {
