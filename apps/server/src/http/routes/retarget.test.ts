@@ -3,8 +3,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeApi, type TestApi } from '../test-helpers.ts';
 
 let api: TestApi;
-beforeEach(async () => { api = await makeApi(); });
-afterEach(async () => { await api.close(); });
+beforeEach(async () => {
+  api = await makeApi();
+});
+afterEach(async () => {
+  await api.close();
+});
 
 async function call(method: 'GET' | 'POST', url: string, payload?: unknown) {
   const res = await api.app.inject({ method, url: `/api/v1${url}`, payload: payload as object });
@@ -13,13 +17,20 @@ async function call(method: 'GET' | 'POST', url: string, payload?: unknown) {
 
 async function seed() {
   const account = await call('POST', '/accounts', {
-    name: 'retarget-account', provider: 'claude', type: 'cli', configDir: '/tmp/retarget-account',
+    name: 'retarget-account',
+    provider: 'claude',
+    type: 'cli',
+    configDir: '/tmp/retarget-account',
   });
   const agent = await call('POST', '/agents', {
-    slug: 'first', name: 'First', accountId: account.json().id,
+    slug: 'first',
+    name: 'First',
+    accountId: account.json().id,
   });
   const task = await call('POST', '/tasks', {
-    title: 'Queued work', prompt: 'run', target: { agentId: agent.json().id },
+    title: 'Queued work',
+    prompt: 'run',
+    target: { agentId: agent.json().id },
   });
   return { task: task.json(), agent: agent.json() };
 }
@@ -46,7 +57,9 @@ describe('POST /tasks/:id/retarget', () => {
   it('rejects malformed targets and tasks already claimed by the worker', async () => {
     const { task } = await seed();
     expect((await call('POST', `/tasks/${task.id}/retarget`, { target: {} })).status).toBe(400);
-    await api.database.db.transaction((tx) => api.c.tasks.claimNextTask(tx, api.c.dispatcher, 'worker'));
+    await api.database.db.transaction((tx) =>
+      api.c.tasks.claimNextTask(tx, api.c.dispatcher, 'worker'),
+    );
     const conflict = await call('POST', `/tasks/${task.id}/retarget`, { target: { label: 'other' } });
     expect(conflict.status).toBe(409);
     expect(conflict.json().code).toBe('task_not_retargetable');
