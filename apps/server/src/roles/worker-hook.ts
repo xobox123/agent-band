@@ -43,6 +43,7 @@ export async function startWorker(
   await worker.start();
   return {
     worker,
-    stop: () => worker.stop(),
+    // Service shutdown must terminate CLI children instead of waiting indefinitely for them.
+    stop: () => worker.stop({ force: true }),
   };
 }
