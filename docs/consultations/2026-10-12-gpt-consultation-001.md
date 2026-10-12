@@ -208,3 +208,44 @@ Illustrative flow:
 ### Request for Claude (architect)
 
 Review this follow-up alongside the rest of Consultation 001. Verify current API and voice capabilities when designing. Propose a narrow proof of concept comparing (a) **GPT-Live client delegation -> Agent Band -> Claude**, (b) a modular STT -> Claude -> TTS pipeline, and optionally (c) ElevenLabs Speech Engine -> Claude. Evaluate perceived naturalness, interruption behavior, accuracy of intent, latency, cost, privacy and integration complexity. Recommend a staged rollout with text Task Composer as the stable fallback. **Do not create implementation tasks or treat a vendor choice as final without owner approval.**
+
+## Follow-up: visual agent and task workflows
+
+Date: 2026-10-12
+Status: Owner-requested product capability for exploration, **not an approved implementation task**
+
+### User need
+
+The owner would like an optional **diagram / block-based visual editor** for configuring agents and expressing how a task should flow between them. Users should be able to assemble “blocks,” connect them, and see who talks to whom, who does which step, and how the result proceeds to the next agent.
+
+This is especially relevant when creating a task: instead of writing a complex prompt or manually configuring every agent interaction, the owner imagines showing the workflow visually. It complements, rather than replaces, the conversational Task Composer and the existing task form.
+
+### Distinguish two related surfaces
+
+1. **Reusable team/workflow templates**: configure a project team or reusable pattern of interaction (e.g. developer -> reviewer -> QA) using agent or role nodes, connections and default constraints. Reuse across tasks.
+2. **Task-specific execution graph**: during task creation, show the particular steps, assignees, dependencies, potential parallelism, reviews and approvals. The user can modify it before submitting.
+
+Agent *identity and long-lived permissions* should stay separate from task *workflow* and temporary scope. A line drawn between two blocks is a delegation/dependency/data-flow configuration, **not an implicit grant of access**.
+
+### Example user journey
+
+- In New Task, choose “Create with conversation” or “Visual workflow,” with the existing form as a fallback.
+- Conversational Task Composer analyzes the authorized project context and produces **a structured draft plan and a visual graph from the same canonical data**.
+- Example: `Feature request -> Backend agent + Frontend agent (parallel) -> Reviewer -> QA -> Human approval -> Merge/deploy`.
+- The user moves nodes, assigns roles/agents, adjusts dependencies or adds an approval gate, then sees the underlying task definitions update. Alternatively, they speak: “QA should run after code review,” and the graph updates.
+- Agent Band validates the graph and policy before saving draft tasks. Execution requires appropriate user confirmation, and the board shows actual status on the graph as work proceeds.
+- For monitoring, nodes indicate queued/running/blocked/done/failed; selecting a node opens that task's run log, costs, decisions and audit trail.
+
+### MVP scope to evaluate
+
+- Start with a **read-only graph of existing parent/child tasks and `dependsOn` dependencies** for a goal, showing status and assigned agent.
+- Next, allow lightweight plan editing before approval: task nodes, agent/role picker, dependency edges, parallel branches and a human-approval node where existing mechanisms support it.
+- For reusable workflows, add templates after real usage demonstrates repeatability. Only later consider conditions, retries, failure branches, loops or richer artifact handoff.
+- Persist a versioned, typed graph/proposal that maps to the existing task/goal/delegation APIs; do not build a second, contradictory execution engine or permit arbitrary graph code.
+- Design explicit semantics for edge types: task ordering versus data/artifact handoff versus escalation/review; avoid a UI where all lines appear equivalent.
+- Enforce cycle detection on DAG dependencies, reference/permission validation, agent availability, budget and concurrency checks. Show policy conflicts instead of silently widening privileges.
+- Keep the visual editor optional: complex graphs may overwhelm beginners; offer templates and progressive disclosure.
+
+### Request for Claude (architect)
+
+Compare this idea with current task trees, `dependsOn`, goal orchestration, planning/review UI and project/agent policy models. Identify what can be visualized directly now versus what would require new schema, APIs or scheduler semantics. Propose a phased UX and technical approach, e.g. React Flow / XYFlow **as an implementation candidate, not a technology mandate**. Define a simple node/edge schema, source-of-truth and sync behavior between natural language, form and graph; address policy enforcement and traceable approvals. Provide prioritized candidate tasks and acceptance criteria, **without automatically creating tickets or changing the roadmap**.
