@@ -107,6 +107,7 @@ export interface BacklogApi {
   toggle: (taskId: string) => void;
   start: (taskId: string) => void;
   edit: (taskId: string) => void;
+  reassign: (taskId: string) => void;
   remove: (taskId: string) => void;
   review: (goalId: string) => void;
   /** Failed/denied tasks ticked for a bulk move back to the backlog. */
