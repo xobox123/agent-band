@@ -32,16 +32,16 @@ This is a proposal to the architect and owner, not an implementation authorizati
 
 Verified against the main branch on 2026-10-12:
 
-| Current component | Evidence | Design consequence |
-| --- | --- | --- |
-| Modular monolith, per-module data ownership and explicit ports | AGENTS.md, docs/adr/0001-modular-monolith.md | Add knowledge module; no direct reads of other modules' tables |
-| PostgreSQL 17, embedded PGlite, Drizzle SQL migrations, snapshot tests | apps/server/src/platform/db.ts, ADR-0002 | Must support both engines; no mandatory external vector database |
-| Projects hold local git repo path, branch, worktrees root | apps/server/src/modules/projects/infra/schema.ts | Initial indexing belongs to an explicit Project ID; access repo through the projects public API |
-| Actor has orgId, principalId, kind, requestId | apps/server/src/platform/actor.ts | Resolve actor and run scope server-side; never accept caller-supplied org/agent identity |
-| RBAC scopes currently include org, agent group and agent, but **not project** | apps/server/src/modules/org/domain/rbac.ts | Project ACL requires a new capability before multi-user/shared access |
-| Agent execution uses per-run tokens and tools, currently delegation-oriented | apps/server/src/http/mcp/tools.ts, apps/server/src/roles/worker.ts | Add retrieval tools through existing run-bound authorization; do not expose an anonymous global search endpoint |
-| Earlier AgentMemory spec describes 2 KB curated notes, 8 KB prompt injection and proposed human approval | docs/superpowers/specs/2026-10-07-agent-chat-memory.md | Keep curated instructions separate from search; integrate through adapters later, do not build a conflicting second AgentMemory |
-| No memory or conversations module visible under apps/server/src/modules on inspected main | repository tree | Treat previous chat/memory spec as specified-only, not shipped functionality |
+| Current component                                                                                        | Evidence                                                           | Design consequence                                                                                                              |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| Modular monolith, per-module data ownership and explicit ports                                           | AGENTS.md, docs/adr/0001-modular-monolith.md                       | Add knowledge module; no direct reads of other modules' tables                                                                  |
+| PostgreSQL 17, embedded PGlite, Drizzle SQL migrations, snapshot tests                                   | apps/server/src/platform/db.ts, ADR-0002                           | Must support both engines; no mandatory external vector database                                                                |
+| Projects hold local git repo path, branch, worktrees root                                                | apps/server/src/modules/projects/infra/schema.ts                   | Initial indexing belongs to an explicit Project ID; access repo through the projects public API                                 |
+| Actor has orgId, principalId, kind, requestId                                                            | apps/server/src/platform/actor.ts                                  | Resolve actor and run scope server-side; never accept caller-supplied org/agent identity                                        |
+| RBAC scopes currently include org, agent group and agent, but **not project**                            | apps/server/src/modules/org/domain/rbac.ts                         | Project ACL requires a new capability before multi-user/shared access                                                           |
+| Agent execution uses per-run tokens and tools, currently delegation-oriented                             | apps/server/src/http/mcp/tools.ts, apps/server/src/roles/worker.ts | Add retrieval tools through existing run-bound authorization; do not expose an anonymous global search endpoint                 |
+| Earlier AgentMemory spec describes 2 KB curated notes, 8 KB prompt injection and proposed human approval | docs/superpowers/specs/2026-10-07-agent-chat-memory.md             | Keep curated instructions separate from search; integrate through adapters later, do not build a conflicting second AgentMemory |
+| No memory or conversations module visible under apps/server/src/modules on inspected main                | repository tree                                                    | Treat previous chat/memory spec as specified-only, not shipped functionality                                                    |
 
 **Important compatibility constraint:** the previous AgentMemory design explicitly excludes group/org memory and uses skills for shared instructions. This design does not silently change that decision. Project knowledge is **retrieved reference context**, not inherited instructions, and needs a separate product approval.
 
@@ -97,14 +97,14 @@ Project deletion and disabling indexing should make content immediately unavaila
 
 ## 5. Proposed data model (knowledge module owns all tables)
 
-| Table | Main fields / constraints | Why |
-| --- | --- | --- |
-| knowledge_sources | id, org_id, project_id, kind, locator, include/exclude config, enabled, consented_by, consented_at, created_at, updated_at | Explicit opt-in, one source registry |
-| knowledge_documents | id, org_id, project_id, source_id, stable_key, source_revision, content_hash, status (active/stale/deleted/blocked), title, canonical_path, indexed_at, last_seen_at | Provenance and lifecycle |
-| knowledge_chunks | id, org_id, project_id, document_id, ordinal, content, text_hash, token_count, metadata_json, status | Stable chunk identity and text search |
-| knowledge_embeddings | id, org_id, project_id, chunk_id, model_id, model_version, dimensions, embedding, created_at, unique(chunk_id, model_id, model_version) | Rebuildable derived vectors |
-| knowledge_jobs | id, org_id, project_id, source_id, operation, source_revision, status, attempt, next_attempt_at, error_code, timestamps | Durable, idempotent indexing queue |
-| knowledge_query_evidence | optional, bounded run_id, selected chunk ids + hashes, model ids, source revisions, counts, timestamps, no raw secrets | Explain what context a run used |
+| Table                    | Main fields / constraints                                                                                                                                            | Why                                   |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| knowledge_sources        | id, org_id, project_id, kind, locator, include/exclude config, enabled, consented_by, consented_at, created_at, updated_at                                           | Explicit opt-in, one source registry  |
+| knowledge_documents      | id, org_id, project_id, source_id, stable_key, source_revision, content_hash, status (active/stale/deleted/blocked), title, canonical_path, indexed_at, last_seen_at | Provenance and lifecycle              |
+| knowledge_chunks         | id, org_id, project_id, document_id, ordinal, content, text_hash, token_count, metadata_json, status                                                                 | Stable chunk identity and text search |
+| knowledge_embeddings     | id, org_id, project_id, chunk_id, model_id, model_version, dimensions, embedding, created_at, unique(chunk_id, model_id, model_version)                              | Rebuildable derived vectors           |
+| knowledge_jobs           | id, org_id, project_id, source_id, operation, source_revision, status, attempt, next_attempt_at, error_code, timestamps                                              | Durable, idempotent indexing queue    |
+| knowledge_query_evidence | optional, bounded run_id, selected chunk ids + hashes, model ids, source revisions, counts, timestamps, no raw secrets                                               | Explain what context a run used       |
 
 All org-owned rows carry org_id; all project-owned rows carry project_id. There are no foreign keys into tables owned by other modules. Enforce same-module keys, uniqueness on source stable keys and (document, ordinal, hash), and indexes on org_id/project_id/status/source_id.
 
@@ -263,15 +263,15 @@ Acceptance criteria for a first release:
 
 ## 13. Incremental delivery candidates (not backlog tasks)
 
-| Order | Slice | Dependency | Exit criterion |
-| --- | --- | --- | --- |
-| 0 | Security/UX decisions, consent semantics and selected corpus | Owner approval | Written accepted ADR / scoped MVP |
-| 1 | Source registry and project-scoped lexical-only search | Project source/public ports and actor checks | Reliable citations, ACL negative tests, no embedding dependency |
-| 2 | Vector capability probe + PGlite/Postgres gated migrations | Slice 1; tested extension packaging | Both DB engines work; existing installs still boot |
-| 3 | Local embedding adapter, indexing jobs and hybrid search | Slice 2 | Offline opt-in indexing, relevance benchmark, freshness/reindex |
-| 4 | Authenticated run MCP read tools and context assembly | Slice 3; run-token authorization | Claude/Codex runs retrieve only their project; evidence recorded |
-| 5 | UI source management/search preview, safe deletion and operability | Slices 1-4 | Complete user flow, capability/error states, audit |
-| Later | AgentMemory proposals, shared/team memory, external OAuth MCP, hosted embeddings | Separate owner decision, user/project ACL and approvals | No implicit privilege widening |
+| Order | Slice                                                                            | Dependency                                              | Exit criterion                                                   |
+| ----- | -------------------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------- |
+| 0     | Security/UX decisions, consent semantics and selected corpus                     | Owner approval                                          | Written accepted ADR / scoped MVP                                |
+| 1     | Source registry and project-scoped lexical-only search                           | Project source/public ports and actor checks            | Reliable citations, ACL negative tests, no embedding dependency  |
+| 2     | Vector capability probe + PGlite/Postgres gated migrations                       | Slice 1; tested extension packaging                     | Both DB engines work; existing installs still boot               |
+| 3     | Local embedding adapter, indexing jobs and hybrid search                         | Slice 2                                                 | Offline opt-in indexing, relevance benchmark, freshness/reindex  |
+| 4     | Authenticated run MCP read tools and context assembly                            | Slice 3; run-token authorization                        | Claude/Codex runs retrieve only their project; evidence recorded |
+| 5     | UI source management/search preview, safe deletion and operability               | Slices 1-4                                              | Complete user flow, capability/error states, audit               |
+| Later | AgentMemory proposals, shared/team memory, external OAuth MCP, hosted embeddings | Separate owner decision, user/project ACL and approvals | No implicit privilege widening                                   |
 
 Recommended MVP cut: slices 0-4 with minimal read-only UI. Delay auto-learning from arbitrary runs and federated org memory until verified provenance and permissions are solid.
 
