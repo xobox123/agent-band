@@ -55,9 +55,7 @@ async function strandedRun(kit: Kit, ownerPid: number, withProcess = true) {
     kit.tasks.claimNextTask(tx, kit.dispatcher, 'worker-before-crash'),
   );
   expect(claimed?.id).toBe(task.id);
-  await kit.db.transaction((tx) =>
-    kit.tasks.setTaskStatus(tx, kit.dispatcher, task.id, 'running'),
-  );
+  await kit.db.transaction((tx) => kit.tasks.setTaskStatus(tx, kit.dispatcher, task.id, 'running'));
   const run = await kit.db.transaction((tx) =>
     kit.runs.startRun(tx, kit.dispatcher, {
       taskId: task.id,
@@ -77,7 +75,7 @@ async function strandedRun(kit: Kit, ownerPid: number, withProcess = true) {
   return { task, run };
 }
 
-it('recovers a crashed worker even when its workerId changed and kills its orphan process group', async () => {
+it('recovers lost runs after workerId changes and kills orphan CLI groups', async () => {
   const kit = await makeKit();
   kits.push(kit);
   const { task, run } = await strandedRun(kit, 99999);
