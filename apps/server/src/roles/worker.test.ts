@@ -43,8 +43,8 @@ describe('worker', () => {
     const second = await kit.task({ target: { agentId: agent.id } });
     const w = await run(kit, { slots: 1 });
     await reachStatus(first.id, 'running');
-    await waitFor(async () =>
-      (await kit.taskStatus(second.id))?.eligibility?.reason === 'waiting for worker slots',
+    await waitFor(
+      async () => (await kit.taskStatus(second.id))?.eligibility?.reason === 'waiting for worker slots',
     );
     expect(await status(second.id)).toBe('queued');
     expect((await runOf(second.id))).toBeUndefined();

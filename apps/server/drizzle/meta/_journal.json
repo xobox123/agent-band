@@ -108,10 +108,10 @@
       "breakpoints": true
     },
     {
-      "idx": 16,
+      "idx": 15,
       "version": "7",
       "when": 1791801000000,
-      "tag": "0016_worker_slots",
+      "tag": "0015_worker_slots",
       "breakpoints": true
     }
   ]

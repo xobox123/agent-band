@@ -807,7 +807,10 @@ export function createWorker(deps: WorkerDeps): Worker {
     if (settings.workerSlots !== null) return settings.workerSlots;
     if (deps.slots !== undefined) return deps.slots;
     const accounts = await deps.accounts.listAccounts(deps.db, d);
-    return resolveWorkerSlots(accounts.map((a) => a.limits.maxConcurrentRuns), null);
+    return resolveWorkerSlots(
+      accounts.map((a) => a.limits.maxConcurrentRuns),
+      null,
+    );
   }
 
   async function loop(): Promise<void> {

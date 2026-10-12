@@ -103,14 +103,15 @@ export const PrincipalList = listOf(PrincipalDto);
 export const PrincipalQuery = z.object({ kind: z.enum(['user', 'agent', 'system']).optional() });
 
 /** Observed worker capacity and per-account running concurrency. */
+const WorkerAccountCapacityDto = z.object({
+  id: Id,
+  name: z.string(),
+  inUse: z.number().int().nonnegative(),
+  maxConcurrentRuns: z.number().int().nonnegative(),
+});
 export const WorkerCapacityDto = z.object({
   slots: z.number().int().min(1),
   activeRuns: z.number().int().nonnegative(),
-  accounts: z.array(z.object({
-    id: Id,
-    name: z.string(),
-    inUse: z.number().int().nonnegative(),
-    maxConcurrentRuns: z.number().int().nonnegative(),
-  })),
+  accounts: z.array(WorkerAccountCapacityDto),
 });
 export type WorkerCapacityDto = z.infer<typeof WorkerCapacityDto>;

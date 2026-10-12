@@ -78,6 +78,5 @@ controls actual slot occupancy using its local in-flight tasks. Separate
 worker processes still each enforce their own local limit; a distributed
 global slot semaphore would require a dedicated follow-up.
 
-Migration note: the worker slots schema uses migration 0016. Merge task 004
-(which introduces migration 0015) before this task, and reconcile the Drizzle
-journal/snapshot lineage if both PRs touch these files.
+Migration note: this branch uses migration 0015 based on main's 0014. If task 004
+merges first, rebase this migration onto the new journal and snapshot.

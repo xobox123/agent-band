@@ -1,13 +1,13 @@
 # Report 008: Show why nothing runs: worker slots and blocked accounts
 
-Status: done
+Status: partial
 
 ## Summary
 Added worker-capacity diagnostics and visible queue-blocker reasons. Worker slots can be persisted in organization settings, take effect without restart, and default to the sum of account concurrency limits capped at 256. Existing environment configuration remains available when no organization override is present.
 
 ## Done
 - Exposed `GET /system/worker-capacity` with effective slots, active runs, and per-account in-use/max concurrency.
-- Added organization `workerSlots` setting, contracts, validation, database migration 0016 and Settings UI. Null means automatic.
+- Added organization `workerSlots` setting, contracts, validation, database migration 0015 and Settings UI. Null means automatic.
 - Workers derive the effective cap on each dispatch iteration; shrinking it does not terminate existing runs.
 - Ready tasks waiting for occupied slots receive `eligibilityReason: waiting for worker slots` without being claimed or delayed.
 - Header renders `Running A/B slots`; queued Board column groups slot/account/reason blockers.
@@ -20,7 +20,7 @@ Added worker-capacity diagnostics and visible queue-blocker reasons. Worker slot
 - `apps/server/src/roles/worker.test.ts`: slot wait reason and live capacity changes.
 - `apps/web/src/screens/settings/settings.test.tsx`: capacity settings UI validation and persistence.
 - `apps/web/src/screens/board/board.test.tsx`: grouped slot and account blockers.
-- CI should run formatting, lint, typecheck, server/web tests, and migrations on a merge candidate with 004.
+- CI must pass formatting, lint, typecheck, server/web tests, and migrations before this report can be marked done.
 
 ## Not done (and why)
 - Tests and typecheck were not executed in this agent session, per the task instructions.
@@ -34,7 +34,7 @@ Added worker-capacity diagnostics and visible queue-blocker reasons. Worker slot
 - A queued task retains its account-specific reason until eligible for another attempt.
 
 ## Questions for the architect
-- Merge task 004 (migration 0015) first, then resolve any journal/snapshot merge conflicts before 008. Should the next task implement distributed/global rather than per-worker slots?
+- Task 004 also uses migration 0015. Whichever PR merges second must rebase and renumber its migration. Should the next task implement distributed/global rather than per-worker slots?
 - Do we want to display provider reserve reset times that are not supplied by the account availability decision?
 
 ## Suggested next tasks
