@@ -12,6 +12,7 @@ import { branchOf, formatTaskKey } from '../domain/key.ts';
 import type { TaskReview } from '../domain/review.ts';
 import {
   CreateTask,
+  TaskTarget as TaskTargetSchema,
   UpdateDraft,
   boardColumn,
   boardColumns,
@@ -908,6 +909,45 @@ export function createTasks(deps: TasksDeps) {
         if (task.status !== 'queued')
           throw conflict('task_not_queued', 'Only queued tasks can change priority');
         return update(tx, actor, id, { priority }, 'task.priority');
+      });
+    },
+    /** Retargets work that is not executing. Row locking serializes this with the worker claim. */
+    async retargetTask(db: Db, actor: ActorContext, id: string, target: TaskTarget): Promise<Task> {
+      const parsed = TaskTargetSchema.safeParse(target);
+      if (!parsed.success) throw invalid(parsed.error.issues);
+      return db.transaction(async (tx) => {
+        const task = await get(tx, actor, id);
+        await deps.authorizer.authorize(tx, actor, 'org.manage', {});
+        await deps.authorizer.authorize(tx, actor, 'task.write', resource(task.target));
+        await deps.authorizer.authorize(tx, actor, 'task.write', resource(parsed.data));
+        if (!['queued', 'scheduled', 'failed'].includes(task.status))
+          throw conflict('task_not_retargetable', 'Only queued, scheduled or failed tasks can be reassigned');
+        const reset = task.status === 'failed';
+        const [updated] = await tx
+          .update(tasks)
+          .set({
+            target: parsed.data,
+            eligibility: null,
+            error: null,
+            workerId: null,
+            ...(reset
+              ? { status: 'queued' as const, runAt: null, resumeAt: null, result: null, attempt: 1 }
+              : {}),
+            updatedAt: new Date(),
+          })
+          .where(where(actor, id))
+          .returning();
+        if (!updated) throw notFound('task');
+        await deps.audit.append(tx, {
+          orgId: actor.orgId,
+          actorId: actor.principalId,
+          action: 'task.retarget',
+          targetType: 'task',
+          targetId: id,
+          data: { oldTarget: task.target, newTarget: parsed.data },
+        });
+        await publish(tx, 'task.updated', { orgId: actor.orgId, taskId: id });
+        return updated;
       });
     },
     listTasks(db: Db, actor: ActorContext, filter: TaskFilter = {}): Promise<Task[]> {
