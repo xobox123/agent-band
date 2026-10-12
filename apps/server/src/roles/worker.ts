@@ -871,16 +871,13 @@ export function createWorker(deps: WorkerDeps): Worker {
 
       const running = await deps.runs.runningForRecovery(deps.db, d);
       const lost: string[] = [];
-      // prettier-ignore
       for (const run of running) {
         if (run.owner) {
           if (run.owner.host !== host) continue;
           const observed = await processTable.read(run.owner.pid);
-          const missingOwner =
-            !observed ||
-            observed.startedAt !== run.owner.startedAt ||
-            observed.command !== run.owner.command;
-          if (missingOwner) lost.push(run.id);
+          const sameStart = observed?.startedAt === run.owner.startedAt;
+          const sameCommand = observed?.command === run.owner.command;
+          if (!sameStart || !sameCommand) lost.push(run.id);
         } else if (run.workerId === deps.workerId) {
           // Legacy runs lack an owner fingerprint: keep the original workerId recovery behavior.
           lost.push(run.id);
