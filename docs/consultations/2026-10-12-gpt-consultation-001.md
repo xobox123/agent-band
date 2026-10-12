@@ -149,3 +149,62 @@ Please read this consultation, then:
 ## Consultation record policy
 
 Future entries belong under `docs/consultations/` as dated, numbered Markdown notes. Capture the owner's words and decisions carefully. Label hypotheses distinctly from commitments, link follow-up decisions or tasks, and do not overwrite the previous consultation's history.
+
+## Follow-up: voice conversation and delegated reasoning
+
+Date: 2026-10-12
+Status: Further product discussion and architecture candidate, **not an approved task**
+
+### Owner's goal
+
+The owner especially values a **natural, real-time spoken conversation** with fluid turn-taking, expressive delivery, short acknowledgments and interruption handling, similar to their experience in ChatGPT Voice. They want to offer a comparably smooth interaction in Agent Band, while retaining Claude's coding/project reasoning capability.
+
+The new explicit design question: **Can Claude do the thinking and GPT do the talking?** The answer is yes in principle. Keep the voice/dialogue engine distinct from the planner/reasoning/execution engine.
+
+### Current provider capability assessment (12 October 2026)
+
+- Anthropic's **Claude consumer voice mode exists** on Claude Mobile, Claude Desktop and claude.ai (beta), with hands-free turn-taking, push-to-talk, interruption handling, voice choices and multilingual input/conversation. It supports text/voice continuity and certain connected tools. It is not correct to claim Claude lacks voice conversations.
+- Anthropic's consumer Claude voice mode is **not equivalent to an embeddable voice API** for Agent Band. The Claude Platform API documentation confirms text-based Messages API and related interfaces. As of this consultation, we did not verify an officially exposed Claude-native full-duplex speech-to-speech API suitable for integrating the *same* Claude Voice experience inside a separate product. Confirm again before implementation.
+- Anthropic docs say voice mode is not available directly in **Claude Code or Cowork** (dictation is available).
+- OpenAI's **GPT-Live** documentation explicitly supports a real-time audio frontend that delegates reasoning/tool use to a separate backend. **Client delegation** can call an arbitrary provider/model/agent controlled by Agent Band, including Claude.
+- An alternative is **ElevenLabs Speech Engine** for speech-to-text, text-to-speech and interruption management, while Agent Band uses Claude as the LLM. Evaluate quality/latency/cost in prototypes, not by assumption.
+
+Sources:
+- Claude Voice: https://support.claude.com/en/articles/11101966-use-voice-mode
+- Claude API overview: https://platform.claude.com/docs/en/api/overview
+- Claude OpenAI SDK compatibility / audio limitations: https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk
+- OpenAI GPT-Live delegation: https://developers.openai.com/api/docs/guides/live-delegation
+- OpenAI voice agent architecture options: https://developers.openai.com/api/docs/guides/voice-agents
+- ElevenLabs Speech Engine: https://elevenlabs.io/docs/overview/capabilities/speech-engine
+
+### Proposed implementation concept
+
+A single conversation in the Agent Band macOS app or web UI:
+
+1. The user selects a project and starts a voice conversation (or switches to text).
+2. GPT-Live manages microphone/speaker interaction, speech timing, interruptions, clarifying questions and concise spoken explanations. Its role is a **voice interface**, not an authority that executes unapproved changes.
+3. Agent Band owns the canonical conversation/transcript, project context, authorization and proposal state. When analysis is needed, it delegates the relevant turn to **Claude via an authorized adapter** (Claude API or Claude Code, as appropriate) while attaching controlled, relevant project context.
+4. Claude reasons about the problem, examines authorized code/resources if needed, asks targeted follow-up questions via structured results, and drafts task plans/structured proposals.
+5. Agent Band validates Claude's response against its task/goal schemas. GPT presents the result conversationally; the UI displays the **actual draft proposal**, not an untracked spoken promise.
+6. The user changes or approves the plan. **Only backend-confirmed approval** commits draft tasks or starts execution. Spoken consent should not bypass the product's explicit approval requirement; use the designated confirmation flow.
+7. Users may interrupt, switch to text, or resume later; conversation turns, delegation IDs, proposal revisions, approval decisions and completed operations remain linked.
+
+Illustrative flow:
+
+`User speech -> GPT-Live -> Agent Band delegation bridge -> Claude + authorized project context -> validated plan/proposal -> GPT-Live spoken reply + UI preview -> user approval -> existing Task/Goal API`
+
+**Avoid routing every “yes,” “no,” or conversational acknowledgment through expensive Claude reasoning.** GPT-Live can manage short social turns; delegate for project-specific analysis, tool actions, structured task proposals or decisions that require external context. Conversely, the voice layer must not fabricate results or modify the plan on its own without synchronizing canonical state.
+
+### Technical and product risks to evaluate
+
+- **Latency:** delegate only when needed; stream useful progress where safe. Two models/providers can introduce noticeable pauses. Benchmark full task conversations, not just time-to-first-token.
+- **Session continuity:** distinguish speech turn IDs, Claude session/thread IDs, task proposal revision IDs and execution run IDs. Discard stale answers and deduplicate after reconnects.
+- **Interruptions and confirmations:** stopping playback is not canceling an operation already sent to Claude. The backend must track and explicitly handle cancellation.
+- **Trust boundaries:** project source and transcripts may pass through *both* providers. Offer clear data disclosures and enterprise BYOK/provider selection; never forward unrelated files, credentials or entire repos unnecessarily.
+- **Provider integration:** Claude consumer voice subscriptions should not be assumed to provide voice API access. Separately review commercial permissions and costs for using Claude API, CLI accounts and GPT-Live API.
+- **Role clarity:** GPT is not necessarily the planner/leader. Claude can be the delegated reasoning agent; the existing execution framework remains separate.
+- **Accessibility and fallback:** voice is optional; the same Task Composer should function fully through text.
+
+### Request for Claude (architect)
+
+Review this follow-up alongside the rest of Consultation 001. Verify current API and voice capabilities when designing. Propose a narrow proof of concept comparing (a) **GPT-Live client delegation -> Agent Band -> Claude**, (b) a modular STT -> Claude -> TTS pipeline, and optionally (c) ElevenLabs Speech Engine -> Claude. Evaluate perceived naturalness, interruption behavior, accuracy of intent, latency, cost, privacy and integration complexity. Recommend a staged rollout with text Task Composer as the stable fallback. **Do not create implementation tasks or treat a vendor choice as final without owner approval.**
