@@ -144,6 +144,7 @@ function describeUnavailable(a: Extract<Availability, { ok: false }>, accountId:
   }
 }
 
+// prettier-ignore
 export function createWorker(deps: WorkerDeps): Worker {
   const d = deps.dispatcher;
   const orgId = d.orgId;
