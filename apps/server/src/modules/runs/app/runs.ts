@@ -109,7 +109,6 @@ export function createRuns(deps: ModuleDeps) {
       return changed(tx, actor, run, 'run.start');
     },
     /** Records the current detached process group before consuming the CLI event stream. */
-    // prettier-ignore
     async recordProcess(tx: Tx, actor: ActorContext, id: string, info: RunProcessRecord): Promise<void> {
       system(actor);
       const run = await get(tx, actor, id);
@@ -128,7 +127,6 @@ export function createRuns(deps: ModuleDeps) {
       await tx.update(runs).set({ process: info, processReapedAt: null }).where(where(actor, id));
     },
     /** Mark cleanup only after process identity has been verified, or the child has exited. */
-    // prettier-ignore
     async markProcessReaped(
       tx: Tx,
       actor: ActorContext,
@@ -287,7 +285,6 @@ export function createRuns(deps: ModuleDeps) {
         return result;
       });
     },
-    // prettier-ignore
     async recoverStaleRuns(
       db: Db,
       actor: ActorContext,
