@@ -119,16 +119,22 @@ export function ProjectForm({ project, pending, error, onCreate, onUpdate, onCan
 
   const errors: Record<string, string> = {};
   if (name.trim() === '') errors['name'] = 'Name is required.';
-  if (docsEnabled && parseChecks(docPaths).length === 0)
+  if (docsEnabled && parseChecks(docPaths).length === 0) {
     errors['docPaths'] = 'Add at least one path pattern.';
-  if (docsEnabled && parseChecks(docChecks).length === 0)
+  }
+  if (docsEnabled && parseChecks(docChecks).length === 0) {
     errors['docChecks'] = 'Add at least one check.';
+  }
   if (!editing) {
     if (repoPath.trim() === '') errors['repoPath'] = 'Repository path is required.';
     else if (repo.state === 'bad') errors['repoPath'] = repo.message;
     if (worktreesRoot.trim() !== '' && !worktreesRoot.trim().startsWith('/'))
       errors['worktreesRoot'] = 'Worktrees folder must be an absolute path.';
   }
+
+  const docsOnlyChecks = docsEnabled
+    ? { paths: parseChecks(docPaths), checks: parseChecks(docChecks) }
+    : null;
 
   return (
     <FormDialog
@@ -143,11 +149,7 @@ export function ProjectForm({ project, pending, error, onCreate, onUpdate, onCan
           onUpdate(project.id, {
             name: name.trim(),
             checks: parseChecks(checks),
-            ...(docsEnabled
-              ? { docsOnlyChecks: { paths: parseChecks(docPaths), checks: parseChecks(docChecks) } }
-              : project.docsOnlyChecks
-                ? { docsOnlyChecks: null }
-                : {}),
+            ...(docsEnabled || project.docsOnlyChecks ? { docsOnlyChecks } : {}),
             keepWorktrees: keep,
             reviewerTarget: reviewerTarget(),
             autoMergeOnApprove: autoMerge,
@@ -160,9 +162,7 @@ export function ProjectForm({ project, pending, error, onCreate, onUpdate, onCan
           repoPath: repoPath.trim(),
           ...(worktreesRoot.trim() ? { worktreesRoot: worktreesRoot.trim() } : {}),
           checks: parseChecks(checks),
-          ...(docsEnabled
-            ? { docsOnlyChecks: { paths: parseChecks(docPaths), checks: parseChecks(docChecks) } }
-            : {}),
+          ...(docsEnabled ? { docsOnlyChecks } : {}),
           keepWorktrees: keep,
           ...(target ? { reviewerTarget: target } : {}),
           ...(autoMerge ? { autoMergeOnApprove: true } : {}),

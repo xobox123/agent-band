@@ -149,14 +149,18 @@ describe('Projects screen', () => {
   });
 
   it('enables the docs-only settings on project creation', async () => {
-    const calls = setup(routes({
-      'GET /projects': list([]),
-      'GET /projects/validate': { valid: true, defaultBranch: 'main', reason: null },
-      'POST /projects': project(),
-    }));
+    const calls = setup(
+      routes({
+        'GET /projects': list([]),
+        'GET /projects/validate': { valid: true, defaultBranch: 'main', reason: null },
+        'POST /projects': project(),
+      }),
+    );
     fireEvent.click(await screen.findByRole('button', { name: 'Create project' }));
     const dialog = await screen.findByRole('dialog', { name: 'Create project' });
-    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Name/ }), { target: { value: 'Docs' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Name/ }), {
+      target: { value: 'Docs' },
+    });
     fireEvent.change(within(dialog).getByRole('textbox', { name: /^Repository path/ }), {
       target: { value: '/repos/agent-band' },
     });

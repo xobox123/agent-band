@@ -145,7 +145,8 @@ describe('Changes tab', () => {
   });
 
   it('shows the selected check set and reason', async () => {
-    setup(routes({}, review({ checkSet: 'docs', checkReason: 'All 2 changed files match documentation paths' })));
+    const checkReason = 'All 2 changed files match documentation paths';
+    setup(routes({}, review({ checkSet: 'docs', checkReason })));
     expect(await screen.findByText(/Docs-only checks: All 2 changed files/)).toBeInTheDocument();
   });
 

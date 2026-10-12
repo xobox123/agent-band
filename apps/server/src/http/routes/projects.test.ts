@@ -81,8 +81,10 @@ describe('projects api', () => {
       docsOnlyChecks: { paths: ['docs/**'], checks: ['echo docs'] },
     });
     expect(updated.json().docsOnlyChecks).toEqual({ paths: ['docs/**'], checks: ['echo docs'] });
-    expect((await call('PATCH', `/projects/${id}`, { docsOnlyChecks: { paths: [] } })).status).toBe(400);
-    expect((await call('PATCH', `/projects/${id}`, { docsOnlyChecks: null })).json().docsOnlyChecks).toBeNull();
+    const invalid = await call('PATCH', `/projects/${id}`, { docsOnlyChecks: { paths: [] } });
+    expect(invalid.status).toBe(400);
+    const disabled = await call('PATCH', `/projects/${id}`, { docsOnlyChecks: null });
+    expect(disabled.json().docsOnlyChecks).toBeNull();
     expect((await createProject()).json().docsOnlyChecks).toBeNull();
   });
 

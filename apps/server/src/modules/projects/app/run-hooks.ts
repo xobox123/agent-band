@@ -53,12 +53,13 @@ export function createProjectRuns(deps: ProjectRunsDeps) {
       await commitAll(task.workDir, `${task.key}: ${task.title}`, identity);
       const checksSha = await revParse(task.workDir, 'HEAD');
       const range = await branchRange(task.workDir, task.baseBranch ?? project.defaultBranch, 'HEAD');
-      const selection = selectChecks(project.checks, project.docsOnlyChecks, range.files.map((f) => f.path));
+      const changedFiles = range.files.map((file) => file.path);
+      const selection = selectChecks(project.checks, project.docsOnlyChecks, changedFiles);
       const checks: TaskReview['checks'] = [];
       for (const template of selection.commands) {
         const command =
           selection.checkSet === 'docs'
-            ? expandChangedFiles(template, range.files.map((f) => f.path))
+            ? expandChangedFiles(template, changedFiles)
             : template;
         const result = await runCheck(task.workDir, command, deps.checkTimeoutMs ?? CHECK_TIMEOUT_MS);
         await onCheck?.(result);

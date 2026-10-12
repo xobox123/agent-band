@@ -186,7 +186,9 @@ export function ProjectsScreen() {
                 <>
                   <span>Enabled for {project.docsOnlyChecks.paths.join(', ')}</span>
                   {project.docsOnlyChecks.checks.map((c) => (
-                    <div key={c} className="mono">{c}</div>
+                    <div key={c} className="mono">
+                      {c}
+                    </div>
                   ))}
                 </>
               )}
