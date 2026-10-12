@@ -147,7 +147,6 @@ export function createRuns(deps: ModuleDeps) {
       await tx.update(runs).set({ processReapedAt: new Date() }).where(where(actor, id));
     },
     /** All org running runs, including previous workers whose workerId included a now-dead PID. */
-    // prettier-ignore
     async runningForRecovery(db: Db, actor: ActorContext): Promise<Run[]> {
       system(actor);
       await deps.authorizer.authorize(db, actor, 'task.write', {});
