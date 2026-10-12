@@ -35,6 +35,7 @@ import type {
   ImportSkillBody,
   NewSkillVersionBody,
   OrganizationDto,
+  WorkerCapacityDto,
   PolicyDetailDto,
   PolicyDto,
   PrincipalDto,
@@ -220,6 +221,7 @@ export function createApi(fetchImpl?: typeof fetch) {
     board: (query?: Query) => get<BoardDto>('/board', query),
     dashboard: () => get<DashboardDto>('/dashboard'),
     organization: () => get<OrganizationDto>('/organization'),
+    workerCapacity: () => get<WorkerCapacityDto>('/system/worker-capacity'),
     updateOrganization: (body: UpdateOrganizationBody) =>
       send<OrganizationDto>('PATCH', '/organization', body),
     setOrgPaused: (paused: boolean) => send<OrganizationDto>('PUT', '/organization/pause', { paused }),
