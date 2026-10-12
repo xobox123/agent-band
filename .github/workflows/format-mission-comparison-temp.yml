@@ -1,0 +1,24 @@
+name: Temporary Mission Control Doc Formatting
+on:
+  push:
+    branches:
+      - chatgpt/mission-control-comparison-20261012
+permissions:
+  contents: read
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Print formatted markdown
+        run: |
+          npx prettier --write docs/consultations/2026-10-12-gpt-consultation-004-mission-control-comparison.md
+          echo BEGIN_FORMATTED_MISSION_DOC
+          base64 -w0 docs/consultations/2026-10-12-gpt-consultation-004-mission-control-comparison.md
+          echo
+          echo END_FORMATTED_MISSION_DOC
