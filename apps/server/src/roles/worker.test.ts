@@ -60,7 +60,9 @@ describe('worker', () => {
     kit.orgSettings.settings.workerSlots = 1;
     const w = await run(kit, { slots: 4 });
     await reachStatus(first.id, 'running');
-    await waitFor(async () => (await kit.taskStatus(second.id))?.eligibility?.reason === 'waiting for worker slots');
+    await waitFor(async () =>
+      (await kit.taskStatus(second.id))?.eligibility?.reason === 'waiting for worker slots',
+    );
     kit.orgSettings.settings.workerSlots = 2;
     await reachStatus(second.id, 'running');
     await w.stop({ force: true });

@@ -63,7 +63,11 @@ export function orgRoutes(c: Composition): FastifyPluginCallbackZod {
           c.runs.listRuns(db, actor, { status: 'running' }),
         ]);
         return {
-          slots: resolveWorkerSlots(accounts.map((a) => a.limits.maxConcurrentRuns), org.workerSlots, workerSlotOverride()),
+          slots: resolveWorkerSlots(
+            accounts.map((a) => a.limits.maxConcurrentRuns),
+            org.workerSlots,
+            workerSlotOverride(),
+          ),
           activeRuns: running.length,
           accounts: accounts.map((account) => ({
             id: account.id,

@@ -19,7 +19,7 @@ export function SettingsScreen() {
   useEffect(() => {
     if (state.data) {
       setRoot(state.data.workspaceRoot);
-      setWorkerSlots(state.data.workerSlots === null ? '' : String(state.data.workerSlots));
+      setWorkerSlots(state.data.workerSlots == null ? '' : String(state.data.workerSlots));
     }
   }, [state.data]);
 

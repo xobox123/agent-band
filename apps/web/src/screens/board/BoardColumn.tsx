@@ -11,13 +11,13 @@ const PAGE = 50;
 export function queueBlockers(views: TaskView[]): { label: string; count: number }[] {
   const groups = new Map<string, number>();
   for (const view of views) {
-    const reason = view.task.eligibilityReason;
+    const reason = view.task.noEligibleReason;
     if (!reason) continue;
     let label = reason === 'waiting for worker slots' ? 'waiting for slots' : reason;
     if (view.agentAccount && label.startsWith(`account ${view.agentAccount.id}`)) {
       label = label.replace(`account ${view.agentAccount.id}`, `account ${view.agentAccount.name}`);
     }
-    label = label.replace(/until (\\d{4}-\\d\\d-\\d\\dT[^ ]+)/, (_whole, stamp: string) => {
+    label = label.replace(/until (\d{4}-\d\d-\d\dT[^ ]+)/, (_whole, stamp: string) => {
       const date = new Date(stamp);
       return Number.isFinite(date.getTime())
         ? `until ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
@@ -27,7 +27,6 @@ export function queueBlockers(views: TaskView[]): { label: string; count: number
   }
   return [...groups].map(([label, count]) => ({ label, count }));
 }
-
 
 interface Props {
   column: ColumnDef;

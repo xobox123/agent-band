@@ -48,7 +48,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port: e.AGENT_BAND_PORT,
     role: e.AGENT_BAND_ROLE,
     home: e.AGENT_BAND_HOME,
-    workerSlots: e.AGENT_BAND_WORKER_SLOTS,
+    ...(e.AGENT_BAND_WORKER_SLOTS !== undefined && { workerSlots: e.AGENT_BAND_WORKER_SLOTS }),
     workerId: e.AGENT_BAND_WORKER_ID,
     workspaceRoot: e.AGENT_BAND_WORKSPACE_ROOT,
     schedulerIntervalMs: e.AGENT_BAND_SCHEDULER_INTERVAL_MS,
