@@ -54,6 +54,7 @@ describe('worker capacity', () => {
     kit.orgSettings.settings.workerSlots = 2;
     await waitFor(async () => (await kit.taskStatus(second.id))?.status === 'running');
   });
+
   it('leaves account eligibility and backoff untouched while slots are busy', async () => {
     const task = await kit.task({});
     const inPast = new Date(Date.now() - 60_000).toISOString();
@@ -119,6 +120,5 @@ describe('worker capacity', () => {
     expect(reason).toBe(`account ${account.id}: reserve threshold reached until ${resetAt}`);
     expect(reason).not.toContain('92%');
   });
-
-
 });
+
