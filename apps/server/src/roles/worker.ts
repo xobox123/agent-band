@@ -425,7 +425,6 @@ export function createWorker(deps: WorkerDeps): Worker {
     }
   }
 
-  // prettier-ignore
   async function cleanProcess(runId: string, identity: RunProcessRecord): Promise<void> {
     try {
       const result = await terminateRecordedGroup(identity, processTable);
@@ -546,7 +545,6 @@ export function createWorker(deps: WorkerDeps): Worker {
       }
       const treeBefore = await treeFingerprint(task.workDir);
       const denied = new Set<string>();
-      // prettier-ignore
       const attempt = async (s: RunSpec) => {
         let worked = false;
         handle = adapter.start(s);
