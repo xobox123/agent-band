@@ -6,7 +6,7 @@ These are product and architecture discussions between the product owner and Cha
 
 | Date | Document | Topics |
 | --- | --- | --- |
-| 2026-10-12 | [001: Product direction and UX](2026-10-12-gpt-consultation-001.md) | Product origin, account limits, macOS and deployment modes, BYOK, conversational task creation, project context, agent permissions, enterprise strategy |
+| 2026-10-12 | [001: Product direction and UX](2026-10-12-gpt-consultation-001.md) | Product origin, account limits, macOS/deployment, BYOK, conversational tasks and voice (GPT + Claude), visual agent/workflow builder, context, permissions, enterprise strategy |
 
 ## How Claude should use these notes
 
