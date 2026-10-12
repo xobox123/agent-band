@@ -125,6 +125,12 @@ export function ChangesTab({ task }: { task: Task }) {
               ) : null}
               <section>
                 <h3 className="section-title">Checks</h3>
+                {data.review.checkSet ? (
+                  <p className="dim">
+                    {data.review.checkSet === 'docs' ? 'Docs-only checks' : 'Full project checks'}
+                    {data.review.checkReason ? `: ${data.review.checkReason}` : ''}
+                  </p>
+                ) : null}
                 {data.review.checks.length === 0 ? (
                   <p className="dim">This project has no checks.</p>
                 ) : (

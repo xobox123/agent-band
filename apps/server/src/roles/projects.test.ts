@@ -163,6 +163,58 @@ describe('projects', () => {
     expect(JSON.stringify(events)).toContain('[check] echo ok exited 0');
   });
 
+  it('runs reduced checks for a documentation-only diff and records the reason', async () => {
+    const p = await project({
+      checks: ['echo full-check'],
+      docsOnlyChecks: { paths: ['**/*.md'], checks: ['echo docs-check'] },
+    });
+    const acc = await kit.account('docs');
+    await kit.agent('docs-agent', acc.id, { labels: ['docs'] });
+    writes({ 'README.md': '# Documentation\\n' });
+    const t = await projectTask(p.id, { target: { label: 'docs' } });
+    await startWorker();
+    const done = await settled(t.id);
+    expect(done.review).toMatchObject({
+      checkSet: 'docs',
+      checkReason: 'All 1 changed files match documentation paths',
+      checks: [{ command: 'echo docs-check', exitCode: 0 }],
+    });
+    expect(done.review?.checksSha).toBe(done.review?.headSha);
+  });
+
+  it('keeps full checks for a mixed diff even if one file is documentation', async () => {
+    const p = await project({
+      checks: ['echo full-check'],
+      docsOnlyChecks: { paths: ['**/*.md'], checks: ['echo docs-check'] },
+    });
+    const acc = await kit.account('mixed');
+    await kit.agent('mixed-agent', acc.id, { labels: ['mixed'] });
+    writes({ 'README.md': '# Documentation\\n', 'src.ts': 'export const x = 1;\\n' });
+    const t = await projectTask(p.id, { target: { label: 'mixed' } });
+    await startWorker();
+    const done = await settled(t.id);
+    expect(done.review).toMatchObject({
+      checkSet: 'full',
+      checkReason: 'Non-documentation file in diff: src.ts',
+      checks: [{ command: 'echo full-check', exitCode: 0 }],
+    });
+  });
+
+  it('keeps existing full checks when the docs-only setting is absent', async () => {
+    const p = await project({ checks: ['echo full-check'] });
+    const acc = await kit.account('no-setting');
+    await kit.agent('no-setting-agent', acc.id, { labels: ['full'] });
+    writes({ 'README.md': '# Documentation\\n' });
+    const t = await projectTask(p.id, { target: { label: 'full' } });
+    await startWorker();
+    const done = await settled(t.id);
+    expect(done.review).toMatchObject({
+      checkSet: 'full',
+      checkReason: 'Docs-only checks are not configured',
+      checks: [{ command: 'echo full-check', exitCode: 0 }],
+    });
+  });
+
   it('approve merges with --no-ff into main and removes the worktree and branch', async () => {
     const p = await project();
     writes({ 'feature.txt': 'x\n' });

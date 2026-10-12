@@ -178,6 +178,19 @@ export function ProjectsScreen() {
                 ))
               )}
             </dd>
+            <dt>Docs-only checks</dt>
+            <dd>
+              {!project.docsOnlyChecks ? (
+                <span className="dim">Disabled, all changes run full checks</span>
+              ) : (
+                <>
+                  <span>Enabled for {project.docsOnlyChecks.paths.join(', ')}</span>
+                  {project.docsOnlyChecks.checks.map((c) => (
+                    <div key={c} className="mono">{c}</div>
+                  ))}
+                </>
+              )}
+            </dd>
             <dt>Reviewer</dt>
             <dd>
               {!project.reviewerTarget ? (

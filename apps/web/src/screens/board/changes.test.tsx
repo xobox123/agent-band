@@ -144,6 +144,11 @@ describe('Changes tab', () => {
     expect(within(files).getByText('+x')).toBeInTheDocument();
   });
 
+  it('shows the selected check set and reason', async () => {
+    setup(routes({}, review({ checkSet: 'docs', checkReason: 'All 2 changed files match documentation paths' })));
+    expect(await screen.findByText(/Docs-only checks: All 2 changed files/)).toBeInTheDocument();
+  });
+
   it('approves and merges', async () => {
     const calls = setup(routes({ [`POST /tasks/${ID(30)}/review/approve`]: taskDto() }));
     fireEvent.click(await screen.findByRole('button', { name: 'Approve and merge' }));

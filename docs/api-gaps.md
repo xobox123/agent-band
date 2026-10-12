@@ -51,3 +51,23 @@ oldest first, including zero buckets. Intervals include their start and exclude
 their end. Usage events are attributed by event timestamp, independently of run
 start and finish. Totals include input plus output tokens only, excluding cache
 reads and cost. All times are UTC ISO strings.
+
+## Documentation-only project checks
+
+Projects can opt into `docsOnlyChecks` through `POST /projects` and `PATCH /projects/:id`.
+The setting is `null` or absent by default, so the existing full `checks` run for every task.
+An object enables a reduced check set and accepts `paths` (glob patterns) and `checks` (shell commands).
+Omitted fields in that object default to `["**/*.md", "docs/**", "handoff/**"]` and
+`["npx prettier --check <changed files>"]`, respectively. Set `docsOnlyChecks: null`
+to disable it. A configured setting requires at least one path and one command.
+
+After the task's changes are committed, the server enumerates changed paths between the
+merge base SHA and task HEAD. Only if the diff has at least one file and **every** path
+matches one of the configured globs will it run the reduced commands. Mixed diffs,
+empty diffs, and projects with the setting disabled use the full commands.
+In reduced commands, `<changed files>` is replaced with a shell-quoted list of paths
+preceded by `--` to avoid argument interpretation, e.g. `-- 'README.md' 'docs/guide.md'`.
+
+`GET /tasks/:id` and `GET /tasks/:id/diff` include `review.checkSet` (`docs` or
+`full`) and `review.checkReason` for new reviews. Older reviews can omit both.
+The Changes tab shows the selected set and the reason beside the recorded check results.

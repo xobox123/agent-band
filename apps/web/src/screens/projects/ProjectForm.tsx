@@ -73,6 +73,13 @@ export function ProjectForm({ project, pending, error, onCreate, onUpdate, onCan
   const [repoPath, setRepoPath] = useState(project?.repoPath ?? '');
   const [worktreesRoot, setWorktreesRoot] = useState('');
   const [checks, setChecks] = useState((project?.checks ?? []).join('\n'));
+  const [docsEnabled, setDocsEnabled] = useState(project?.docsOnlyChecks != null);
+  const [docPaths, setDocPaths] = useState(
+    (project?.docsOnlyChecks?.paths ?? ['**/*.md', 'docs/**', 'handoff/**']).join('\n'),
+  );
+  const [docChecks, setDocChecks] = useState(
+    (project?.docsOnlyChecks?.checks ?? ['npx prettier --check <changed files>']).join('\n'),
+  );
   const [keep, setKeep] = useState(project?.keepWorktrees ?? false);
   const [repo, setRepo] = useState<Repo>({ state: 'idle' });
   const seq = useRef(0);
@@ -112,6 +119,8 @@ export function ProjectForm({ project, pending, error, onCreate, onUpdate, onCan
 
   const errors: Record<string, string> = {};
   if (name.trim() === '') errors['name'] = 'Name is required.';
+  if (docsEnabled && parseChecks(docPaths).length === 0) errors['docPaths'] = 'Add at least one path pattern.';
+  if (docsEnabled && parseChecks(docChecks).length === 0) errors['docChecks'] = 'Add at least one check.';
   if (!editing) {
     if (repoPath.trim() === '') errors['repoPath'] = 'Repository path is required.';
     else if (repo.state === 'bad') errors['repoPath'] = repo.message;
@@ -132,6 +141,11 @@ export function ProjectForm({ project, pending, error, onCreate, onUpdate, onCan
           onUpdate(project.id, {
             name: name.trim(),
             checks: parseChecks(checks),
+            ...(docsEnabled
+              ? { docsOnlyChecks: { paths: parseChecks(docPaths), checks: parseChecks(docChecks) } }
+              : project.docsOnlyChecks
+                ? { docsOnlyChecks: null }
+                : {}),
             keepWorktrees: keep,
             reviewerTarget: reviewerTarget(),
             autoMergeOnApprove: autoMerge,
@@ -144,6 +158,9 @@ export function ProjectForm({ project, pending, error, onCreate, onUpdate, onCan
           repoPath: repoPath.trim(),
           ...(worktreesRoot.trim() ? { worktreesRoot: worktreesRoot.trim() } : {}),
           checks: parseChecks(checks),
+          ...(docsEnabled
+            ? { docsOnlyChecks: { paths: parseChecks(docPaths), checks: parseChecks(docChecks) } }
+            : {}),
           keepWorktrees: keep,
           ...(target ? { reviewerTarget: target } : {}),
           ...(autoMerge ? { autoMergeOnApprove: true } : {}),
@@ -205,6 +222,30 @@ export function ProjectForm({ project, pending, error, onCreate, onUpdate, onCan
           />
         </Field>
       </div>
+      <div className="wide form-field form-check">
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={docsEnabled}
+            onChange={(e) => { setDocsEnabled(e.target.checked); }}
+          />
+          Run reduced checks for documentation-only changes
+        </label>
+      </div>
+      {docsEnabled ? (
+        <>
+          <div className="wide form-field">
+            <Field label="Documentation paths" name="docPaths" help="One glob per line. All changed files must match.">
+              <textarea className="field mono" rows={3} value={docPaths} onChange={(e) => { setDocPaths(e.target.value); }} />
+            </Field>
+          </div>
+          <div className="wide form-field">
+            <Field label="Documentation checks" name="docChecks" help="One command per line. <changed files> is replaced with quoted filenames.">
+              <textarea className="field mono" rows={2} value={docChecks} onChange={(e) => { setDocChecks(e.target.value); }} />
+            </Field>
+          </div>
+        </>
+      ) : null}
       <Field
         label="Reviewer"
         help="Reviews a finished task automatically when its checks pass. The reviewer works read-only in the same worktree."
