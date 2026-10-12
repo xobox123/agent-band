@@ -1,5 +1,5 @@
 {
-  "id": "1515cccc-a3b4-4c5d-82d4-001500150015",
+  "id": "ddcd3a6b-c60d-42f7-8fce-85a21bfdab6e",
   "prevId": "429ba401-c24c-41c5-a559-495f76585e1b",
   "version": "7",
   "dialect": "postgresql",
@@ -231,12 +231,8 @@
           "name": "agent_group_members_group_id_agent_groups_id_fk",
           "tableFrom": "agent_group_members",
           "tableTo": "agent_groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -244,12 +240,8 @@
           "name": "agent_group_members_agent_id_agents_id_fk",
           "tableFrom": "agent_group_members",
           "tableTo": "agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -257,10 +249,7 @@
       "compositePrimaryKeys": {
         "agent_group_members_group_id_agent_id_pk": {
           "name": "agent_group_members_group_id_agent_id_pk",
-          "columns": [
-            "group_id",
-            "agent_id"
-          ]
+          "columns": ["group_id", "agent_id"]
         }
       },
       "uniqueConstraints": {},
@@ -332,10 +321,7 @@
         "agent_groups_org_name_uq": {
           "name": "agent_groups_org_name_uq",
           "nullsNotDistinct": false,
-          "columns": [
-            "org_id",
-            "name"
-          ]
+          "columns": ["org_id", "name"]
         }
       },
       "policies": {},
@@ -495,10 +481,7 @@
         "agents_org_slug_uq": {
           "name": "agents_org_slug_uq",
           "nullsNotDistinct": false,
-          "columns": [
-            "org_id",
-            "slug"
-          ]
+          "columns": ["org_id", "slug"]
         }
       },
       "policies": {},
@@ -769,12 +752,8 @@
           "name": "principals_org_id_organizations_id_fk",
           "tableFrom": "principals",
           "tableTo": "organizations",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -880,12 +859,8 @@
           "name": "role_bindings_org_id_organizations_id_fk",
           "tableFrom": "role_bindings",
           "tableTo": "organizations",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -930,12 +905,8 @@
           "name": "team_members_team_id_teams_id_fk",
           "tableFrom": "team_members",
           "tableTo": "teams",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -943,12 +914,8 @@
           "name": "team_members_user_id_users_principal_id_fk",
           "tableFrom": "team_members",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "principal_id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["principal_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -956,12 +923,8 @@
           "name": "team_members_org_id_organizations_id_fk",
           "tableFrom": "team_members",
           "tableTo": "organizations",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -969,10 +932,7 @@
       "compositePrimaryKeys": {
         "team_members_team_id_user_id_pk": {
           "name": "team_members_team_id_user_id_pk",
-          "columns": [
-            "team_id",
-            "user_id"
-          ]
+          "columns": ["team_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1046,12 +1006,8 @@
           "name": "teams_org_id_organizations_id_fk",
           "tableFrom": "teams",
           "tableTo": "organizations",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1098,12 +1054,8 @@
           "name": "users_principal_id_principals_id_fk",
           "tableFrom": "users",
           "tableTo": "principals",
-          "columnsFrom": [
-            "principal_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["principal_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1111,12 +1063,8 @@
           "name": "users_org_id_organizations_id_fk",
           "tableFrom": "users",
           "tableTo": "organizations",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1191,10 +1139,7 @@
         "policies_org_name_uq": {
           "name": "policies_org_name_uq",
           "nullsNotDistinct": false,
-          "columns": [
-            "org_id",
-            "name"
-          ]
+          "columns": ["org_id", "name"]
         }
       },
       "policies": {},
@@ -1249,12 +1194,8 @@
           "name": "policy_versions_policy_id_policies_id_fk",
           "tableFrom": "policy_versions",
           "tableTo": "policies",
-          "columnsFrom": [
-            "policy_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["policy_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1262,10 +1203,7 @@
       "compositePrimaryKeys": {
         "policy_versions_policy_id_version_pk": {
           "name": "policy_versions_policy_id_version_pk",
-          "columns": [
-            "policy_id",
-            "version"
-          ]
+          "columns": ["policy_id", "version"]
         }
       },
       "uniqueConstraints": {},
@@ -1913,12 +1851,8 @@
           "name": "skill_assignments_skill_id_skills_id_fk",
           "tableFrom": "skill_assignments",
           "tableTo": "skills",
-          "columnsFrom": [
-            "skill_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["skill_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1928,11 +1862,7 @@
         "skill_assignments_scope_uq": {
           "name": "skill_assignments_scope_uq",
           "nullsNotDistinct": false,
-          "columns": [
-            "skill_id",
-            "scope_kind",
-            "scope_id"
-          ]
+          "columns": ["skill_id", "scope_kind", "scope_id"]
         }
       },
       "policies": {},
@@ -2012,12 +1942,8 @@
           "name": "skill_versions_skill_id_skills_id_fk",
           "tableFrom": "skill_versions",
           "tableTo": "skills",
-          "columnsFrom": [
-            "skill_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["skill_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2025,10 +1951,7 @@
       "compositePrimaryKeys": {
         "skill_versions_skill_id_version_pk": {
           "name": "skill_versions_skill_id_version_pk",
-          "columns": [
-            "skill_id",
-            "version"
-          ]
+          "columns": ["skill_id", "version"]
         }
       },
       "uniqueConstraints": {},
@@ -2093,10 +2016,7 @@
         "skills_org_name_uq": {
           "name": "skills_org_name_uq",
           "nullsNotDistinct": false,
-          "columns": [
-            "org_id",
-            "name"
-          ]
+          "columns": ["org_id", "name"]
         }
       },
       "policies": {},
@@ -2703,10 +2623,7 @@
       "compositePrimaryKeys": {
         "usage_account_blocks_org_id_account_id_pk": {
           "name": "usage_account_blocks_org_id_account_id_pk",
-          "columns": [
-            "org_id",
-            "account_id"
-          ]
+          "columns": ["org_id", "account_id"]
         }
       },
       "uniqueConstraints": {},
