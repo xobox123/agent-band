@@ -76,5 +76,4 @@ describe('worker capacity', () => {
     });
     expect(worker.activeRuns).toBe(2);
   });
-
 });
