@@ -862,7 +862,6 @@ export function createWorker(deps: WorkerDeps): Worker {
     get activeRuns() {
       return active.size;
     },
-    // prettier-ignore
     async start() {
       stopping = false;
       forceStop = false;
@@ -872,6 +871,7 @@ export function createWorker(deps: WorkerDeps): Worker {
 
       const running = await deps.runs.runningForRecovery(deps.db, d);
       const lost: string[] = [];
+      // prettier-ignore
       for (const run of running) {
         if (run.owner) {
           if (run.owner.host !== host) continue;
