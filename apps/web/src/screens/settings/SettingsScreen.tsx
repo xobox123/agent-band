@@ -45,7 +45,11 @@ export function SettingsScreen() {
     setPending(true);
     setError(null);
     setSaved(false);
-    api.updateOrganization({ workspaceRoot: root, workerSlots: slots }).then(
+    const savedSlots = state.data?.workerSlots ?? null;
+    api.updateOrganization({
+      workspaceRoot: root,
+      ...(slots !== savedSlots ? { workerSlots: slots } : {}),
+    }).then(
       () => {
         setPending(false);
         setSaved(true);

@@ -677,6 +677,7 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/skill-assignments',
   'POST /api/v1/skill-assignments',
   'DELETE /api/v1/skill-assignments/{id}',
+  'GET /api/v1/system/worker-capacity',
   'GET /api/v1/skills',
   'POST /api/v1/skills',
   'GET /api/v1/skills/{id}',
