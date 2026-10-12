@@ -31,17 +31,17 @@ function processTable(childAlive = true): {
   return {
     sent,
     table: {
-      async read(pid) {
-        if (pid === self.pid) return self;
-        return alive && pid === child.pid ? child : null;
+      read(pid) {
+        if (pid === self.pid) return Promise.resolve(self);
+        return Promise.resolve(alive && pid === child.pid ? child : null);
       },
       signalGroup(pgid, signal) {
         expect(pgid).toBe(child.pgid);
         sent.push(signal);
         alive = false;
       },
-      async waitForExit() {
-        return !alive;
+      waitForExit() {
+        return Promise.resolve(!alive);
       },
     },
   };
