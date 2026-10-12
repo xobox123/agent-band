@@ -97,9 +97,7 @@ it('retries cleanup of a terminal run left behind by a crash during cleanup', as
   const kit = await makeKit();
   kits.push(kit);
   const { run } = await strandedRun(kit, 99999);
-  await kit.db.transaction((tx) =>
-    kit.runs.finishRun(tx, kit.dispatcher, run.id, { status: 'failed' }),
-  );
+  await kit.db.transaction((tx) => kit.runs.finishRun(tx, kit.dispatcher, run.id, { status: 'failed' }));
   const { table, sent } = processTable();
   const worker = kit.worker({ processTable: table });
   await worker.start();
