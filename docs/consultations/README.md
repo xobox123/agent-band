@@ -4,10 +4,10 @@ These are product and architecture discussions between the product owner and Cha
 
 ## Consultations
 
-| Date | Document | Topics |
-| --- | --- | --- |
-| 2026-10-12 | [001: Product direction and UX](2026-10-12-gpt-consultation-001.md) | Product origin, account limits, macOS/deployment, BYOK, conversational tasks and voice (GPT + Claude), visual agent/workflow builder, context, permissions, enterprise strategy |
-| 2026-10-12 | [002: External Git Agents](2026-10-12-gpt-consultation-002-external-git-agents.md) | ChatGPT text sessions as GitHub-backed external agents, provisioning, short bootstrap prompt, task queue, branches, reports, PR/CI verification, resuming sessions |
+| Date       | Document                                                                           | Topics                                                                                                                                                                          |
+| ---------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-10-12 | [001: Product direction and UX](2026-10-12-gpt-consultation-001.md)                | Product origin, account limits, macOS/deployment, BYOK, conversational tasks and voice (GPT + Claude), visual agent/workflow builder, context, permissions, enterprise strategy |
+| 2026-10-12 | [002: External Git Agents](2026-10-12-gpt-consultation-002-external-git-agents.md) | ChatGPT text sessions as GitHub-backed external agents, provisioning, short bootstrap prompt, task queue, branches, reports, PR/CI verification, resuming sessions              |
 
 ## How Claude should use these notes
 

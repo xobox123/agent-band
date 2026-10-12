@@ -28,9 +28,15 @@ results back. The human only says "bierz zadanie" (take a task).
    edit `STATUS.md` or `inbox/`, and do not touch files the task does not
    name. You cannot run the test suite: say so in the report and list what
    should be tested. CI and the agent-band review gate run the checks.
-8. If more `todo` tasks are unclaimed and you still have room in this chat,
+8. The task is finished only when the GitHub Actions CI check on your pull
+   request is green. Before you start, merge the latest `main` into your
+   branch. After each push, read the check result on the PR; if it fails,
+   read the failing step, fix it and push again. Never report a task as done
+   with a red or pending CI. If CI fails for a reason outside your task,
+   say so in the report and in the PR description.
+9. If more `todo` tasks are unclaimed and you still have room in this chat,
    continue with the next one. Otherwise stop.
-9. Reply to the human in two or three sentences: task number, PR link, and
+10. Reply to the human in two or three sentences: task number, PR link, and
    whether everything was done.
 
 ## Report template

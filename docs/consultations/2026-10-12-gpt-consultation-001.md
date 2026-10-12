@@ -164,12 +164,13 @@ The new explicit design question: **Can Claude do the thinking and GPT do the ta
 ### Current provider capability assessment (12 October 2026)
 
 - Anthropic's **Claude consumer voice mode exists** on Claude Mobile, Claude Desktop and claude.ai (beta), with hands-free turn-taking, push-to-talk, interruption handling, voice choices and multilingual input/conversation. It supports text/voice continuity and certain connected tools. It is not correct to claim Claude lacks voice conversations.
-- Anthropic's consumer Claude voice mode is **not equivalent to an embeddable voice API** for Agent Band. The Claude Platform API documentation confirms text-based Messages API and related interfaces. As of this consultation, we did not verify an officially exposed Claude-native full-duplex speech-to-speech API suitable for integrating the *same* Claude Voice experience inside a separate product. Confirm again before implementation.
+- Anthropic's consumer Claude voice mode is **not equivalent to an embeddable voice API** for Agent Band. The Claude Platform API documentation confirms text-based Messages API and related interfaces. As of this consultation, we did not verify an officially exposed Claude-native full-duplex speech-to-speech API suitable for integrating the _same_ Claude Voice experience inside a separate product. Confirm again before implementation.
 - Anthropic docs say voice mode is not available directly in **Claude Code or Cowork** (dictation is available).
 - OpenAI's **GPT-Live** documentation explicitly supports a real-time audio frontend that delegates reasoning/tool use to a separate backend. **Client delegation** can call an arbitrary provider/model/agent controlled by Agent Band, including Claude.
 - An alternative is **ElevenLabs Speech Engine** for speech-to-text, text-to-speech and interruption management, while Agent Band uses Claude as the LLM. Evaluate quality/latency/cost in prototypes, not by assumption.
 
 Sources:
+
 - Claude Voice: https://support.claude.com/en/articles/11101966-use-voice-mode
 - Claude API overview: https://platform.claude.com/docs/en/api/overview
 - Claude OpenAI SDK compatibility / audio limitations: https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk
@@ -200,7 +201,7 @@ Illustrative flow:
 - **Latency:** delegate only when needed; stream useful progress where safe. Two models/providers can introduce noticeable pauses. Benchmark full task conversations, not just time-to-first-token.
 - **Session continuity:** distinguish speech turn IDs, Claude session/thread IDs, task proposal revision IDs and execution run IDs. Discard stale answers and deduplicate after reconnects.
 - **Interruptions and confirmations:** stopping playback is not canceling an operation already sent to Claude. The backend must track and explicitly handle cancellation.
-- **Trust boundaries:** project source and transcripts may pass through *both* providers. Offer clear data disclosures and enterprise BYOK/provider selection; never forward unrelated files, credentials or entire repos unnecessarily.
+- **Trust boundaries:** project source and transcripts may pass through _both_ providers. Offer clear data disclosures and enterprise BYOK/provider selection; never forward unrelated files, credentials or entire repos unnecessarily.
 - **Provider integration:** Claude consumer voice subscriptions should not be assumed to provide voice API access. Separately review commercial permissions and costs for using Claude API, CLI accounts and GPT-Live API.
 - **Role clarity:** GPT is not necessarily the planner/leader. Claude can be the delegated reasoning agent; the existing execution framework remains separate.
 - **Accessibility and fallback:** voice is optional; the same Task Composer should function fully through text.
@@ -225,7 +226,7 @@ This is especially relevant when creating a task: instead of writing a complex p
 1. **Reusable team/workflow templates**: configure a project team or reusable pattern of interaction (e.g. developer -> reviewer -> QA) using agent or role nodes, connections and default constraints. Reuse across tasks.
 2. **Task-specific execution graph**: during task creation, show the particular steps, assignees, dependencies, potential parallelism, reviews and approvals. The user can modify it before submitting.
 
-Agent *identity and long-lived permissions* should stay separate from task *workflow* and temporary scope. A line drawn between two blocks is a delegation/dependency/data-flow configuration, **not an implicit grant of access**.
+Agent _identity and long-lived permissions_ should stay separate from task _workflow_ and temporary scope. A line drawn between two blocks is a delegation/dependency/data-flow configuration, **not an implicit grant of access**.
 
 ### Example user journey
 
