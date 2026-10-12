@@ -66,11 +66,17 @@ export function selectChecks(
   setting: DocsOnlyChecks | null,
   files: readonly string[],
 ): CheckSelection {
-  if (!setting) return { checkSet: 'full', checkReason: 'Docs-only checks are not configured', commands: checks };
-  if (files.length === 0) return { checkSet: 'full', checkReason: 'No changed files in the diff', commands: checks };
+  if (!setting)
+    return { checkSet: 'full', checkReason: 'Docs-only checks are not configured', commands: checks };
+  if (files.length === 0)
+    return { checkSet: 'full', checkReason: 'No changed files in the diff', commands: checks };
   const nonDoc = files.find((file) => !setting.paths.some((pattern) => matchesGlob(file, pattern)));
   if (nonDoc)
-    return { checkSet: 'full', checkReason: `Non-documentation file in diff: ${nonDoc}`, commands: checks };
+    return {
+      checkSet: 'full',
+      checkReason: `Non-documentation file in diff: ${nonDoc}`,
+      commands: checks,
+    };
   return {
     checkSet: 'docs',
     checkReason: `All ${files.length} changed files match documentation paths`,

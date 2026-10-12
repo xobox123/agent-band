@@ -170,7 +170,7 @@ describe('projects', () => {
     });
     const acc = await kit.account('docs');
     await kit.agent('docs-agent', acc.id, { labels: ['docs'] });
-    writes({ 'README.md': '# Documentation\\n' });
+    writes({ 'README.md': '# Documentation\n' });
     const t = await projectTask(p.id, { target: { label: 'docs' } });
     await startWorker();
     const done = await settled(t.id);
@@ -189,7 +189,7 @@ describe('projects', () => {
     });
     const acc = await kit.account('mixed');
     await kit.agent('mixed-agent', acc.id, { labels: ['mixed'] });
-    writes({ 'README.md': '# Documentation\\n', 'src.ts': 'export const x = 1;\\n' });
+    writes({ 'README.md': '# Documentation\n', 'src.ts': 'export const x = 1;\n' });
     const t = await projectTask(p.id, { target: { label: 'mixed' } });
     await startWorker();
     const done = await settled(t.id);
@@ -204,7 +204,7 @@ describe('projects', () => {
     const p = await project({ checks: ['echo full-check'] });
     const acc = await kit.account('no-setting');
     await kit.agent('no-setting-agent', acc.id, { labels: ['full'] });
-    writes({ 'README.md': '# Documentation\\n' });
+    writes({ 'README.md': '# Documentation\n' });
     const t = await projectTask(p.id, { target: { label: 'full' } });
     await startWorker();
     const done = await settled(t.id);

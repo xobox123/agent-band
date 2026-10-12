@@ -11,10 +11,16 @@ export const ReviewerTarget = z.union([
 ]);
 export type ReviewerTarget = z.infer<typeof ReviewerTarget>;
 const Checks = z.array(z.string().trim().min(1).max(1000)).max(20);
-export const DocsOnlyChecks = z.object({
-  paths: z.array(z.string().trim().min(1).max(500)).min(1).max(100).default(['**/*.md', 'docs/**', 'handoff/**']),
-  checks: Checks.min(1).default(['npx prettier --check <changed files>']),
-}).strict();
+export const DocsOnlyChecks = z
+  .object({
+    paths: z
+      .array(z.string().trim().min(1).max(500))
+      .min(1)
+      .max(100)
+      .default(['**/*.md', 'docs/**', 'handoff/**']),
+    checks: Checks.min(1).default(['npx prettier --check <changed files>']),
+  })
+  .strict();
 export type DocsOnlyChecks = z.infer<typeof DocsOnlyChecks>;
 
 export const ProjectDto = z.object({

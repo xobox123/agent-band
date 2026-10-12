@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   DocsOnlyChecks,
   expandChangedFiles,
@@ -69,7 +69,7 @@ describe('docs-only check selection', () => {
 
   it('matches glob boundaries and wildcard edge cases without broadening scope', () => {
     const setting = DocsOnlyChecks.parse({ paths: ['doc/*.md', 'exact.txt', '**/README.?d'] });
-    expect(selectChecks(full, setting, ['doc/a.md', 'exact.txt', 'README.md'] ).checkSet).toBe('docs');
+    expect(selectChecks(full, setting, ['doc/a.md', 'exact.txt', 'README.md']).checkSet).toBe('docs');
     expect(selectChecks(full, setting, ['doc/nested/a.md']).checkSet).toBe('full');
     expect(selectChecks(full, setting, ['doc/a.md.txt']).checkSet).toBe('full');
     expect(selectChecks(full, setting, ['myexact.txt']).checkSet).toBe('full');

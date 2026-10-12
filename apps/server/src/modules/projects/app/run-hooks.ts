@@ -56,9 +56,10 @@ export function createProjectRuns(deps: ProjectRunsDeps) {
       const selection = selectChecks(project.checks, project.docsOnlyChecks, range.files.map((f) => f.path));
       const checks: TaskReview['checks'] = [];
       for (const template of selection.commands) {
-        const command = selection.checkSet === 'docs'
-          ? expandChangedFiles(template, range.files.map((f) => f.path))
-          : template;
+        const command =
+          selection.checkSet === 'docs'
+            ? expandChangedFiles(template, range.files.map((f) => f.path))
+            : template;
         const result = await runCheck(task.workDir, command, deps.checkTimeoutMs ?? CHECK_TIMEOUT_MS);
         await onCheck?.(result);
         checks.push({
