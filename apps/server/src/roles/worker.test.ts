@@ -43,9 +43,10 @@ describe('worker', () => {
     const second = await kit.task({ target: { agentId: agent.id } });
     const w = await run(kit, { slots: 1 });
     await reachStatus(first.id, 'running');
-    await waitFor(
-      async () => (await kit.taskStatus(second.id))?.eligibility?.reason === 'waiting for worker slots',
-    );
+    await waitFor(async () => {
+      const current = await kit.taskStatus(second.id);
+      return current?.eligibility?.reason === 'waiting for worker slots';
+    });
     expect(await status(second.id)).toBe('queued');
     expect((await runOf(second.id))).toBeUndefined();
     await w.stop({ force: true });
@@ -60,9 +61,10 @@ describe('worker', () => {
     kit.orgSettings.settings.workerSlots = 1;
     const w = await run(kit, { slots: 4 });
     await reachStatus(first.id, 'running');
-    await waitFor(async () =>
-      (await kit.taskStatus(second.id))?.eligibility?.reason === 'waiting for worker slots',
-    );
+    await waitFor(async () => {
+      const current = await kit.taskStatus(second.id);
+      return current?.eligibility?.reason === 'waiting for worker slots';
+    });
     kit.orgSettings.settings.workerSlots = 2;
     await reachStatus(second.id, 'running');
     await w.stop({ force: true });

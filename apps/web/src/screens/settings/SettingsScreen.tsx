@@ -4,6 +4,12 @@ import { useApi } from '../../api/context.tsx';
 import { Resource } from '../../components/Resource.tsx';
 import { useResource } from '../../hooks/useResource.ts';
 
+const WORKER_SLOTS_HELP = [
+  'Leave blank to derive the global limit from account concurrency (maximum 256).',
+  'Changes take effect without restarting the worker.',
+  'If automatic, an environment override takes precedence.',
+].join(' ');
+
 export function SettingsScreen() {
   const api = useApi();
   const state = useResource(() => api.organization(), [], ['org.']);
@@ -121,9 +127,7 @@ export function SettingsScreen() {
                   placeholder="Automatic"
                 />
                 <span className="form-help dim">
-                  Leave blank to derive the global limit from account concurrency (maximum 256). Changes
-                  take effect without restarting the worker. If empty, the environment override applies
-                  before automatic capacity.
+                  {WORKER_SLOTS_HELP}
                 </span>
                 {slotsError ? (
                   <span className="field-error" role="alert">
