@@ -20,11 +20,7 @@ import { getProvider, type AccountForRun } from '../modules/accounts/index.ts';
 import type { AgentDto } from '../modules/agents/index.ts';
 import type { createAgentUseCases } from '../modules/agents/index.ts';
 import type { createRuns, Run, RunOwnerIdentity, RunProcessRecord } from '../modules/runs/index.ts';
-import {
-  systemProcessTable,
-  terminateRecordedGroup,
-  type ProcessTable,
-} from '../runner/process-table.ts';
+import { systemProcessTable, terminateRecordedGroup, type ProcessTable } from '../runner/process-table.ts';
 import {
   RESULT_SUMMARY_MAX_BYTES,
   truncateBytes,
@@ -878,13 +874,11 @@ export function createWorker(deps: WorkerDeps): Worker {
         if (run.owner) {
           if (run.owner.host !== host) continue;
           const observed = await processTable.read(run.owner.pid);
-          if (
+          const missingOwner =
             !observed ||
             observed.startedAt !== run.owner.startedAt ||
-            observed.command !== run.owner.command
-          ) {
-            lost.push(run.id);
-          }
+            observed.command !== run.owner.command;
+          if (missingOwner) lost.push(run.id);
         } else if (run.workerId === deps.workerId) {
           // Legacy runs lack an owner fingerprint: keep the original workerId recovery behavior.
           lost.push(run.id);
