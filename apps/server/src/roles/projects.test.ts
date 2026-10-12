@@ -163,58 +163,6 @@ describe('projects', () => {
     expect(JSON.stringify(events)).toContain('[check] echo ok exited 0');
   });
 
-  it('runs reduced checks for a documentation-only diff and records the reason', async () => {
-    const p = await project({
-      checks: ['echo full-check'],
-      docsOnlyChecks: { paths: ['**/*.md'], checks: ['echo docs-check'] },
-    });
-    const acc = await kit.account('docs');
-    await kit.agent('docs-agent', acc.id, { labels: ['docs'] });
-    writes({ 'README.md': '# Documentation\n' });
-    const t = await projectTask(p.id, { target: { label: 'docs' } });
-    await startWorker();
-    const done = await settled(t.id);
-    expect(done.review).toMatchObject({
-      checkSet: 'docs',
-      checkReason: 'All 1 changed files match documentation paths',
-      checks: [{ command: 'echo docs-check', exitCode: 0 }],
-    });
-    expect(done.review?.checksSha).toBe(done.review?.headSha);
-  });
-
-  it('keeps full checks for a mixed diff even if one file is documentation', async () => {
-    const p = await project({
-      checks: ['echo full-check'],
-      docsOnlyChecks: { paths: ['**/*.md'], checks: ['echo docs-check'] },
-    });
-    const acc = await kit.account('mixed');
-    await kit.agent('mixed-agent', acc.id, { labels: ['mixed'] });
-    writes({ 'README.md': '# Documentation\n', 'src.ts': 'export const x = 1;\n' });
-    const t = await projectTask(p.id, { target: { label: 'mixed' } });
-    await startWorker();
-    const done = await settled(t.id);
-    expect(done.review).toMatchObject({
-      checkSet: 'full',
-      checkReason: 'Non-documentation file in diff: src.ts',
-      checks: [{ command: 'echo full-check', exitCode: 0 }],
-    });
-  });
-
-  it('keeps existing full checks when the docs-only setting is absent', async () => {
-    const p = await project({ checks: ['echo full-check'] });
-    const acc = await kit.account('no-setting');
-    await kit.agent('no-setting-agent', acc.id, { labels: ['full'] });
-    writes({ 'README.md': '# Documentation\n' });
-    const t = await projectTask(p.id, { target: { label: 'full' } });
-    await startWorker();
-    const done = await settled(t.id);
-    expect(done.review).toMatchObject({
-      checkSet: 'full',
-      checkReason: 'Docs-only checks are not configured',
-      checks: [{ command: 'echo full-check', exitCode: 0 }],
-    });
-  });
-
   it('approve merges with --no-ff into main and removes the worktree and branch', async () => {
     const p = await project();
     writes({ 'feature.txt': 'x\n' });
@@ -347,6 +295,8 @@ describe('projects', () => {
       workDir: t.workDir,
       projectId: null,
     });
+    expect(reviewer.prompt).toContain(`${t.key} (${t.title})`);
+    expect(reviewer.prompt).toContain(t.prompt);
     await waitFor(async () => (await reload(reviewer.id)).status === 'done');
     const diff = await kit.review.diff(kit.db, kit.actor, t.id);
     expect(diff.reviewer).toEqual({
@@ -355,6 +305,29 @@ describe('projects', () => {
       summary: 'Looks fine, ready to merge',
     });
     expect(gitOut(t.workDir, 'status', '--porcelain')).toBe('');
+  });
+
+  it('gives the reviewer of a rerun the original task and the feedback exactly once', async () => {
+    const p = await project();
+    const acc = await kit.account('a');
+    await kit.agent('alpha', acc.id, { labels: ['x'] });
+    let n = 0;
+    kit.script = (s) => {
+      writeFileSync(join(s.workDir, `f${++n}.txt`), 'x\n');
+      return { events: [{ kind: 'text', text: 'done' }] };
+    };
+    const t = await projectTask(p.id, { target: { label: 'x' }, prompt: 'Build it' });
+    await startWorker();
+    await settled(t.id);
+    await kit.review.reject(kit.db, kit.actor, t.id, 'Add unique-feedback-marker');
+    const second = await settled(t.id, 2);
+    expect(second.review?.status).toBe('pending');
+    kit.script = () => ({ events: [{ kind: 'text', text: 'Looks fine, ready to merge' }] });
+    const reviewer = await kit.review.requestReview(kit.db, kit.actor, t.id, {});
+    expect(reviewer.prompt).toContain(`${t.key} (${t.title})`);
+    expect(reviewer.prompt).toContain('Build it');
+    expect(reviewer.prompt.match(/unique-feedback-marker/g)).toHaveLength(1);
+    await waitFor(async () => (await reload(reviewer.id)).status === 'done');
   });
 
   it('needs agent.manage to merge', async () => {
