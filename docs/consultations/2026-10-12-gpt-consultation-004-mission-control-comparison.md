@@ -32,6 +32,7 @@ Agent Band currently requires Node/npm and a web build in its README quick start
 **Interpretation:** This is Mission Control's clearest current competitive advantage. Do not assume additional features will fix weak Agent Band onboarding or discoverability.
 
 Evidence:
+
 - https://github.com/builderz-labs/mission-control/blob/main/README.md
 - https://github.com/builderz-labs/mission-control/blob/main/docs/deployment.md
 - https://github.com/xobox123/agent-band/blob/main/README.md
@@ -45,6 +46,7 @@ Operator features include authentication, API keys, role/workspace administratio
 **Important correction:** Mission Control **does support direct CLI execution** of Claude Code and Codex using existing host logins, not only an OpenClaw gateway. Its implementation also has direct API/model paths. Its documentation describes the gateway for a specific auto-dispatch path and some live features; do not generalize that into a gateway requirement for all operations.
 
 Evidence:
+
 - https://github.com/builderz-labs/mission-control/blob/main/README.md
 - https://github.com/builderz-labs/mission-control/blob/main/src/lib/task-dispatch.ts
 - https://github.com/builderz-labs/mission-control/blob/main/docs/cli-integration.md
@@ -58,6 +60,7 @@ Mission Control already offers filesystem-backed agent memory, a memory browser/
 Mission Control documents an Aegis reviewer gate, task retry/handoffs, user-facing security controls and signed **Ed25519 receipts** for some MCP audit records. A detailed implementation/operational effectiveness comparison is still needed.
 
 Evidence:
+
 - https://github.com/builderz-labs/mission-control/blob/main/src/lib/memory-search.ts
 - https://github.com/builderz-labs/mission-control/blob/main/src/lib/receipt-signing.ts
 - https://github.com/builderz-labs/mission-control/blob/main/docs/orchestration.md
@@ -72,11 +75,13 @@ Agent Band models provider accounts independently from agent identities, support
 This is a stronger product **emphasis**, not proof that competitors cannot replicate the capability. Mission Control already detects subscriptions and can dispatch through the operator's Claude/Codex CLI. Its exact multi-account config isolation and provider-limit scheduling semantics should be tested, not inferred absent from a marketing summary.
 
 Relevant Agent Band implementation:
+
 - https://github.com/xobox123/agent-band/blob/main/apps/server/src/modules/accounts/domain/providers.ts
 - https://github.com/xobox123/agent-band/blob/main/apps/server/src/modules/usage/app/usage.ts
 - https://github.com/xobox123/agent-band/blob/main/apps/server/src/roles/worker.ts
 
 Mission Control counter-evidence:
+
 - https://github.com/builderz-labs/mission-control/blob/main/src/lib/provider-subscriptions.ts
 - https://github.com/builderz-labs/mission-control/blob/main/src/lib/task-dispatch.ts
 
@@ -87,11 +92,13 @@ Agent Band already has dedicated implementation for per-task git worktrees, task
 Mission Control has GitHub issue synchronization, task lifecycle, agent review and quality gates. Therefore **do not claim Mission Control lacks Git integration or quality review**. Compare the precise code-change lifecycle, worktree/branch handling, external PR/CI reconciliation and recovery under failures.
 
 Relevant Agent Band code:
+
 - https://github.com/xobox123/agent-band/blob/main/apps/server/src/modules/projects/app/run-hooks.ts
 - https://github.com/xobox123/agent-band/blob/main/apps/server/src/modules/projects/app/review.ts
 - https://github.com/xobox123/agent-band/blob/main/apps/server/src/modules/projects/infra/git.ts
 
 Mission Control:
+
 - https://github.com/builderz-labs/mission-control/blob/main/src/lib/github-sync-engine.ts
 - https://github.com/builderz-labs/mission-control/blob/main/docs/orchestration.md
 
@@ -102,11 +109,13 @@ Agent Band has organization -> group -> agent policy composition, workdir/mode/t
 Mission Control also has meaningful role/workspace isolation, CLI sandbox options, security events and signed receipts. We **do not have evidence** that Agent Band is generally more secure. Agent Band itself documents known enforcement gaps, especially shell reads beyond allowed paths and provider-specific runtime-tool restrictions.
 
 Relevant Agent Band:
+
 - https://github.com/xobox123/agent-band/blob/main/README.md
 - https://github.com/xobox123/agent-band/blob/main/docs/research/cli-capability-matrix.md
 - https://github.com/xobox123/agent-band/blob/main/docs/adr/0003-identity-policy-audit.md
 
 Relevant Mission Control:
+
 - https://github.com/builderz-labs/mission-control/blob/main/docs/SECURITY-HARDENING.md
 - https://github.com/builderz-labs/mission-control/blob/main/src/lib/receipt-signing.ts
 
