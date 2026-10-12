@@ -150,24 +150,20 @@ export function createRuns(deps: ModuleDeps) {
     async runningForRecovery(db: Db, actor: ActorContext): Promise<Run[]> {
       system(actor);
       await deps.authorizer.authorize(db, actor, 'task.write', {});
-      return db.select().from(runs).where(and(eq(runs.orgId, actor.orgId), eq(runs.status, 'running')));
+      const running = and(eq(runs.orgId, actor.orgId), eq(runs.status, 'running'));
+      return db.select().from(runs).where(running);
     },
     /** Failed recovery remains retryable if the server crashes before SIGTERM/SIGKILL. */
-    // prettier-ignore
     async pendingProcessCleanup(db: Db, actor: ActorContext): Promise<Run[]> {
       system(actor);
       await deps.authorizer.authorize(db, actor, 'task.write', {});
-      return db
-        .select()
-        .from(runs)
-        .where(
-          and(
-            eq(runs.orgId, actor.orgId),
-            ne(runs.status, 'running'),
-            isNotNull(runs.process),
-            isNull(runs.processReapedAt),
-          ),
-        );
+      const pending = and(
+        eq(runs.orgId, actor.orgId),
+        ne(runs.status, 'running'),
+        isNotNull(runs.process),
+        isNull(runs.processReapedAt),
+      );
+      return db.select().from(runs).where(pending);
     },
     async appendRunEvent(tx: Tx, actor: ActorContext, id: string, input: NormalizedEvent): Promise<RunEvent> {
       system(actor);
