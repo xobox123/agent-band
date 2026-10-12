@@ -65,6 +65,11 @@ export function preApprovedFor(c: { mode: RunSpec['mode']; policy: EffectivePoli
   return c.mode === 'read-only' ? rules.filter((r) => r === 'WebSearch' || r === 'WebFetch') : rules;
 }
 
+interface AccountCapacity {
+  limits: { maxConcurrentRuns: number };
+  paused: boolean;
+}
+
 export interface WorkerDeps {
   db: Db;
   /** System actor (system:dispatcher) of the organisation this worker serves. */
@@ -81,10 +86,7 @@ export interface WorkerDeps {
   agents: Pick<ReturnType<typeof createAgentUseCases>, 'getAgent' | 'listAgents'>;
   accounts: {
     getAccountForRun(db: Db, orgId: string, id: string): Promise<AccountForRun>;
-    listAccounts(db: Db, actor: ActorContext): Promise<{
-      limits: { maxConcurrentRuns: number };
-      paused: boolean;
-    }[]>;
+    listAccounts(db: Db, actor: ActorContext): Promise<AccountCapacity[]>;
   };
   orgSettings: OrgSettings;
   /** Git worktrees, checks and review data for project tasks; without it project tasks run in place. */

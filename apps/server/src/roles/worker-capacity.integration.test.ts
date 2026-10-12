@@ -92,9 +92,10 @@ describe('worker capacity', () => {
       return current?.eligibility?.reason === 'waiting for worker slots';
     });
     expect(worker.activeRuns).toBe(2);
-    expect(
-      kit.deps.authorizer.checks.some((check) => check.action === 'read' && check.actor.kind === 'system'),
-    ).toBe(true);
+    const systemRead = kit.deps.authorizer.checks.some(
+      (check) => check.action === 'read' && check.actor.kind === 'system',
+    );
+    expect(systemRead).toBe(true);
   });
 
   it('records a stable reserve reason with the actual reset time', async () => {
