@@ -51,3 +51,33 @@ oldest first, including zero buckets. Intervals include their start and exclude
 their end. Usage events are attributed by event timestamp, independently of run
 start and finish. Totals include input plus output tokens only, excluding cache
 reads and cost. All times are UTC ISO strings.
+
+## Worker capacity and queue blockers
+
+`GET /system/worker-capacity` exposes `slots`, `activeRuns`, and an `accounts` array
+with `id`, `name`, `inUse`, and `maxConcurrentRuns`. The endpoint requires the
+normal read authorization and does not reveal credentials. The header displays
+`Running A/B slots`, and the queued Board column groups the recorded
+`eligibilityReason` messages by account/reason.
+
+The worker slot limit is resolved in this order: organization `workerSlots`
+(persisted using `PATCH /organization`), `AGENT_BAND_WORKER_SLOTS` if set in
+the environment, then the **sum of account `maxConcurrentRuns`**, clamped to
+1 through 256. Sending `workerSlots: null` restores automatic capacity.
+An explicit saved limit takes effect on the next worker poll without a restart;
+existing runs are not terminated if capacity is reduced. The older environment
+override is optional and takes effect only when the saved limit is null.
+The Settings screen exposes a numeric field, with blank meaning automatic.
+
+When all slots are occupied, ready queued tasks acquire the reason
+`waiting for worker slots` without being claimed or postponed. Account
+concurrency/reserve/rate-limit reasons remain on the tasks until they are
+re-evaluated, and queue summaries group them without changing task status.
+The active run count comes from persisted running run rows, while the worker
+controls actual slot occupancy using its local in-flight tasks. Separate
+worker processes still each enforce their own local limit; a distributed
+global slot semaphore would require a dedicated follow-up.
+
+Migration note: the worker slots schema uses migration 0016. Merge task 004
+(which introduces migration 0015) before this task, and reconcile the Drizzle
+journal/snapshot lineage if both PRs touch these files.

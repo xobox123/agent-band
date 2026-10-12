@@ -1020,6 +1020,7 @@ export function createTasks(deps: TasksDeps) {
         .where(and(
           eq(tasks.orgId, actor.orgId),
           eq(tasks.status, 'queued'),
+          sql`not exists (select 1 from unnest(${tasks.dependsOn}) as dep(id) where not exists (select 1 from tasks dt where dt.id = dep.id and dt.status = 'done'))`,
           sql`(${tasks.eligibility} is null or ((${tasks.eligibility}->>'reason') <> ${reason} and (${tasks.eligibility}->>'nextCheckAt')::timestamptz <= ${now.toISOString()}::timestamptz))`,
         ))
         .returning({ id: tasks.id });

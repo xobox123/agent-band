@@ -124,7 +124,11 @@ export function SettingsScreen() {
                   Leave blank to derive the global limit from account concurrency (maximum 256).
                   Changes take effect without restarting the worker, unless the environment overrides automatic capacity.
                 </span>
-                {slotsError ? <span className="field-error" role="alert">{slotsError}</span> : null}
+                {slotsError ? (
+                  <span className="field-error" role="alert">
+                    {slotsError}
+                  </span>
+                ) : null}
               </label>
               {generic ? (
                 <p className="form-error" role="alert">
@@ -144,7 +148,11 @@ export function SettingsScreen() {
                     Missing: Workspace root
                   </button>
                 ) : null}
-                <button type="submit" className="btn btn-primary" disabled={pending || Boolean(clientError) || Boolean(slotsError)}>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={pending || Boolean(clientError) || Boolean(slotsError)}
+                >
                   Save
                 </button>
               </div>
