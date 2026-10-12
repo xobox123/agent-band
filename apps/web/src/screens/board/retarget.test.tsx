@@ -6,9 +6,7 @@ import { BoardScreen } from './BoardScreen.tsx';
 
 function setup() {
   const mock = createMockDataSource({ live: false, latencyMs: 0 });
-  const retargetTask = vi.fn((...args: Parameters<typeof mock.retargetTask>) =>
-    mock.retargetTask(...args),
-  );
+  const retargetTask = vi.fn((...args: Parameters<typeof mock.retargetTask>) => mock.retargetTask(...args));
   render(
     <DataSourceProvider source={{ ...mock, retargetTask }}>
       <BoardScreen />
@@ -33,7 +31,8 @@ describe('Reassign task', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Reassign' }));
     await waitFor(() => {
       expect(retargetTask).toHaveBeenCalledWith('task-ab-35', {
-        type: 'agent', agentId: 'ag-linus',
+        type: 'agent',
+        agentId: 'ag-linus',
       });
     });
     await waitFor(() => {
