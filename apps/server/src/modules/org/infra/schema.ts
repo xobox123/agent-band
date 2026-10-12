@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   index,
+  integer,
   pgTable,
   primaryKey,
   text,
@@ -21,6 +22,7 @@ export const organizations = pgTable('organizations', {
   policyId: uuid('policy_id'),
   paused: boolean('paused').notNull().default(false),
   workspaceRoot: text('workspace_root'),
+  workerSlots: integer('worker_slots'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

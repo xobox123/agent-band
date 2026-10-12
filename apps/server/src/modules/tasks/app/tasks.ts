@@ -1002,6 +1002,30 @@ export function createTasks(deps: TasksDeps) {
      * Returns a claimed task to the queue because no agent can take it now. Records the reason, schedules
      * the next check with exponential backoff and audits only when the reason changes.
      */
+    /** Exposes slot saturation on queued tasks without claiming them or delaying the next claim. */
+    async markWaitingForSlots(tx: Tx, actor: ActorContext): Promise<number> {
+      system(actor);
+      const now = deps.now?.() ?? new Date();
+      const reason = 'waiting for worker slots';
+      const rows = await tx
+        .update(tasks)
+        .set({
+          eligibility: {
+            reason,
+            checkedAt: now.toISOString(),
+            nextCheckAt: now.toISOString(),
+            checks: 0,
+          },
+        })
+        .where(and(
+          eq(tasks.orgId, actor.orgId),
+          eq(tasks.status, 'queued'),
+          sql`(${tasks.eligibility} is null or ((${tasks.eligibility}->>'reason') <> ${reason} and (${tasks.eligibility}->>'nextCheckAt')::timestamptz <= ${now.toISOString()}::timestamptz))`,
+        ))
+        .returning({ id: tasks.id });
+      if (rows.length > 0) await publish(tx, 'task.updated', { orgId: actor.orgId });
+      return rows.length;
+    },
     async markIneligible(
       tx: Tx,
       actor: ActorContext,

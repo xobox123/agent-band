@@ -10,6 +10,7 @@ export const OrganizationDto = z.object({
   paused: z.boolean(),
   /** Absolute folder under which tasks get their own working folder by default. */
   workspaceRoot: z.string(),
+  workerSlots: z.number().int().min(1).max(256).nullable(),
   createdAt: IsoDate,
 });
 export type OrganizationDto = z.infer<typeof OrganizationDto>;
@@ -23,6 +24,7 @@ export const UpdateOrganizationBody = z
       .optional(),
     timezone: z.string().min(1).max(100).optional(),
     workspaceRoot: z.string().startsWith('/').max(4096).optional(),
+    workerSlots: z.number().int().min(1).max(256).nullable().optional(),
   })
   .strict();
 export type UpdateOrganizationBody = z.infer<typeof UpdateOrganizationBody>;
@@ -99,3 +101,16 @@ export const PrincipalDto = z.object({
 export type PrincipalDto = z.infer<typeof PrincipalDto>;
 export const PrincipalList = listOf(PrincipalDto);
 export const PrincipalQuery = z.object({ kind: z.enum(['user', 'agent', 'system']).optional() });
+
+/** Observed worker capacity and per-account running concurrency. */
+export const WorkerCapacityDto = z.object({
+  slots: z.number().int().min(1),
+  activeRuns: z.number().int().nonnegative(),
+  accounts: z.array(z.object({
+    id: Id,
+    name: z.string(),
+    inUse: z.number().int().nonnegative(),
+    maxConcurrentRuns: z.number().int().nonnegative(),
+  })),
+});
+export type WorkerCapacityDto = z.infer<typeof WorkerCapacityDto>;

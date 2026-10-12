@@ -69,6 +69,7 @@ export interface OrgSettings {
     paused: boolean;
     /** Absolute folder under which tasks get their own working folder by default. */
     workspaceRoot: string;
+    workerSlots: number | null;
   }>;
 }
 
