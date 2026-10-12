@@ -1,4 +1,5 @@
 import { homedir, hostname, tmpdir } from 'node:os';
+import { pid as serverPid } from 'node:process';
 import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import {
@@ -865,7 +866,7 @@ export function createWorker(deps: WorkerDeps): Worker {
     async start() {
       stopping = false;
       forceStop = false;
-      const self = await processTable.read(process.pid);
+      const self = await processTable.read(serverPid);
       if (!self) throw new Error('Cannot identify the worker process before dispatch');
       owner = { host, pid: self.pid, startedAt: self.startedAt, command: self.command };
 
