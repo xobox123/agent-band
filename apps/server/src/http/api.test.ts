@@ -73,6 +73,9 @@ describe('org', () => {
       activeRuns: 0,
       accounts: [{ id: account.json().id, name: 'capacity', inUse: 0, maxConcurrentRuns: 3 }],
     });
+    await call('PUT', `/accounts/${account.json().id}/pause`, { paused: true });
+    expect((await call('GET', '/system/worker-capacity')).json().slots).toBe(1);
+    await call('PUT', `/accounts/${account.json().id}/pause`, { paused: false });
     const change = await call('PATCH', '/organization', { workerSlots: 2 });
     expect(change.status).toBe(200);
     expect(change.json().workerSlots).toBe(2);
