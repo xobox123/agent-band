@@ -28,12 +28,12 @@ describe('retargetTask', () => {
     await database.db
       .update(tasks)
       .set({
-      eligibility: {
-        reason: 'account unavailable',
-        checkedAt: new Date().toISOString(),
-        nextCheckAt: new Date(Date.now() + 600000).toISOString(),
-        checks: 2,
-      },
+        eligibility: {
+          reason: 'account unavailable',
+          checkedAt: new Date().toISOString(),
+          nextCheckAt: new Date(Date.now() + 600000).toISOString(),
+          checks: 2,
+        },
         error: 'no eligible agent',
       })
       .where(eq(tasks.id, task.id));
@@ -62,7 +62,7 @@ describe('retargetTask', () => {
       .update(tasks)
       .set({
         projectId,
-      branch: 'ab/AB-128',
+        branch: 'ab/AB-128',
         baseBranch: 'main',
       })
       .where(eq(tasks.id, task.id));
@@ -93,7 +93,7 @@ describe('retargetTask', () => {
     });
   });
 
-  it('fails with 409 if the worker claimed first, but claim sees the new target if retarget won', async () => {
+  it('rejects a claimed task but claims the updated target after retarget', async () => {
     const claimedFirst = await service.createTask(database.db, owner, initial);
     await database.db.transaction((tx) => service.claimNextTask(tx, dispatcher, 'w1'));
     await expect(
@@ -108,13 +108,15 @@ describe('retargetTask', () => {
   it('does not mutate tasks if actor lacks owner permission or status is not permitted', async () => {
     const task = await service.createTask(database.db, owner, initial);
     deps.authorizer.deny = (action) => action === 'org.manage';
-    await expect(service.retargetTask(database.db, owner, task.id, { label: 'other' })).rejects.toMatchObject({
-      status: 403,
+    await expect(
+      service.retargetTask(database.db, owner, task.id, { label: 'other' }),
+    ).rejects.toMatchObject({ status: 403,
     });
     deps.authorizer.deny = null;
     await database.db.update(tasks).set({ status: 'running' }).where(eq(tasks.id, task.id));
-    await expect(service.retargetTask(database.db, owner, task.id, { label: 'other' })).rejects.toMatchObject({
-      status: 409,
+    await expect(
+      service.retargetTask(database.db, owner, task.id, { label: 'other' }),
+    ).rejects.toMatchObject({ status: 409,
     });
     expect((await service.getTask(database.db, owner, task.id)).target).toEqual(initial.target);
   });
