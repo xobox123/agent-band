@@ -7,7 +7,13 @@ import type { DbOrTx, ModuleDeps } from '../../../ports/index.ts';
 import { conflict, forbidden, invalid, notFound } from '../../../platform/errors.ts';
 import { publish } from '../../../platform/outbox.ts';
 import { runs, runEvents, type Run, type RunEvent } from '../infra/schema.ts';
-import type { StartRunInput, FinishRunInput, RunStatus, UsageScope, RunProcessRecord } from '../domain/run.ts';
+import type {
+  StartRunInput,
+  FinishRunInput,
+  RunStatus,
+  UsageScope,
+  RunProcessRecord,
+} from '../domain/run.ts';
 export interface RunFilter {
   taskIds?: string[];
   from?: string;
@@ -125,7 +131,12 @@ export function createRuns(deps: ModuleDeps) {
       await tx.update(runs).set({ process: info, processReapedAt: null }).where(where(actor, id));
     },
     /** Mark cleanup only after process identity has been verified, or the child has exited. */
-    async markProcessReaped(tx: Tx, actor: ActorContext, id: string, expected: RunProcessRecord): Promise<void> {
+    async markProcessReaped(
+      tx: Tx,
+      actor: ActorContext,
+      id: string,
+      expected: RunProcessRecord,
+    ): Promise<void> {
       system(actor);
       const run = await get(tx, actor, id);
       await deps.authorizer.authorize(tx, actor, 'task.write', { agentId: run.agentId });
@@ -143,20 +154,26 @@ export function createRuns(deps: ModuleDeps) {
     async runningForRecovery(db: Db, actor: ActorContext): Promise<Run[]> {
       system(actor);
       await deps.authorizer.authorize(db, actor, 'task.write', {});
-      return db.select().from(runs).where(and(eq(runs.orgId, actor.orgId), eq(runs.status, 'running')));
+      return db
+        .select()
+        .from(runs)
+        .where(and(eq(runs.orgId, actor.orgId), eq(runs.status, 'running')));
     },
     /** Failed recovery remains retryable if the server crashes before SIGTERM/SIGKILL. */
     async pendingProcessCleanup(db: Db, actor: ActorContext): Promise<Run[]> {
       system(actor);
       await deps.authorizer.authorize(db, actor, 'task.write', {});
-      return db.select().from(runs).where(
-        and(
-          eq(runs.orgId, actor.orgId),
-          ne(runs.status, 'running'),
-          isNotNull(runs.process),
-          isNull(runs.processReapedAt),
-        ),
-      );
+      return db
+        .select()
+        .from(runs)
+        .where(
+          and(
+            eq(runs.orgId, actor.orgId),
+            ne(runs.status, 'running'),
+            isNotNull(runs.process),
+            isNull(runs.processReapedAt),
+          ),
+        );
     },
     async appendRunEvent(tx: Tx, actor: ActorContext, id: string, input: NormalizedEvent): Promise<RunEvent> {
       system(actor);
