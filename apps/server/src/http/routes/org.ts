@@ -6,7 +6,6 @@ import {
   CreateTeamBody,
   IdParams,
   OrganizationDto,
-  WorkerCapacityDto,
   PrincipalDto,
   PrincipalList,
   PrincipalQuery,
@@ -20,6 +19,7 @@ import {
   TeamParams,
   UpdateOrganizationBody,
   UserList,
+  WorkerCapacityDto,
 } from '@agent-band/contracts';
 import type { Composition } from '../../composition.ts';
 import { resolveWorkerSlots } from '../../roles/worker-capacity.ts';

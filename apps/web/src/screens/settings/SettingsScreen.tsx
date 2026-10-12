@@ -122,7 +122,8 @@ export function SettingsScreen() {
                 />
                 <span className="form-help dim">
                   Leave blank to derive the global limit from account concurrency (maximum 256).
-                  Changes take effect without restarting the worker, unless the environment overrides automatic capacity.
+                  Changes take effect without restarting the worker. If empty, the environment override
+                  applies before automatic capacity.
                 </span>
                 {slotsError ? (
                   <span className="field-error" role="alert">

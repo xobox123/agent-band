@@ -1,4 +1,4 @@
-/** Capacity is derived from account limits when no explicit project-wide limit is configured. */
+/** Capacity is derived from account limits when no explicit organization-wide limit is configured. */
 export const MAX_WORKER_SLOTS = 256;
 
 export function resolveWorkerSlots(
