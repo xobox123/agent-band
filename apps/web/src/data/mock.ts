@@ -595,6 +595,22 @@ export function createMockDataSource(options: MockOptions = {}): BoardDataSource
       replace({ ...task, priority, updatedAt: iso(now()) });
       emit();
     },
+    async retargetTask(taskId, target) {
+      await delay();
+      const task = findTask(taskId);
+      if (!['queued', 'scheduled', 'failed'].includes(task.status))
+        throw new Error('Only queued, scheduled or failed tasks can be reassigned.');
+      replace({
+        ...task,
+        target,
+        status: task.status === 'failed' ? 'queued' : task.status,
+        ...(task.status === 'failed' ? { attempt: 1, runAt: null, resumeAt: null } : {}),
+        error: null,
+        noEligibleReason: null,
+        updatedAt: iso(now()),
+      });
+      emit();
+    },
     async createTask(input) {
       await delay();
       const stamp = iso(now());
