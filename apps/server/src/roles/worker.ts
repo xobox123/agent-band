@@ -21,7 +21,6 @@ import type { AgentDto } from '../modules/agents/index.ts';
 import type { createAgentUseCases } from '../modules/agents/index.ts';
 import type { createRuns, Run, RunOwnerIdentity, RunProcessRecord } from '../modules/runs/index.ts';
 import {
-  matchesProcess,
   systemProcessTable,
   terminateRecordedGroup,
   type ProcessTable,
@@ -565,7 +564,7 @@ export function createWorker(deps: WorkerDeps): Worker {
                 throw new Error('CLI process is not the leader of its dedicated process group');
               }
               registered = { ...observed, host };
-              await deps.db.transaction((tx) => deps.runs.recordProcess(tx, d, run.id, registered!));
+              await deps.db.transaction((tx) => deps.runs.recordProcess(tx, d, run.id, registered));
             }
           }
           if (entry.userCancelled || forceStop || timedOut) h.cancel();
