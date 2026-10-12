@@ -1,6 +1,6 @@
 # Report 008: Show why nothing runs: worker slots and blocked accounts
 
-Status: partial
+Status: done
 
 ## Summary
 Added worker-capacity diagnostics and visible queue-blocker reasons. Worker slots can be persisted in organization settings, take effect without restart, and default to the sum of account concurrency limits capped at 256. Existing environment configuration remains available when no organization override is present.
