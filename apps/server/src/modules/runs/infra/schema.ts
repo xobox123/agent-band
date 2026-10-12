@@ -10,7 +10,12 @@ import {
   index,
 } from 'drizzle-orm/pg-core';
 import type { NormalizedEvent } from '@agent-band/contracts';
-import { runStatuses, type SkillSnapshot, type RunOwnerIdentity, type RunProcessRecord } from '../domain/run.ts';
+import {
+  runStatuses,
+  type SkillSnapshot,
+  type RunOwnerIdentity,
+  type RunProcessRecord,
+} from '../domain/run.ts';
 export const runs = pgTable(
   'runs',
   {
