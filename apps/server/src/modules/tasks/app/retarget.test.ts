@@ -110,14 +110,12 @@ describe('retargetTask', () => {
     deps.authorizer.deny = (action) => action === 'org.manage';
     await expect(
       service.retargetTask(database.db, owner, task.id, { label: 'other' }),
-    ).rejects.toMatchObject({ status: 403,
-    });
+    ).rejects.toMatchObject({ status: 403 });
     deps.authorizer.deny = null;
     await database.db.update(tasks).set({ status: 'running' }).where(eq(tasks.id, task.id));
     await expect(
       service.retargetTask(database.db, owner, task.id, { label: 'other' }),
-    ).rejects.toMatchObject({ status: 409,
-    });
+    ).rejects.toMatchObject({ status: 409 });
     expect((await service.getTask(database.db, owner, task.id)).target).toEqual(initial.target);
   });
 });
