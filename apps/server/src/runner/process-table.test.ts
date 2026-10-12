@@ -18,16 +18,16 @@ function fakeTable(initial: ProcessIdentity | null, stopOnTerm = true) {
   let current = initial;
   const sent: NodeJS.Signals[] = [];
   const table: ProcessTable = {
-    async read(pid) {
-      return current?.pid === pid ? current : null;
+    read(pid) {
+      return Promise.resolve(current?.pid === pid ? current : null);
     },
     signalGroup(pgid, signal) {
       expect(pgid).toBe(child.pgid);
       sent.push(signal);
       if (stopOnTerm || signal === 'SIGKILL') current = null;
     },
-    async waitForExit(expected) {
-      return !matchesProcess(expected, current);
+    waitForExit(expected) {
+      return Promise.resolve(!matchesProcess(expected, current));
     },
   };
   return { table, sent };
