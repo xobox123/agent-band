@@ -109,16 +109,12 @@ export function createRuns(deps: ModuleDeps) {
       return changed(tx, actor, run, 'run.start');
     },
     /** Records the current detached process group before consuming the CLI event stream. */
-    async recordProcess(
-      tx: Tx,
-      actor: ActorContext,
-      id: string,
-      info: RunProcessRecord,
-    ): Promise<void> {
+    async recordProcess(tx: Tx, actor: ActorContext, id: string, info: RunProcessRecord): Promise<void> {
       system(actor);
       const run = await get(tx, actor, id);
       await deps.authorizer.authorize(tx, actor, 'task.write', { agentId: run.agentId });
-      if (run.status !== 'running') throw conflict('run_terminal', 'Cannot attach a process to a finished run');
+      if (run.status !== 'running')
+        throw conflict('run_terminal', 'Cannot attach a process to a finished run');
       if (
         !Number.isSafeInteger(info.pid) ||
         info.pid <= 0 ||
@@ -154,10 +150,7 @@ export function createRuns(deps: ModuleDeps) {
     async runningForRecovery(db: Db, actor: ActorContext): Promise<Run[]> {
       system(actor);
       await deps.authorizer.authorize(db, actor, 'task.write', {});
-      return db
-        .select()
-        .from(runs)
-        .where(and(eq(runs.orgId, actor.orgId), eq(runs.status, 'running')));
+      return db.select().from(runs).where(and(eq(runs.orgId, actor.orgId), eq(runs.status, 'running')));
     },
     /** Failed recovery remains retryable if the server crashes before SIGTERM/SIGKILL. */
     async pendingProcessCleanup(db: Db, actor: ActorContext): Promise<Run[]> {
