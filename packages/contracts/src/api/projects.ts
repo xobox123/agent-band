@@ -11,6 +11,17 @@ export const ReviewerTarget = z.union([
 ]);
 export type ReviewerTarget = z.infer<typeof ReviewerTarget>;
 const Checks = z.array(z.string().trim().min(1).max(1000)).max(20);
+export const DocsOnlyChecks = z
+  .object({
+    paths: z
+      .array(z.string().trim().min(1).max(500))
+      .min(1)
+      .max(100)
+      .default(['**/*.md', 'docs/**', 'handoff/**']),
+    checks: Checks.min(1).default(['npx prettier --check <changed files>']),
+  })
+  .strict();
+export type DocsOnlyChecks = z.infer<typeof DocsOnlyChecks>;
 
 export const ProjectDto = z.object({
   id: Id,
@@ -24,6 +35,8 @@ export const ProjectDto = z.object({
   worktreesRoot: z.string(),
   /** Shell commands run in the worktree after an agent finishes. */
   checks: z.array(z.string()),
+  /** Null disables reduced checks; an object enables them for documentation-only diffs. */
+  docsOnlyChecks: DocsOnlyChecks.nullable(),
   /** Keep the worktree and branch after a merge or cancel. */
   keepWorktrees: z.boolean(),
   /** Agent or label that reviews a finished task automatically; null for no automatic review. */
@@ -49,6 +62,7 @@ export const CreateProjectBody = z
     /** Omit to use `<workspaceRoot>/<slug>/worktrees`. */
     worktreesRoot: AbsolutePath.optional(),
     checks: Checks.optional(),
+    docsOnlyChecks: DocsOnlyChecks.nullable().optional(),
     keepWorktrees: z.boolean().optional(),
     reviewerTarget: ReviewerTarget.nullable().optional(),
     autoMergeOnApprove: z.boolean().optional(),
@@ -60,6 +74,7 @@ export const UpdateProjectBody = z
   .object({
     name: z.string().trim().min(1).max(100),
     checks: Checks,
+    docsOnlyChecks: DocsOnlyChecks.nullable(),
     keepWorktrees: z.boolean(),
     reviewerTarget: ReviewerTarget.nullable(),
     autoMergeOnApprove: z.boolean(),
@@ -105,6 +120,8 @@ export type FileStat = z.infer<typeof FileStat>;
 export const ReviewDto = z.object({
   status: ReviewStatus,
   checks: z.array(ReviewCheck),
+  checkSet: z.enum(['full', 'docs']).optional(),
+  checkReason: z.string().optional(),
   diffStat: z.object({
     files: z.number().int().nonnegative(),
     additions: z.number().int().nonnegative(),

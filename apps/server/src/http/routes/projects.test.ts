@@ -69,6 +69,25 @@ describe('projects api', () => {
     expect((await call('GET', '/projects/00000000-0000-4000-8000-000000000000')).status).toBe(404);
   });
 
+  it('accepts, defaults, updates and disables docs-only checks in the API', async () => {
+    const created = await createProject({ docsOnlyChecks: {} });
+    expect(created.status).toBe(201);
+    expect(created.json().docsOnlyChecks).toEqual({
+      paths: ['**/*.md', 'docs/**', 'handoff/**'],
+      checks: ['npx prettier --check <changed files>'],
+    });
+    const id = created.json().id;
+    const updated = await call('PATCH', `/projects/${id}`, {
+      docsOnlyChecks: { paths: ['docs/**'], checks: ['echo docs'] },
+    });
+    expect(updated.json().docsOnlyChecks).toEqual({ paths: ['docs/**'], checks: ['echo docs'] });
+    const invalid = await call('PATCH', `/projects/${id}`, { docsOnlyChecks: { paths: [] } });
+    expect(invalid.status).toBe(400);
+    const disabled = await call('PATCH', `/projects/${id}`, { docsOnlyChecks: null });
+    expect(disabled.json().docsOnlyChecks).toBeNull();
+    expect((await createProject()).json().docsOnlyChecks).toBeNull();
+  });
+
   it('validates a repository path without creating anything', async () => {
     const ok = await call('GET', `/projects/validate?path=${encodeURIComponent(repo.dir)}`);
     expect(ok.json()).toEqual({ valid: true, defaultBranch: 'main', reason: null });

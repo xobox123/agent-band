@@ -1,3 +1,4 @@
+import type { DocsOnlyChecks } from '../domain/project.ts';
 import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 export type ReviewerTarget = { agentId: string } | { label: string };
@@ -13,6 +14,7 @@ export const projects = pgTable(
     defaultBranch: text('default_branch').notNull(),
     worktreesRoot: text('worktrees_root').notNull(),
     checks: jsonb('checks').$type<string[]>().notNull().default([]),
+    docsOnlyChecks: jsonb('docs_only_checks').$type<DocsOnlyChecks>(),
     keepWorktrees: boolean('keep_worktrees').notNull().default(false),
     reviewerTarget: jsonb('reviewer_target').$type<ReviewerTarget>(),
     autoMergeOnApprove: boolean('auto_merge_on_approve').notNull().default(false),

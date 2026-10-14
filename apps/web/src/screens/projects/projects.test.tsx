@@ -148,6 +148,35 @@ describe('Projects screen', () => {
     });
   });
 
+  it('enables the docs-only settings on project creation', async () => {
+    const calls = setup(
+      routes({
+        'GET /projects': list([]),
+        'GET /projects/validate': { valid: true, defaultBranch: 'main', reason: null },
+        'POST /projects': project(),
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Create project' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Create project' });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Name/ }), {
+      target: { value: 'Docs' },
+    });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Repository path/ }), {
+      target: { value: '/repos/agent-band' },
+    });
+    await within(dialog).findByText(/Default branch: main/);
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Run reduced checks/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create project' }));
+    await waitFor(() => {
+      expect(calls.find((c) => c.method === 'POST' && c.path === '/projects')?.body).toMatchObject({
+        docsOnlyChecks: {
+          paths: ['**/*.md', 'docs/**', 'handoff/**'],
+          checks: ['npx prettier --check <changed files>'],
+        },
+      });
+    });
+  });
+
   it('saves the reviewer label and automatic merge of a project', async () => {
     const calls = setup(
       routes({

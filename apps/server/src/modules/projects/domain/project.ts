@@ -1,3 +1,4 @@
+import { matchesGlob } from 'node:path';
 import { z } from 'zod';
 
 const AbsolutePath = z
@@ -5,6 +6,17 @@ const AbsolutePath = z
   .max(4096)
   .refine((p) => p.startsWith('/') && !p.includes('\0'), 'must be an absolute path');
 const Checks = z.array(z.string().trim().min(1).max(1000)).max(20);
+
+export const DEFAULT_DOC_PATHS = ['**/*.md', 'docs/**', 'handoff/**'];
+export const DEFAULT_DOC_CHECKS = ['npx prettier --check <changed files>'];
+
+export const DocsOnlyChecks = z
+  .object({
+    paths: z.array(z.string().trim().min(1).max(500)).min(1).max(100).default(DEFAULT_DOC_PATHS),
+    checks: Checks.min(1).default(DEFAULT_DOC_CHECKS),
+  })
+  .strict();
+export type DocsOnlyChecks = z.infer<typeof DocsOnlyChecks>;
 
 const ReviewerTarget = z.union([
   z.object({ agentId: z.uuid() }).strict(),
@@ -21,6 +33,7 @@ export const CreateProject = z
     repoPath: AbsolutePath,
     worktreesRoot: AbsolutePath.optional(),
     checks: Checks.default([]),
+    docsOnlyChecks: DocsOnlyChecks.nullable().optional(),
     keepWorktrees: z.boolean().default(false),
     reviewerTarget: ReviewerTarget.nullable().optional(),
     autoMergeOnApprove: z.boolean().default(false),
@@ -32,6 +45,7 @@ export const UpdateProject = z
   .object({
     name: z.string().trim().min(1).max(100),
     checks: Checks,
+    docsOnlyChecks: DocsOnlyChecks.nullable(),
     keepWorktrees: z.boolean(),
     reviewerTarget: ReviewerTarget.nullable(),
     autoMergeOnApprove: z.boolean(),
@@ -39,6 +53,42 @@ export const UpdateProject = z
   .partial()
   .strict();
 export type UpdateProjectInput = z.input<typeof UpdateProject>;
+
+export interface CheckSelection {
+  checkSet: 'docs' | 'full';
+  checkReason: string;
+  commands: string[];
+}
+
+/** Select the reduced check set only when every changed path is a documentation file. */
+export function selectChecks(
+  checks: string[],
+  setting: DocsOnlyChecks | null,
+  files: readonly string[],
+): CheckSelection {
+  if (!setting)
+    return { checkSet: 'full', checkReason: 'Docs-only checks are not configured', commands: checks };
+  if (files.length === 0)
+    return { checkSet: 'full', checkReason: 'No changed files in the diff', commands: checks };
+  const nonDoc = files.find((file) => !setting.paths.some((pattern) => matchesGlob(file, pattern)));
+  if (nonDoc)
+    return {
+      checkSet: 'full',
+      checkReason: `Non-documentation file in diff: ${nonDoc}`,
+      commands: checks,
+    };
+  return {
+    checkSet: 'docs',
+    checkReason: `All ${files.length} changed files match documentation paths`,
+    commands: setting.checks,
+  };
+}
+
+/** Pass file paths as literal shell arguments, never as unquoted command fragments. */
+export function expandChangedFiles(command: string, files: readonly string[]): string {
+  const args = '-- ' + files.map((file) => "'" + file.replaceAll("'", "'\\''") + "'").join(' ');
+  return command.replaceAll('<changed files>', args);
+}
 
 export function slugOf(name: string): string {
   return (

@@ -1,6 +1,6 @@
 import type { Db } from '../../../platform/db.ts';
 import type { Task, TaskReview } from '../../tasks/index.ts';
-import { CHECK_TIMEOUT_MS } from '../domain/project.ts';
+import { CHECK_TIMEOUT_MS, expandChangedFiles, selectChecks } from '../domain/project.ts';
 import {
   commitAll,
   ensureWorktree,
@@ -52,8 +52,12 @@ export function createProjectRuns(deps: ProjectRunsDeps) {
       const project = await projectOf(db, task);
       await commitAll(task.workDir, `${task.key}: ${task.title}`, identity);
       const checksSha = await revParse(task.workDir, 'HEAD');
+      const range = await branchRange(task.workDir, task.baseBranch ?? project.defaultBranch, 'HEAD');
+      const changedFiles = range.files.map((file) => file.path);
+      const selection = selectChecks(project.checks, project.docsOnlyChecks, changedFiles);
       const checks: TaskReview['checks'] = [];
-      for (const command of project.checks) {
+      for (const template of selection.commands) {
+        const command = selection.checkSet === 'docs' ? expandChangedFiles(template, changedFiles) : template;
         const result = await runCheck(task.workDir, command, deps.checkTimeoutMs ?? CHECK_TIMEOUT_MS);
         await onCheck?.(result);
         checks.push({
@@ -63,10 +67,11 @@ export function createProjectRuns(deps: ProjectRunsDeps) {
           output: result.output,
         });
       }
-      const range = await branchRange(task.workDir, task.baseBranch ?? project.defaultBranch, 'HEAD');
       return {
         status: 'pending',
         checks,
+        checkSet: selection.checkSet,
+        checkReason: selection.checkReason,
         diffStat: range.diffStat,
         commits: range.commits,
         baseSha: range.baseSha,

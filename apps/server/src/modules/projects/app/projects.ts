@@ -79,6 +79,7 @@ export function createProjects(deps: ProjectsDeps) {
             defaultBranch: repo.defaultBranch,
             worktreesRoot,
             checks: v.checks,
+            docsOnlyChecks: v.docsOnlyChecks ?? null,
             keepWorktrees: v.keepWorktrees,
             reviewerTarget: v.reviewerTarget ?? null,
             autoMergeOnApprove: v.autoMergeOnApprove,

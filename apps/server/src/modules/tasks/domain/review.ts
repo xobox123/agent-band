@@ -15,6 +15,9 @@ export interface ReviewCheck {
 export interface TaskReview {
   status: ReviewStatus;
   checks: ReviewCheck[];
+  /** Check set selected from the base-to-head diff. */
+  checkSet?: 'full' | 'docs';
+  checkReason?: string;
   diffStat: { files: number; additions: number; deletions: number };
   commits: { sha: string; subject: string }[];
   baseSha: string;
