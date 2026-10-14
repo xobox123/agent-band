@@ -105,7 +105,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 14px;
-  padding: 16px;
+  padding: 0 0 12px;
 }
 
 .panel {
@@ -132,15 +132,31 @@
 }
 
 .section-pad {
-  padding: 0 16px 16px;
+  padding: 0 0 16px;
+}
+
+.section-heading {
+  margin: 8px 0 10px;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.panel.stat h3 {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.panel.stat strong {
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .section-pad .table-wrap {
-  flex: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  overflow: hidden;
+  overflow: auto;
 }
 
 .tokens-cell {

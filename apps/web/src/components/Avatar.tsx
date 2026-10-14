@@ -55,7 +55,12 @@ export function Avatar({ name, avatar: avatarProp, size = 22 }: Props) {
       role="img"
       aria-label={name}
       title={name}
-      style={{ width: size, height: size, background: `var(--${color})`, fontSize: size * 0.42 }}
+      style={{
+        width: size,
+        height: size,
+        background: `var(--${color})`,
+        fontSize: Math.max(11, size * 0.42),
+      }}
     >
       {initials}
     </span>

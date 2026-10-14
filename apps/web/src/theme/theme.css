@@ -142,6 +142,15 @@ button {
   outline-offset: 2px;
 }
 
+a:not([class]) {
+  color: var(--accent-text);
+}
+
+a.btn {
+  color: inherit;
+  text-decoration: none;
+}
+
 .mono {
   font-family: var(--mono);
 }

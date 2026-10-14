@@ -107,25 +107,7 @@ export function DashboardScreen() {
             }
             return (
               <>
-                <div className="cards" aria-label="Totals">
-                  <div className="panel">
-                    <h3>Running runs</h3>
-                    <strong>{d.runningRuns.length}</strong>
-                  </div>
-                  <div className="panel">
-                    <h3>Queued tasks</h3>
-                    <strong>{d.queuedCount}</strong>
-                  </div>
-                  <div className="panel">
-                    <h3>Tokens today</h3>
-                    <strong>{exactCount(d.tokensToday)}</strong>
-                    {d.cachedTokensToday > 0 ? (
-                      <span className="dim">{`+ ${exactCount(d.cachedTokensToday)} cached`}</span>
-                    ) : null}
-                    <span className="dim">Usage may update during a run</span>
-                  </div>
-                </div>
-                <h2 className="section-title section-pad">Accounts</h2>
+                <h2 className="section-heading">Account limits</h2>
                 <div className="cards" aria-label="Accounts">
                   {d.accounts.map(
                     ({
@@ -196,7 +178,26 @@ export function DashboardScreen() {
                     },
                   )}
                 </div>
-                <h2 className="section-title section-pad">Agents</h2>
+                <h2 className="section-heading">Right now</h2>
+                <div className="cards" aria-label="Totals">
+                  <div className="panel stat">
+                    <h3>Running runs</h3>
+                    <strong>{d.runningRuns.length}</strong>
+                  </div>
+                  <div className="panel stat">
+                    <h3>Queued tasks</h3>
+                    <strong>{d.queuedCount}</strong>
+                  </div>
+                  <div className="panel stat">
+                    <h3>Tokens today</h3>
+                    <strong>{exactCount(d.tokensToday)}</strong>
+                    {d.cachedTokensToday > 0 ? (
+                      <span className="dim">{`+ ${exactCount(d.cachedTokensToday)} cached`}</span>
+                    ) : null}
+                    <span className="dim">Usage may update during a run</span>
+                  </div>
+                </div>
+                <h2 className="section-heading">Agents</h2>
                 <div className="section-pad">
                   <Table
                     label="Agents"
