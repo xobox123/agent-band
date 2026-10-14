@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-export type BadgeTone = 'neutral' | 'ok' | 'warn' | 'crit' | 'accent';
+export type BadgeTone = 'neutral' | 'ok' | 'warn' | 'crit' | 'accent' | 'new';
 
 interface Props {
   tone?: BadgeTone;

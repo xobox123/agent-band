@@ -30,8 +30,8 @@
   margin-top: 4px;
   padding: 10px 12px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
   white-space: normal;
   text-align: left;
@@ -104,23 +104,24 @@
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-  gap: 12px;
+  gap: 14px;
   padding: 16px;
 }
 
 .panel {
-  padding: 12px;
+  padding: 14px 16px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .panel h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-lg);
+  font-weight: 600;
 }
 
 .panel-row {
@@ -137,8 +138,9 @@
 .section-pad .table-wrap {
   flex: none;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--surface);
+  overflow: hidden;
 }
 
 .tokens-cell {
@@ -189,17 +191,11 @@
   overflow: auto;
 }
 
-.tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 8px;
-}
-
 .link-btn {
   background: none;
   border: 0;
   padding: 0;
-  color: var(--accent);
+  color: var(--accent-text);
   cursor: pointer;
 }
 
@@ -268,7 +264,7 @@
   align-items: center;
   gap: 4px 16px;
   margin-bottom: 8px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-dim);
 }
 
@@ -319,7 +315,7 @@
 
 .file-diff {
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .file-diff summary {

@@ -1,6 +1,7 @@
 import { NAV_GROUPS } from '../router/routes.ts';
 import type { RouteId } from '../router/routes.ts';
 import type { Theme } from '../theme/useTheme.ts';
+import { NavIcon } from './NavIcon.tsx';
 
 interface Props {
   route: RouteId;
@@ -11,7 +12,10 @@ interface Props {
 export function Sidebar({ route, theme, onToggleTheme }: Props) {
   return (
     <aside className="sidebar" aria-label="Resources">
-      <div className="sidebar-brand">agent-band</div>
+      <div className="sidebar-brand">
+        <span>agent-band</span>
+        <span className="sidebar-tag">local</span>
+      </div>
       <nav className="sidebar-nav" aria-label="Resources">
         {NAV_GROUPS.map((group) => (
           <section key={group.id} aria-labelledby={`nav-${group.id}`}>
@@ -27,7 +31,8 @@ export function Sidebar({ route, theme, onToggleTheme }: Props) {
                     aria-current={route === item.id ? 'page' : undefined}
                     title={item.shortcut ? `${item.label} (Alt+${item.shortcut})` : item.label}
                   >
-                    {item.label}
+                    <NavIcon name={item.id} />
+                    <span>{item.label}</span>
                   </a>
                 </li>
               ))}
@@ -44,7 +49,7 @@ export function Sidebar({ route, theme, onToggleTheme }: Props) {
           title="Toggle theme"
           onClick={onToggleTheme}
         >
-          <span aria-hidden="true">{theme === 'dark' ? '☾' : '☀'}</span>
+          <NavIcon name={theme === 'dark' ? 'moon' : 'sun'} />
         </button>
       </footer>
     </aside>

@@ -2,8 +2,17 @@ import { useState } from 'react';
 import { AgentHoverCard } from '../../components/AgentHoverCard.tsx';
 import { Badge } from '../../components/Badge.tsx';
 import { StatusDot } from '../../components/StatusDot.tsx';
+import { statusInfo } from '../../components/statusInfo.ts';
 import type { Priority } from '../../data/types.ts';
-import { CANCELLABLE, PRIORITIES, hoverInfoOf, restorable, reviewBadges, startable } from './model.ts';
+import {
+  CANCELLABLE,
+  PRIORITIES,
+  cardTone,
+  hoverInfoOf,
+  restorable,
+  reviewBadges,
+  startable,
+} from './model.ts';
 import type { BacklogApi, TaskView } from './model.ts';
 import { formatClock, formatRelative } from '../../lib/schedule.ts';
 import { compactCount, exactCount } from './format.ts';
@@ -12,6 +21,7 @@ import type { DndApi } from './dndApi.ts';
 
 interface Props {
   view: TaskView;
+  columnTitle?: string;
   laneKey: string;
   now: number;
   selected: boolean;
@@ -26,6 +36,7 @@ interface Props {
 
 export function TaskCard({
   view,
+  columnTitle,
   laneKey,
   now,
   selected,
@@ -50,10 +61,12 @@ export function TaskCard({
     ? `Input ${exactCount(run.inputTokens ?? 0)}, output ${exactCount(run.outputTokens ?? 0)}, cached ${exactCount(run.cachedTokens ?? 0)} (cached not added)`
     : 'Unknown';
   const errorText = task.error ?? run?.error ?? null;
+  const tone = cardTone(task, now);
+  const showStatus = columnTitle !== statusInfo('task', task.status).label;
 
   return (
     <article
-      className={`card${selected ? ' is-selected' : ''}${dnd.draggingId === task.id ? ' is-dragging' : ''}${
+      className={`card${tone === 'none' ? '' : ` card-${tone}`}${selected ? ' is-selected' : ''}${dnd.draggingId === task.id ? ' is-dragging' : ''}${
         hint ? (hint.ok ? ' drop-ok' : ' drop-bad') : ''
       }`}
       data-task-id={task.id}
@@ -115,13 +128,9 @@ export function TaskCard({
         <Badge tone={task.priority === 0 ? 'crit' : 'neutral'} title={`Priority P${String(task.priority)}`}>
           {`P${String(task.priority)}`}
         </Badge>
+        {tone === 'new' ? <Badge tone="new">New</Badge> : null}
         {pending ? <Badge tone="accent">Pending</Badge> : null}
         {task.kind === 'goal' ? <Badge tone="accent">Goal</Badge> : null}
-        {errorText ? (
-          <span className="card-error" role="img" aria-label={`Error: ${errorText}`} title={errorText}>
-            ⚠
-          </span>
-        ) : null}
         <span className="card-spacer" />
         <div className="card-menu">
           <button
@@ -260,15 +269,23 @@ export function TaskCard({
       <h3 className="card-title" title={task.title}>
         {task.title}
       </h3>
-      <div className="card-status">
-        <StatusDot kind="task" value={task.status} />
-        {noEligible ? (
-          <span title={task.noEligibleReason ?? undefined}>
-            <StatusDot kind="indicator" value="no_eligible_agent" />
-          </span>
-        ) : null}
-      </div>
-      {noEligible ? <div className="card-reason dim">{task.noEligibleReason}</div> : null}
+      {showStatus || noEligible ? (
+        <div className="card-status">
+          {showStatus ? <StatusDot kind="task" value={task.status} /> : null}
+          {noEligible ? (
+            <span title={task.noEligibleReason ?? undefined}>
+              <StatusDot kind="indicator" value="no_eligible_agent" />
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      {noEligible ? <div className="card-note card-note-warn">{task.noEligibleReason}</div> : null}
+      {errorText ? (
+        <div className="card-note card-note-crit" role="note" title={errorText}>
+          <span className="sr-only">Error: </span>
+          {errorText}
+        </div>
+      ) : null}
       {task.branch ? (
         <div className="card-reason">
           <span className="mono dim" title="Branch">
@@ -318,7 +335,7 @@ export function TaskCard({
         </div>
       ) : null}
       {task.status === 'rate_limited' ? (
-        <div className="card-reason dim">
+        <div className="card-note card-note-warn">
           {task.resumeAt
             ? `Resumes at ${formatClock(task.resumeAt)} (attempt ${String(task.attempt)}/${String(task.maxAttempts)})`
             : run?.rateLimitResetsAt
@@ -326,15 +343,6 @@ export function TaskCard({
               : 'Reset time unknown'}
         </div>
       ) : null}
-      <div className="card-assignee">
-        {view.agent ? (
-          <AgentHoverCard agent={hoverInfoOf(view.agent, view.agentAccount)} onOpen={onOpenAgent}>
-            <span>{view.assignee}</span>
-          </AgentHoverCard>
-        ) : (
-          <span>{view.assignee}</span>
-        )}
-      </div>
       {view.labels.length > 0 ? (
         <ul className="chips" aria-label="Labels">
           {view.labels.map((l) => (
@@ -344,11 +352,22 @@ export function TaskCard({
           ))}
         </ul>
       ) : null}
-      <div className="card-foot dim">
-        <span>{view.elapsed(now)}</span>
-        <span title={tip}>
-          {view.tokens === null ? 'Unknown tokens' : `${compactCount(view.tokens)} tokens`}
-        </span>
+      <div className="card-foot">
+        <div className="card-assignee">
+          {view.agent ? (
+            <AgentHoverCard agent={hoverInfoOf(view.agent, view.agentAccount)} onOpen={onOpenAgent}>
+              <span>{view.assignee}</span>
+            </AgentHoverCard>
+          ) : (
+            <span>{view.assignee}</span>
+          )}
+        </div>
+        {run || view.tokens !== null ? (
+          <div className="card-meta dim">
+            {run ? <span>{view.elapsed(now)}</span> : null}
+            {view.tokens !== null ? <span title={tip}>{`${compactCount(view.tokens)} tokens`}</span> : null}
+          </div>
+        ) : null}
       </div>
     </article>
   );

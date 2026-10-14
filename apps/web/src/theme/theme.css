@@ -1,66 +1,106 @@
 :root,
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #14161a;
-  --surface: #1b1e24;
-  --surface-2: #22262e;
-  --surface-3: #2a2f38;
-  --border: #2f3541;
-  --text: #e6e9ef;
-  --text-dim: #8b93a3;
-  --muted: #6b7384;
-  --accent: #4f8cff;
-  --accent-fg: #ffffff;
-  --accent-soft: rgba(79, 140, 255, 0.16);
-  --ok: #3fb97c;
-  --warn: #e0a43a;
-  --crit: #ee5d62;
-  --ok-soft: rgba(63, 185, 124, 0.16);
-  --warn-soft: rgba(224, 164, 58, 0.16);
-  --crit-soft: rgba(238, 93, 98, 0.16);
-  --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  --av-1: #5b7cfa;
-  --av-2: #2fa58a;
-  --av-3: #c4739a;
-  --av-4: #d28c3a;
-  --av-5: #8a68d6;
-  --av-6: #3a9bc4;
-  --av-7: #b5604f;
-  --av-8: #7b9a3c;
+  --bg: #070a0c;
+  --panel: #0a0f12;
+  --surface: #0e1317;
+  --surface-2: #141b21;
+  --surface-3: #1b2830;
+  --border: #1d272d;
+  --border-strong: #2a3840;
+  --text: #e9f1f0;
+  --text-dim: #a3b0b5;
+  --muted: #6b7d83;
+  --accent: #5eead4;
+  --accent-text: #7ff2de;
+  --accent-fg: #04201c;
+  --accent-soft: rgba(94, 234, 212, 0.14);
+  --accent-edge: rgba(94, 234, 212, 0.5);
+  --ok: #8fd6ac;
+  --warn: #f0be6c;
+  --crit: #ff8b8b;
+  --new: #b9a4ff;
+  --ok-soft: rgba(143, 214, 172, 0.14);
+  --warn-soft: rgba(240, 190, 108, 0.14);
+  --crit-soft: rgba(255, 139, 139, 0.14);
+  --new-soft: rgba(185, 164, 255, 0.16);
+  --ok-edge: rgba(143, 214, 172, 0.4);
+  --warn-edge: rgba(240, 190, 108, 0.65);
+  --crit-edge: rgba(255, 139, 139, 0.65);
+  --new-edge: rgba(185, 164, 255, 0.6);
+  --glow-accent: 0 0 0 1px rgba(94, 234, 212, 0.1), 0 10px 28px -14px rgba(94, 234, 212, 0.5);
+  --glow-warn: 0 0 0 1px rgba(240, 190, 108, 0.1), 0 10px 28px -14px rgba(240, 190, 108, 0.55);
+  --glow-crit: 0 0 0 1px rgba(255, 139, 139, 0.1), 0 10px 28px -14px rgba(255, 139, 139, 0.55);
+  --glow-new: 0 10px 28px -14px rgba(185, 164, 255, 0.5);
+  --page-glow: radial-gradient(ellipse 900px 460px at 75% 0, rgba(94, 234, 212, 0.08), transparent 70%);
+  --overlay: rgba(2, 5, 6, 0.65);
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg: #f4f5f7;
+  --bg: #f2f6f6;
+  --panel: #e9efef;
   --surface: #ffffff;
-  --surface-2: #f0f2f5;
-  --surface-3: #e6e9ee;
-  --border: #d6dae1;
-  --text: #1c2027;
-  --text-dim: #5d6574;
-  --muted: #7a8294;
-  --accent: #2f6fe4;
+  --surface-2: #eef3f3;
+  --surface-3: #e0e8e8;
+  --border: #d2dcdc;
+  --border-strong: #b7c6c6;
+  --text: #13201f;
+  --text-dim: #455755;
+  --muted: #7b8c8a;
+  --accent: #0f766e;
+  --accent-text: #0f766e;
   --accent-fg: #ffffff;
-  --accent-soft: rgba(47, 111, 228, 0.12);
-  --ok: #1f8f5a;
-  --warn: #b57a12;
-  --crit: #cf3f45;
-  --ok-soft: rgba(31, 143, 90, 0.12);
-  --warn-soft: rgba(181, 122, 18, 0.14);
-  --crit-soft: rgba(207, 63, 69, 0.12);
-  --shadow: 0 8px 24px rgba(20, 30, 50, 0.18);
+  --accent-soft: rgba(15, 118, 110, 0.1);
+  --accent-edge: rgba(15, 118, 110, 0.55);
+  --ok: #166a44;
+  --warn: #7d5200;
+  --crit: #a8222b;
+  --new: #5b3fc4;
+  --ok-soft: rgba(22, 106, 68, 0.1);
+  --warn-soft: rgba(125, 82, 0, 0.12);
+  --crit-soft: rgba(168, 34, 43, 0.1);
+  --new-soft: rgba(91, 63, 196, 0.1);
+  --ok-edge: rgba(22, 106, 68, 0.4);
+  --warn-edge: rgba(125, 82, 0, 0.6);
+  --crit-edge: rgba(168, 34, 43, 0.6);
+  --new-edge: rgba(91, 63, 196, 0.55);
+  --glow-accent: 0 8px 22px -14px rgba(15, 118, 110, 0.45);
+  --glow-warn: 0 8px 22px -14px rgba(125, 82, 0, 0.45);
+  --glow-crit: 0 8px 22px -14px rgba(168, 34, 43, 0.45);
+  --glow-new: 0 8px 22px -14px rgba(91, 63, 196, 0.4);
+  --page-glow: radial-gradient(ellipse 900px 460px at 75% 0, rgba(15, 118, 110, 0.07), transparent 70%);
+  --overlay: rgba(19, 32, 31, 0.45);
+  --shadow: 0 12px 32px rgba(19, 32, 31, 0.16);
 }
 
 :root {
-  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font: 'Manrope Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  --radius: 6px;
-  --fs: 13px;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --fs-xs: 11px;
   --fs-sm: 12px;
+  --fs: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 20px;
+  --fs-2xl: 26px;
+  --av-1: #3f5bd1;
+  --av-2: #1f7a66;
+  --av-3: #a24f78;
+  --av-4: #9a5f14;
+  --av-5: #6a49b8;
+  --av-6: #1f7399;
+  --av-7: #98473a;
+  --av-8: #566f1f;
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 html,
@@ -71,10 +111,19 @@ body,
 }
 
 body {
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--page-glow);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   color: var(--text);
-  font: var(--fs) / 1.4 var(--font);
+  font: var(--fs) / 1.45 var(--font);
   overflow: auto;
+  accent-color: var(--accent);
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
 }
 
 button,
@@ -90,7 +139,7 @@ button {
 
 :focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 .mono {
@@ -114,15 +163,20 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
-  padding: 0 10px;
+  height: 32px;
+  padding: 0 12px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  font-weight: 500;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
 }
 
 .btn:hover:not(:disabled) {
   background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 .btn:disabled {
@@ -134,22 +188,36 @@ button {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-fg);
+  font-weight: 700;
 }
 
 .btn-primary:hover:not(:disabled) {
   background: var(--accent);
-  filter: brightness(1.1);
+  border-color: var(--accent);
+  filter: brightness(1.08);
 }
 
 .btn-danger {
+  background: transparent;
   color: var(--crit);
+  border-color: var(--crit-edge);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--crit-soft);
   border-color: var(--crit);
 }
 
 .btn-icon {
-  width: 28px;
+  width: 32px;
   padding: 0;
   justify-content: center;
   background: transparent;
   border-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: none;
+  }
 }

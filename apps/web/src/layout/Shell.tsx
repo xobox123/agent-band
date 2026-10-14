@@ -8,7 +8,6 @@ import type { RouteId } from '../router/routes.ts';
 import { useTheme } from '../theme/useTheme.ts';
 import { Header } from './Header.tsx';
 import { PauseBanner } from './PauseBanner.tsx';
-import { IconRail } from './IconRail.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { WorkspaceContext } from './WorkspaceContext.tsx';
 import type { DockSpec } from './WorkspaceContext.tsx';
@@ -80,7 +79,6 @@ export function Shell({ children }: { children: (route: RouteId) => ReactNode })
           This workspace requires a window at least 1024 px wide.
         </p>
         <div className="app-grid">
-          <IconRail route={route} onNavigate={navigate} />
           <Sidebar route={route} theme={theme} onToggleTheme={toggle} />
           <div className="workspace" ref={areaRef}>
             <Header title={routeLabel(route)} count={count} connection={connection} />

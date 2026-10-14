@@ -54,6 +54,33 @@ export const startable = (t: Task): boolean => t.status === 'draft' && !t.propos
 
 export const PRIORITIES: Priority[] = [0, 1, 2, 3];
 
+export type CardTone = 'new' | 'running' | 'warn' | 'crit' | 'ok' | 'none';
+
+/** Tasks created less than this long ago, and not started, count as new. */
+export const FRESH_MS = 15 * 60 * 1000;
+
+const NOT_STARTED: Task['status'][] = ['draft', 'scheduled', 'queued'];
+
+/** State of a card for its frame colour. Selection and drop hints override it in CSS. */
+export function cardTone(task: Task, now: number): CardTone {
+  switch (task.status) {
+    case 'running':
+    case 'claimed':
+      return 'running';
+    case 'rate_limited':
+      return 'warn';
+    case 'failed':
+    case 'denied':
+      return 'crit';
+    case 'done':
+      return 'ok';
+    default: {
+      const age = now - Date.parse(task.createdAt);
+      return NOT_STARTED.includes(task.status) && age >= 0 && age < FRESH_MS ? 'new' : 'none';
+    }
+  }
+}
+
 export interface ReviewBadge {
   tone: 'ok' | 'warn' | 'crit' | 'accent';
   text: string;

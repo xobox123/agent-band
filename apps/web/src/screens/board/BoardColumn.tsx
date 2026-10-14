@@ -51,6 +51,7 @@ export function BoardColumn({
     <TaskCard
       key={view.task.id}
       view={view}
+      columnTitle={column.title}
       laneKey={laneKey}
       now={now}
       selected={selectedId === view.task.id}

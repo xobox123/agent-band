@@ -75,7 +75,7 @@ describe('Board', () => {
     expect(within(noAgent).getByText('Label: gpu')).toBeInTheDocument();
     expect(within(card('AB-28')).getByRole('img', { name: 'Ada' })).toBeInTheDocument();
     expect(within(card('AB-30')).getByText('Claimed')).toBeInTheDocument();
-    expect(within(card('AB-31')).getByText('Not started')).toBeInTheDocument();
+    expect(within(card('AB-31')).queryByText('Not started')).not.toBeInTheDocument();
   });
 
   it('filters by text', async () => {

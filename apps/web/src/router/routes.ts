@@ -24,8 +24,6 @@ export interface NavItem {
 export interface NavGroup {
   id: 'workspace' | 'execution' | 'governance';
   label: string;
-  /** Glyph for the icon rail. */
-  icon: string;
   items: NavItem[];
 }
 
@@ -33,7 +31,6 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: 'workspace',
     label: 'Workspace',
-    icon: '▦',
     items: [
       { id: 'board', label: 'Board', shortcut: '1' },
       { id: 'dashboard', label: 'Dashboard', shortcut: '2' },
@@ -42,7 +39,6 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: 'execution',
     label: 'Execution',
-    icon: '▶',
     items: [
       { id: 'agents', label: 'Agents', shortcut: '3' },
       { id: 'agent-groups', label: 'Agent groups' },
@@ -55,7 +51,6 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: 'governance',
     label: 'Governance',
-    icon: '⛨',
     items: [
       { id: 'skills', label: 'Skills' },
       { id: 'policies', label: 'Policies' },

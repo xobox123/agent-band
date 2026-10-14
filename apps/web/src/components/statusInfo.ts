@@ -3,16 +3,16 @@ export type StatusKind = 'task' | 'run' | 'agent' | 'user' | 'indicator';
 export interface StatusInfo {
   label: string;
   /** CSS custom property name of the dot colour. */
-  token: '--ok' | '--accent' | '--warn' | '--crit' | '--muted' | '--text-dim';
+  token: '--ok' | '--accent' | '--warn' | '--crit' | '--new' | '--muted' | '--text-dim';
 }
 
 const TABLE: Record<StatusKind, Record<string, StatusInfo>> = {
   task: {
     draft: { label: 'Backlog', token: '--text-dim' },
-    scheduled: { label: 'Scheduled', token: '--accent' },
+    scheduled: { label: 'Scheduled', token: '--new' },
     queued: { label: 'Queued', token: '--muted' },
     claimed: { label: 'Claimed', token: '--warn' },
-    running: { label: 'Running', token: '--ok' },
+    running: { label: 'Running', token: '--accent' },
     done: { label: 'Done', token: '--ok' },
     failed: { label: 'Failed', token: '--crit' },
     rate_limited: { label: 'Rate limited', token: '--warn' },
@@ -20,14 +20,14 @@ const TABLE: Record<StatusKind, Record<string, StatusInfo>> = {
     denied: { label: 'Denied', token: '--crit' },
   },
   run: {
-    running: { label: 'Running', token: '--ok' },
+    running: { label: 'Running', token: '--accent' },
     done: { label: 'Done', token: '--ok' },
     failed: { label: 'Failed', token: '--crit' },
     rate_limited: { label: 'Rate limited', token: '--warn' },
     cancelled: { label: 'Cancelled', token: '--text-dim' },
   },
   agent: {
-    running: { label: 'Running', token: '--ok' },
+    running: { label: 'Running', token: '--accent' },
     idle: { label: 'Idle', token: '--muted' },
     blocked: { label: 'Blocked', token: '--warn' },
     enabled: { label: 'Enabled', token: '--ok' },
