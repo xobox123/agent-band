@@ -91,6 +91,7 @@ export class FakeOrgSettings implements OrgSettings {
       timezone: 'UTC',
       paused: false,
       workspaceRoot: join(tmpdir(), 'agent-band-test-workspaces'),
+      workerSlots: null,
       ...overrides,
     };
   }

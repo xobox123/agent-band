@@ -1,3 +1,4 @@
+import { queueBlockers } from './BoardColumn.tsx';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DataSourceProvider } from '../../data/context.tsx';
@@ -250,5 +251,28 @@ describe('label dedupe and column strip', () => {
     const strip = screen.getByRole('navigation', { name: 'Board columns' });
     fireEvent.click(within(strip).getByRole('button', { name: /^Cancelled/ }));
     expect(within(column('Cancelled')).getByRole('article', { name: /^AB-20 / })).toBeInTheDocument();
+  });
+});
+
+describe('queue blocker summary', () => {
+  it('groups slot waits and names blocked accounts with reserve time', () => {
+    const views = [
+      { task: { noEligibleReason: 'waiting for worker slots' } },
+      { task: { noEligibleReason: 'waiting for worker slots' } },
+      {
+        task: { noEligibleReason: 'account acc-1: reserve threshold reached until 2026-10-12T14:15:00.000Z' },
+        agentAccount: { id: 'acc-1', name: 'Claude Main' },
+      },
+      {
+        task: { noEligibleReason: 'account acc-1: reserve threshold reached until 2026-10-12T14:15:00.000Z' },
+        agentAccount: { id: 'acc-1', name: 'Claude Main' },
+      },
+    ] as unknown as Parameters<typeof queueBlockers>[0];
+    const rows = queueBlockers(views);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual({ label: 'waiting for slots', count: 2 });
+    expect(rows[1]?.count).toBe(2);
+    expect(rows[1]?.label).toContain('account Claude Main: reserve threshold reached until');
+    expect(rows[1]?.label).not.toContain('2026-10-12T14:15:00.000Z');
   });
 });

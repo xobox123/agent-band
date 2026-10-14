@@ -23,7 +23,7 @@ export async function startWorker(
     db: composition.database.db,
     dispatcher: composition.dispatcher,
     workerId: config.workerId ?? `${hostname()}-${process.pid}`,
-    slots: config.workerSlots,
+    ...(config.workerSlots !== undefined ? { slots: config.workerSlots } : {}),
     apiPort: config.port,
     events: composition.events,
     audit: composition.ports.audit,

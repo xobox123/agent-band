@@ -19,6 +19,8 @@ export interface OrganizationDto {
   policyId: string | null;
   paused: boolean;
   workspaceRoot: string;
+  /** Null means derive capacity from account limits. */
+  workerSlots: number | null;
   createdAt: string;
 }
 
@@ -39,6 +41,7 @@ const updateSchema = z
       .regex(/^[A-Z][A-Z0-9]{1,9}$/)
       .optional(),
     timezone: z.string().refine(isTimezone, 'unknown IANA timezone').optional(),
+    workerSlots: z.number().int().min(1).max(256).nullable().optional(),
     workspaceRoot: z
       .string()
       .startsWith('/')
@@ -60,6 +63,7 @@ function toDto(r: typeof organizations.$inferSelect): OrganizationDto {
     policyId: r.policyId,
     paused: r.paused,
     workspaceRoot: r.workspaceRoot ?? '',
+    workerSlots: r.workerSlots,
     createdAt: r.createdAt.toISOString(),
   };
 }
@@ -79,6 +83,7 @@ export const orgSettings: OrgSettings = {
       timezone: o.timezone,
       paused: o.paused,
       workspaceRoot: o.workspaceRoot,
+      workerSlots: o.workerSlots,
     };
   },
 };

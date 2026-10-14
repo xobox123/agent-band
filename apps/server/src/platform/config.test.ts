@@ -7,7 +7,7 @@ describe('loadConfig', () => {
     expect(c.port).toBe(4870);
     expect(c.role).toBe('all');
     expect(c.logLevel).toBe('info');
-    expect(c.workerSlots).toBe(4);
+    expect(c.workerSlots).toBeUndefined();
     expect(c.home.endsWith('.agent-band')).toBe(true);
     expect(c.databaseUrl).toBeUndefined();
   });

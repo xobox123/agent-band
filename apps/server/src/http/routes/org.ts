@@ -19,10 +19,19 @@ import {
   TeamParams,
   UpdateOrganizationBody,
   UserList,
+  WorkerCapacityDto,
 } from '@agent-band/contracts';
 import type { Composition } from '../../composition.ts';
+import { resolveWorkerSlots } from '../../roles/worker-capacity.ts';
 import { requirePolicy } from '../guards.ts';
 import { getOrganization, setOrgPaused, setOrgPolicy, updateOrganization } from '../../modules/org/index.ts';
+
+/** Environment overrides apply only if the organization has no saved slot limit. */
+function workerSlotOverride(): number | undefined {
+  const raw = process.env['AGENT_BAND_WORKER_SLOTS'];
+  const num = raw === undefined ? undefined : Number(raw);
+  return num !== undefined && Number.isInteger(num) && num >= 1 && num <= 256 ? num : undefined;
+}
 
 export function orgRoutes(c: Composition): FastifyPluginCallbackZod {
   const db = c.database.db;
@@ -34,6 +43,39 @@ export function orgRoutes(c: Composition): FastifyPluginCallbackZod {
         const actor = await c.resolveActor(req);
         await c.ports.authorizer.authorize(db, actor, 'read', {});
         return getOrganization(db, actor.orgId);
+      },
+    );
+
+    app.get(
+      '/system/worker-capacity',
+      {
+        schema: {
+          tags: ['org'],
+          summary: 'Worker slots, running usage, and per-account concurrency',
+          response: { 200: WorkerCapacityDto },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        const [org, accounts, running] = await Promise.all([
+          getOrganization(db, actor.orgId),
+          c.accounts.listAccounts(db, actor),
+          c.runs.listRuns(db, actor, { status: 'running' }),
+        ]);
+        return {
+          slots: resolveWorkerSlots(
+            accounts.filter((account) => !account.paused).map((account) => account.limits.maxConcurrentRuns),
+            org.workerSlots,
+            workerSlotOverride(),
+          ),
+          activeRuns: running.length,
+          accounts: accounts.map((account) => ({
+            id: account.id,
+            name: account.name,
+            inUse: running.filter((run) => run.accountId === account.id).length,
+            maxConcurrentRuns: account.limits.maxConcurrentRuns,
+          })),
+        };
       },
     );
 

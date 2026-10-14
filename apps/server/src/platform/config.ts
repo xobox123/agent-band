@@ -6,7 +6,7 @@ const EnvSchema = z.object({
   AGENT_BAND_PORT: z.coerce.number().int().min(1).max(65535).default(4870),
   AGENT_BAND_ROLE: z.enum(['api', 'worker', 'all']).default('all'),
   AGENT_BAND_HOME: z.string().min(1).default(join(homedir(), '.agent-band')),
-  AGENT_BAND_WORKER_SLOTS: z.coerce.number().int().min(1).max(256).default(4),
+  AGENT_BAND_WORKER_SLOTS: z.coerce.number().int().min(1).max(256).optional(),
   AGENT_BAND_WORKER_ID: z.string().min(1).optional(),
   AGENT_BAND_SCHEDULER_INTERVAL_MS: z.coerce.number().int().min(100).max(3_600_000).default(15_000),
   AGENT_BAND_WORKSPACE_ROOT: z.string().startsWith('/').optional(),
@@ -23,7 +23,8 @@ export interface Config {
   port: number;
   role: 'api' | 'worker' | 'all';
   home: string;
-  workerSlots: number;
+  /** Optional legacy environment override, used unless organization settings specify a limit. */
+  workerSlots?: number;
   workerId?: string;
   workspaceRoot?: string;
   schedulerIntervalMs: number;
@@ -47,7 +48,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port: e.AGENT_BAND_PORT,
     role: e.AGENT_BAND_ROLE,
     home: e.AGENT_BAND_HOME,
-    workerSlots: e.AGENT_BAND_WORKER_SLOTS,
+    ...(e.AGENT_BAND_WORKER_SLOTS !== undefined && { workerSlots: e.AGENT_BAND_WORKER_SLOTS }),
     workerId: e.AGENT_BAND_WORKER_ID,
     workspaceRoot: e.AGENT_BAND_WORKSPACE_ROOT,
     schedulerIntervalMs: e.AGENT_BAND_SCHEDULER_INTERVAL_MS,

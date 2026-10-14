@@ -7,6 +7,27 @@ import type { BacklogApi, ColumnDef, TaskView } from './model.ts';
 
 const PAGE = 50;
 
+/** Group the current queue blockers so the operator knows why tasks do not start. */
+export function queueBlockers(views: TaskView[]): { label: string; count: number }[] {
+  const groups = new Map<string, number>();
+  for (const view of views) {
+    const reason = view.task.noEligibleReason;
+    if (!reason) continue;
+    let label = reason === 'waiting for worker slots' ? 'waiting for slots' : reason;
+    if (view.agentAccount && label.startsWith(`account ${view.agentAccount.id}`)) {
+      label = label.replace(`account ${view.agentAccount.id}`, `account ${view.agentAccount.name}`);
+    }
+    label = label.replace(/until (\d{4}-\d\d-\d\dT[^ ]+)/, (_whole, stamp: string) => {
+      const date = new Date(stamp);
+      return Number.isFinite(date.getTime())
+        ? `until ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+        : `until ${stamp}`;
+    });
+    groups.set(label, (groups.get(label) ?? 0) + 1);
+  }
+  return [...groups].map(([label, count]) => ({ label, count }));
+}
+
 interface Props {
   column: ColumnDef;
   views: TaskView[];
@@ -46,6 +67,7 @@ export function BoardColumn({
   const colTarget = { kind: 'column', column: column.id, laneKey } as const;
   const colKey = targetKey(colTarget);
   const colHint = dnd.hint?.key === colKey ? dnd.hint : null;
+  const blockers = column.id === 'queued' ? queueBlockers(views) : [];
 
   const card = (view: TaskView) => (
     <TaskCard
@@ -127,6 +149,11 @@ export function BoardColumn({
           </button>
         ) : null}
       </header>
+      {blockers.length > 0 ? (
+        <p className="dim" role="status" aria-label="Queue blockers">
+          {blockers.map(({ label, count }) => `${count} ${label}`).join('; ')}
+        </p>
+      ) : null}
       {colHint && !colHint.ok && colHint.reason ? (
         <div className="column-hint" role="status">
           {colHint.reason}

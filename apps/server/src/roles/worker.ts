@@ -45,6 +45,7 @@ import {
 import { treeFingerprint } from './tree-fingerprint.ts';
 import { FRESH_SNAPSHOT_MS } from '../modules/usage/index.ts';
 import { LEADER_PROMPT, PLAN_APPROVAL_PROMPT } from './leader-prompt.ts';
+import { resolveWorkerSlots } from './worker-capacity.ts';
 
 type Availability = Awaited<ReturnType<ReturnType<typeof createUsage>['accountAvailability']>>;
 
@@ -64,12 +65,18 @@ export function preApprovedFor(c: { mode: RunSpec['mode']; policy: EffectivePoli
   return c.mode === 'read-only' ? rules.filter((r) => r === 'WebSearch' || r === 'WebFetch') : rules;
 }
 
+interface AccountCapacity {
+  limits: { maxConcurrentRuns: number };
+  paused: boolean;
+}
+
 export interface WorkerDeps {
   db: Db;
   /** System actor (system:dispatcher) of the organisation this worker serves. */
   dispatcher: ActorContext;
   workerId: string;
-  slots: number;
+  /** Optional environment override. The organization setting takes precedence. */
+  slots?: number;
   apiPort: number;
   events: EventStream;
   audit: AuditLog;
@@ -77,7 +84,10 @@ export interface WorkerDeps {
   runs: ReturnType<typeof createRuns>;
   usage: ReturnType<typeof createUsage>;
   agents: Pick<ReturnType<typeof createAgentUseCases>, 'getAgent' | 'listAgents'>;
-  accounts: { getAccountForRun(db: Db, orgId: string, id: string): Promise<AccountForRun> };
+  accounts: {
+    getAccountForRun(db: Db, orgId: string, id: string): Promise<AccountForRun>;
+    listAccounts(db: Db, actor: ActorContext): Promise<AccountCapacity[]>;
+  };
   orgSettings: OrgSettings;
   /** Git worktrees, checks and review data for project tasks; without it project tasks run in place. */
   projectRuns?: ProjectRuns;
@@ -132,8 +142,10 @@ function describeUnavailable(a: Extract<Availability, { ok: false }>, accountId:
       return `account ${accountId} is rate limited${a.resetsAt ? ` until ${a.resetsAt.toISOString()}` : ''}`;
     case 'concurrency':
       return `account ${accountId} is at its concurrent run limit`;
-    case 'reserve':
-      return `account ${accountId}: ${a.detail ?? 'reserve threshold reached'}`;
+    case 'reserve': {
+      const until = a.resetsAt ? ` until ${a.resetsAt.toISOString()}` : '';
+      return `account ${accountId}: reserve threshold reached${until}`;
+    }
     case 'daily_cost_budget':
       return `account ${accountId} exhausted its daily cost budget`;
     case 'daily_budget':
@@ -797,9 +809,27 @@ export function createWorker(deps: WorkerDeps): Worker {
     }
   }
 
+  async function effectiveSlots(): Promise<number> {
+    const settings = await deps.orgSettings.get(deps.db, orgId);
+    if (settings.workerSlots !== null) return settings.workerSlots;
+    if (deps.slots !== undefined) return deps.slots;
+    const accounts = await deps.accounts.listAccounts(deps.db, d);
+    const limits = accounts
+      .filter((account) => !account.paused)
+      .map((account) => account.limits.maxConcurrentRuns);
+    return resolveWorkerSlots(limits, null);
+  }
+
   async function loop(): Promise<void> {
     while (!stopping) {
-      if (active.size >= deps.slots) {
+      try {
+        if (active.size >= (await effectiveSlots())) {
+          await deps.db.transaction((tx) => deps.tasks.markWaitingForSlots(tx, d));
+          await waitSignal(pollMs);
+          continue;
+        }
+      } catch (err) {
+        log('error', 'worker capacity check failed', err);
         await waitSignal(pollMs);
         continue;
       }

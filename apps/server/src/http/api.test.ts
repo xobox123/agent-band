@@ -55,6 +55,36 @@ describe('org', () => {
     expect((await call('GET', `/principals/${me.id}`)).status).toBe(200);
   });
 
+  it('reports worker capacity and persists the configured slot limit', async () => {
+    const empty = await call('GET', '/system/worker-capacity');
+    expect(empty.status).toBe(200);
+    expect(empty.json()).toMatchObject({ slots: 1, activeRuns: 0, accounts: [] });
+
+    const account = await call('POST', '/accounts', {
+      name: 'capacity',
+      provider: 'claude',
+      type: 'cli',
+      limits: { maxConcurrentRuns: 3 },
+    });
+    expect(account.status).toBe(201);
+    const derived = (await call('GET', '/system/worker-capacity')).json();
+    expect(derived).toMatchObject({
+      slots: 3,
+      activeRuns: 0,
+      accounts: [{ id: account.json().id, name: 'capacity', inUse: 0, maxConcurrentRuns: 3 }],
+    });
+    await call('PUT', `/accounts/${account.json().id}/pause`, { paused: true });
+    expect((await call('GET', '/system/worker-capacity')).json().slots).toBe(1);
+    await call('PUT', `/accounts/${account.json().id}/pause`, { paused: false });
+    const change = await call('PATCH', '/organization', { workerSlots: 2 });
+    expect(change.status).toBe(200);
+    expect(change.json().workerSlots).toBe(2);
+    expect((await call('GET', '/system/worker-capacity')).json().slots).toBe(2);
+    expect((await call('PATCH', '/organization', { workerSlots: 300 })).status).toBe(400);
+    expect((await call('PATCH', '/organization', { workerSlots: null })).json().workerSlots).toBeNull();
+    expect((await call('GET', '/system/worker-capacity')).json().slots).toBe(3);
+  });
+
   it('manages teams, members and role bindings', async () => {
     const team = await call('POST', '/teams', { name: 'Platform' });
     expect(team.status).toBe(201);
@@ -650,6 +680,7 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/skill-assignments',
   'POST /api/v1/skill-assignments',
   'DELETE /api/v1/skill-assignments/{id}',
+  'GET /api/v1/system/worker-capacity',
   'GET /api/v1/skills',
   'POST /api/v1/skills',
   'GET /api/v1/skills/{id}',
