@@ -20,3 +20,7 @@ When discussing product direction, roadmap, architecture changes or new tasks:
 5. Ask for a decision before adding new backlog items or executing consultation-derived proposals, unless the owner specifically requests those actions.
 
 For future discussions, create another dated, numbered consultation note and add it to this index. Preserve previous notes; follow-up decisions may reference them rather than rewriting their history.
+
+## Competitive research
+
+- [004: Mission Control vs Agent Band (2026-10-12)](2026-10-12-gpt-consultation-004-mission-control-comparison.md): verified implementation differences, potential differentiation, open-source distribution gaps and a proposed fair benchmark. Research only, not an approved roadmap.
