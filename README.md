@@ -28,23 +28,23 @@ Stage 2 (scheduler):
 
 Board:
 
-![Board](docs/images/board.png)
+![Board](docs/images/v2/board.png)
 
 Dashboard:
 
-![Dashboard](docs/images/dashboard.png)
+![Dashboard](docs/images/v2/dashboard.png)
 
 Agents:
 
-![Agents](docs/images/agents.png)
+![Agents](docs/images/v2/agents.png)
 
 Schedules:
 
-![Schedules](docs/images/schedules.png)
+![Schedules](docs/images/v2/schedules.png)
 
 Audit log:
 
-![Audit log](docs/images/audit.png)
+![Audit log](docs/images/v2/audit.png)
 
 ## Requirements
 
