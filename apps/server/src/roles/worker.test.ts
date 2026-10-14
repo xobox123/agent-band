@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import type { RunSpec } from '@agent-band/contracts';
 import { openPolicy } from '../ports/testing.ts';
+import { publish } from '../platform/outbox.ts';
 import { runs as runsTable } from '../modules/runs/infra/schema.ts';
 import { FakeAdapter } from '../runner/index.ts';
 import { parseAgyLine } from '../runner/parsers.ts';
@@ -615,10 +616,19 @@ describe('worker and goals', () => {
 
 describe('worker eligibility', () => {
   it('does not churn claims or audit rows for a task with no eligible agent, and picks it up once one exists', async () => {
+    // Drain setup notifications before the worker subscribes. Otherwise a late agent/account
+    // event may clear eligibility after its first check and cause a second task.ineligible audit.
+    await kit.events.start();
+    let setupDelivered = false;
+    const off = kit.events.subscribe((event) => {
+      if (event.type === 'test.worker_eligibility_setup_complete') setupDelivered = true;
+    });
     const acc = await kit.account('a');
-    // Created before the worker starts so the agent set does not change while the ghost task is judged.
     const other = await kit.agent('other', acc.id, { labels: ['other'] });
     const task = await kit.task({ target: { label: 'ghost' } });
+    await kit.db.transaction((tx) => publish(tx, 'test.worker_eligibility_setup_complete', {}));
+    await waitFor(() => Promise.resolve(setupDelivered));
+    off();
     await run(kit, { pollIntervalMs: 20, retryDelayMs: 1000 });
     await waitFor(async () => (await kit.taskStatus(task.id))?.eligibility?.reason);
     // A later task that runs proves the worker went through further poll cycles.
