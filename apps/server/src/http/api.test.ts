@@ -668,6 +668,7 @@ const EXPECTED_ROUTES = [
   'POST /api/v1/tasks/{id}/start',
   'POST /api/v1/tasks/{id}/cancel',
   'POST /api/v1/tasks/{id}/reorder',
+  'POST /api/v1/tasks/{id}/retarget',
   'GET /api/v1/tasks/{id}/tree',
   'GET /api/v1/tasks/{id}/diff',
   'POST /api/v1/tasks/{id}/review/approve',

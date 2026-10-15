@@ -18,6 +18,7 @@ import { AgentDetails } from '../agents/AgentDetails.tsx';
 import { RunLog } from '../runs/RunLog.tsx';
 import { NewTaskForm } from './NewTaskForm.tsx';
 import { TaskDetails } from './TaskDetails.tsx';
+import { ReassignDialog } from './ReassignDialog.tsx';
 import { evaluateDrop } from './dnd.ts';
 import type { DropTarget } from './dnd.ts';
 import type { DndApi, DndHint } from './dndApi.ts';
@@ -55,6 +56,7 @@ export function BoardScreen() {
   const [startIds, setStartIds] = useState<string[] | null>(null);
   const [approveId, setApproveId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
+  const [reassignId, setReassignId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [addToGoal, setAddToGoal] = useState<string | null>(null);
   const [planBusy, setPlanBusy] = useState(false);
@@ -163,6 +165,7 @@ export function BoardScreen() {
       edit: (id) => {
         setEditId(id);
       },
+      reassign: setReassignId,
       remove: (id) => {
         setDeleteId(id);
       },
@@ -260,6 +263,7 @@ export function BoardScreen() {
     };
   };
   const editView = editId ? known.current.get(editId) : undefined;
+  const reassignView = reassignId ? known.current.get(reassignId) : undefined;
   const deleteView = deleteId ? known.current.get(deleteId) : undefined;
 
   // Drag and drop
@@ -542,6 +546,22 @@ export function BoardScreen() {
           onOpenLogs={openLogs}
           backlog={backlog}
           plan={planFor(selectedView)}
+        />
+      ) : null}
+      {reassignView ? (
+        <ReassignDialog
+          key={reassignView.task.id}
+          task={reassignView.task}
+          agents={snapshot?.agents ?? []}
+          groups={snapshot?.groups ?? []}
+          onCancel={() => {
+            setReassignId(null);
+          }}
+          onSave={async (target) => {
+            await source.retargetTask(reassignView.task.id, target);
+            setReassignId(null);
+            reload();
+          }}
         />
       ) : null}
       {creating ? (

@@ -19,6 +19,7 @@ export interface BoardDataSource {
    */
   reorder(taskId: string, beforeId: string | null): Promise<void>;
   setPriority(taskId: string, priority: Priority): Promise<void>;
+  retargetTask(taskId: string, target: NewTask['target']): Promise<void>;
   cancel(taskId: string): Promise<void>;
   createTask(task: NewTask): Promise<void>;
   /** Moves backlog tasks to the queue, all or none. */

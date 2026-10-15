@@ -93,6 +93,9 @@ export function createLiveDataSource(api: Api, events: EventsClient, throttleMs 
     async setPriority(taskId, priority) {
       await api.tasks.setPriority(taskId, priority);
     },
+    async retargetTask(taskId, target) {
+      await api.tasks.retarget(taskId, { target: toTargetDto(target) });
+    },
     async cancel(taskId) {
       await api.tasks.cancel(taskId);
     },

@@ -21,6 +21,7 @@ import type {
   ValidateRepoDto,
   CreateRoleBindingBody,
   CreateTaskBody,
+  RetargetTaskBody,
   AddPlanTaskBody,
   GoalListItem,
   GoalStateDto,
@@ -231,6 +232,7 @@ export function createApi(fetchImpl?: typeof fetch) {
       reorder: (id: string, beforeId: string | null) =>
         send<TaskDto>('POST', `/tasks/${id}/reorder`, beforeId ? { beforeId } : {}),
       setPriority: (id: string, priority: number) => send<TaskDto>('PATCH', `/tasks/${id}`, { priority }),
+      retarget: (id: string, body: RetargetTaskBody) => send<TaskDto>('POST', `/tasks/${id}/retarget`, body),
       cancel: (id: string) => send<TaskDto>('POST', `/tasks/${id}/cancel`),
       update: (id: string, body: UpdateTaskBody) => send<TaskDto>('PATCH', `/tasks/${id}`, body),
       remove: (id: string) => send<undefined>('DELETE', `/tasks/${id}`),

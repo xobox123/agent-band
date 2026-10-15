@@ -18,6 +18,7 @@ import {
   StartTasksBody,
   ToBacklogBody,
   ReorderTaskBody,
+  RetargetTaskBody,
   RunEventList,
   RunEventsQuery,
   RunDto,
@@ -230,6 +231,32 @@ export function taskRoutes(c: Composition): FastifyPluginCallbackZod {
         if (Object.keys(req.body).length !== 1 || req.body.priority === undefined)
           throw conflict('task_not_draft', 'Only draft tasks can be edited');
         return dto(actor, await c.tasks.setTaskPriority(db, actor, req.params.id, req.body.priority));
+      },
+    );
+
+    app.post(
+      '/tasks/:id/retarget',
+      {
+        schema: {
+          tags: ['tasks'],
+          summary: 'Reassign a queued, scheduled or failed task without deleting its worktree',
+          params: IdParams,
+          body: RetargetTaskBody,
+          response: { 200: TaskDto },
+        },
+      },
+      async (req) => {
+        const actor = await c.resolveActor(req);
+        const current = await c.tasks.getTask(db, actor, req.params.id);
+        if (current.kind === 'goal') {
+          if (!('agentId' in req.body.target))
+            throw invalid([{ path: 'target', message: 'a goal needs a leader agent' }]);
+          const leader = await c.agents.getAgent(db, actor, req.body.target.agentId);
+          if (leader.role !== 'leader')
+            throw invalid([{ path: 'target', message: 'a goal needs a leader agent' }]);
+        }
+        await assertWorkDirAllowed(c, actor, req.body.target, current.workDir);
+        return dto(actor, await c.tasks.retargetTask(db, actor, req.params.id, req.body.target));
       },
     );
 

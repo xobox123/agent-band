@@ -196,6 +196,18 @@ export function TaskCard({
                   </button>
                 </>
               ) : null}
+              {(['queued', 'scheduled', 'failed'] as const).some((status) => task.status === status) ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    backlog.reassign(task.id);
+                  }}
+                >
+                  Reassign
+                </button>
+              ) : null}
               {task.status === 'queued'
                 ? PRIORITIES.map((p) => (
                     <button

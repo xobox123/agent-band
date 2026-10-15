@@ -152,6 +152,17 @@ export function TaskDetails({
               </button>
             </>
           ) : null}
+          {(['queued', 'scheduled', 'failed'] as const).some((status) => task.status === status) ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                backlog.reassign(task.id);
+              }}
+            >
+              Reassign
+            </button>
+          ) : null}
           {restorable(task) ? (
             <button
               type="button"

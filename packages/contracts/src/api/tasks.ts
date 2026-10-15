@@ -161,6 +161,8 @@ export const TaskQuery = PagingQuery.extend({
 export type TaskQuery = z.infer<typeof TaskQuery>;
 
 export const ReorderTaskBody = z.object({ beforeId: Id.optional() }).strict();
+export const RetargetTaskBody = z.object({ target: TaskTarget }).strict();
+export type RetargetTaskBody = z.input<typeof RetargetTaskBody>;
 export const UpdateTaskBody = z
   .object({
     title: z.string().trim().min(1).max(200),
