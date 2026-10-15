@@ -95,6 +95,7 @@ export function spawnJsonLines(
     });
   });
   return {
+    ...(child.pid !== undefined ? { process: { pid: child.pid, command: spec.cmd } } : {}),
     events: queue.events,
     done,
     cancel() {

@@ -73,6 +73,8 @@ export const RunSpec = z.object({
 });
 export type RunSpec = z.infer<typeof RunSpec>;
 export interface RunHandle {
+  /** Direct CLI child. Detached process groups use the child PID as their group ID. */
+  process?: { pid: number; command: string };
   events: AsyncIterable<NormalizedEvent>;
   done: Promise<{ exitCode: number | null; error?: string }>;
   cancel(): void;

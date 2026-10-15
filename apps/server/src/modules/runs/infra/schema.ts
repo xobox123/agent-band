@@ -10,7 +10,12 @@ import {
   index,
 } from 'drizzle-orm/pg-core';
 import type { NormalizedEvent } from '@agent-band/contracts';
-import { runStatuses, type SkillSnapshot } from '../domain/run.ts';
+import {
+  runStatuses,
+  type SkillSnapshot,
+  type RunOwnerIdentity,
+  type RunProcessRecord,
+} from '../domain/run.ts';
 export const runs = pgTable(
   'runs',
   {
@@ -20,6 +25,9 @@ export const runs = pgTable(
     agentId: uuid('agent_id').notNull(),
     accountId: uuid('account_id').notNull(),
     workerId: text('worker_id').notNull(),
+    owner: jsonb('owner').$type<RunOwnerIdentity>(),
+    process: jsonb('process').$type<RunProcessRecord>(),
+    processReapedAt: timestamp('process_reaped_at', { withTimezone: true }),
     effectivePolicy: jsonb('effective_policy').$type<Record<string, unknown>>().notNull(),
     skills: jsonb('skills').$type<SkillSnapshot[]>().notNull(),
     status: text('status', { enum: runStatuses }).notNull().default('running'),

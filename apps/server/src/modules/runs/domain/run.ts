@@ -5,11 +5,27 @@ export interface SkillSnapshot {
   version: number;
   contentHash: string;
 }
+export interface RunOwnerIdentity {
+  host: string;
+  pid: number;
+  startedAt: string;
+  command: string;
+}
+export interface RunProcessIdentity {
+  pid: number;
+  pgid: number;
+  startedAt: string;
+  command: string;
+}
+export interface RunProcessRecord extends RunProcessIdentity {
+  host: string;
+}
 export interface StartRunInput {
   taskId: string;
   agentId: string;
   accountId: string;
   workerId: string;
+  owner?: RunOwnerIdentity;
   effectivePolicy: Record<string, unknown>;
   skills: SkillSnapshot[];
 }

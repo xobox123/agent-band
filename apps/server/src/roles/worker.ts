@@ -1,4 +1,5 @@
-import { homedir, tmpdir } from 'node:os';
+import { homedir, hostname, tmpdir } from 'node:os';
+import { pid as serverPid } from 'node:process';
 import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import {
@@ -19,7 +20,8 @@ import type { AuditLog, EffectivePolicySource, EffectiveSkillsSource, OrgSetting
 import { getProvider, type AccountForRun } from '../modules/accounts/index.ts';
 import type { AgentDto } from '../modules/agents/index.ts';
 import type { createAgentUseCases } from '../modules/agents/index.ts';
-import type { createRuns, Run } from '../modules/runs/index.ts';
+import type { createRuns, Run, RunOwnerIdentity, RunProcessRecord } from '../modules/runs/index.ts';
+import { systemProcessTable, terminateRecordedGroup, type ProcessTable } from '../runner/process-table.ts';
 import {
   RESULT_SUMMARY_MAX_BYTES,
   truncateBytes,
@@ -96,6 +98,8 @@ export interface WorkerDeps {
   runsRoot?: string;
   /** Random delay added to an automatic resume time (default 0 to 60 s). */
   resumeJitterMs?: () => number;
+  /** Replaces host process inspection and signalling in tests. */
+  processTable?: ProcessTable;
   log?: (level: 'warn' | 'error', message: string, err?: unknown) => void;
 }
 
@@ -149,6 +153,9 @@ export function createWorker(deps: WorkerDeps): Worker {
   const minuteMs = deps.minuteMs ?? 60_000;
   const runsRoot = deps.runsRoot ?? join(tmpdir(), 'agent-band', 'runs');
   const log = deps.log ?? (() => undefined);
+  const processTable = deps.processTable ?? systemProcessTable;
+  const host = hostname();
+  let owner: RunOwnerIdentity | undefined;
 
   const active = new Set<Promise<void>>();
   const pending = new Set<Promise<void>>();
@@ -281,6 +288,7 @@ export function createWorker(deps: WorkerDeps): Worker {
           agentId: c.agent.id,
           accountId: c.account.id,
           workerId: deps.workerId,
+          ...(owner && { owner }),
           effectivePolicy: {
             ...c.policy,
             hash: c.policyHash,
@@ -417,6 +425,19 @@ export function createWorker(deps: WorkerDeps): Worker {
     }
   }
 
+  async function cleanProcess(runId: string, identity: RunProcessRecord): Promise<void> {
+    try {
+      const result = await terminateRecordedGroup(identity, processTable);
+      if (result === 'mismatch') {
+        log('warn', `refusing to signal mismatched process for run ${runId}`);
+        return;
+      }
+      await deps.db.transaction((tx) => deps.runs.markProcessReaped(tx, d, runId, identity));
+    } catch (err) {
+      log('warn', `could not clean up process for run ${runId}`, err);
+    }
+  }
+
   async function execute(task: Task, c: Candidate, run: Run, token: string): Promise<void> {
     const entry = inFlight.get(task.id) ?? { userCancelled: false };
     const dir = join(runsRoot, run.id);
@@ -531,15 +552,31 @@ export function createWorker(deps: WorkerDeps): Worker {
         entry.cancel = () => {
           h.cancel();
         };
-        if (entry.userCancelled || forceStop || timedOut) h.cancel();
-        for await (const event of h.events) {
-          if (event.kind === 'error') lastError = event.message;
-          if (event.kind === 'text' || event.kind === 'tool') worked = true;
-          if (event.kind === 'permission_denied') for (const action of event.actions) denied.add(action);
-          await append(run.id, event);
-          if (event.kind === 'rate_limit') await recordLimits(c.account.id, event);
+        let registered: RunProcessRecord | undefined;
+        try {
+          if (h.process) {
+            const observed = await processTable.read(h.process.pid);
+            if (observed) {
+              if (observed.pgid !== h.process.pid) {
+                throw new Error('CLI process is not the leader of its dedicated process group');
+              }
+              const identity: RunProcessRecord = { ...observed, host };
+              registered = identity;
+              await deps.db.transaction((tx) => deps.runs.recordProcess(tx, d, run.id, identity));
+            }
+          }
+          if (entry.userCancelled || forceStop || timedOut) h.cancel();
+          for await (const event of h.events) {
+            if (event.kind === 'error') lastError = event.message;
+            if (event.kind === 'text' || event.kind === 'tool') worked = true;
+            if (event.kind === 'permission_denied') for (const action of event.actions) denied.add(action);
+            await append(run.id, event);
+            if (event.kind === 'rate_limit') await recordLimits(c.account.id, event);
+          }
+          return { result: await h.done, worked };
+        } finally {
+          if (registered) await cleanProcess(run.id, registered);
         }
-        return { result: await h.done, worked };
       };
       let { result, worked } = await attempt(spec);
       if (spec.resumeSessionId && result.exitCode !== 0 && !worked && !entry.userCancelled && !timedOut) {
@@ -828,7 +865,25 @@ export function createWorker(deps: WorkerDeps): Worker {
     async start() {
       stopping = false;
       forceStop = false;
-      const stale = await deps.runs.recoverStaleRuns(deps.db, d, deps.workerId);
+      const self = await processTable.read(serverPid);
+      if (!self) throw new Error('Cannot identify the worker process before dispatch');
+      owner = { host, pid: self.pid, startedAt: self.startedAt, command: self.command };
+
+      const running = await deps.runs.runningForRecovery(deps.db, d);
+      const lost: string[] = [];
+      for (const run of running) {
+        if (run.owner) {
+          if (run.owner.host !== host) continue;
+          const observed = await processTable.read(run.owner.pid);
+          const sameStart = observed?.startedAt === run.owner.startedAt;
+          const sameCommand = observed?.command === run.owner.command;
+          if (!sameStart || !sameCommand) lost.push(run.id);
+        } else if (run.workerId === deps.workerId) {
+          // Legacy runs lack an owner fingerprint: keep the original workerId recovery behavior.
+          lost.push(run.id);
+        }
+      }
+      const stale = await deps.runs.recoverStaleRuns(deps.db, d, undefined, lost);
       for (const run of stale) {
         await deps.db.transaction(async (tx) => {
           await revokeRunAuth(tx, run.id);
@@ -838,6 +893,13 @@ export function createWorker(deps: WorkerDeps): Worker {
             if (!isConflict(err)) throw err;
           }
         });
+      }
+
+      // This is deliberately after the terminal DB transition. An interrupted cleanup
+      // stays pending and is retried after the next restart, even if workerId changes.
+      const pendingCleanup = await deps.runs.pendingProcessCleanup(deps.db, d);
+      for (const run of pendingCleanup) {
+        if (run.process?.host === host) await cleanProcess(run.id, run.process);
       }
       unsubscribe = deps.events.subscribe((event) => {
         const payload = event.payload as { orgId?: string; taskId?: string };
